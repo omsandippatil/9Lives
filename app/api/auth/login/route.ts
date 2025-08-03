@@ -308,7 +308,8 @@ export async function POST(request: NextRequest) {
       console.log('User profile fetched successfully')
     }
 
-    const response = NextResponse.json({
+    // Prepare response with tokens for client-side access
+    const responseData = {
       message: 'Login successful',
       user: {
         id: authUser.id,
@@ -316,12 +317,26 @@ export async function POST(request: NextRequest) {
         email_verified: authUser.email_confirmed_at !== null
       },
       profile: userProfile || null,
+      // Include session tokens for client-side access
+      session: {
+        access_token: authSession.access_token,
+        refresh_token: authSession.refresh_token,
+        expires_at: authSession.expires_at,
+        user: {
+          id: authUser.id,
+          email: authUser.email
+        }
+      },
       debug: 'Login completed successfully'
-    })
+    }
+
+    const response = NextResponse.json(responseData)
 
     // Set cookies with proper security settings
     const isProduction = process.env.NODE_ENV === 'production'
-    const cookieOptions = {
+    
+    // HttpOnly cookies for secure server-side authentication
+    const secureOptions = {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax' as const,
@@ -329,12 +344,45 @@ export async function POST(request: NextRequest) {
       path: '/'
     }
 
-    response.cookies.set('supabase-access-token', authSession.access_token, cookieOptions)
-    response.cookies.set('supabase-refresh-token', authSession.refresh_token, cookieOptions)
-    response.cookies.set('supabase-user-id', authUser.id, cookieOptions)
-    response.cookies.set('supabase-user-email', authUser.email || '', cookieOptions)
+    // Non-httpOnly cookies for client-side access (with shorter expiry for security)
+    const clientOptions = {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: 'lax' as const,
+      maxAge: 7 * 24 * 60 * 60, // 1 week (shorter for security)
+      path: '/'
+    }
+
+    // Set secure httpOnly cookies (primary authentication method)
+    response.cookies.set('supabase-access-token', authSession.access_token, secureOptions)
+    response.cookies.set('supabase-refresh-token', authSession.refresh_token, secureOptions)
+    response.cookies.set('supabase-user-id', authUser.id, secureOptions)
+    response.cookies.set('supabase-user-email', authUser.email || '', secureOptions)
+
+    // Set client-accessible cookies for compatibility (with prefix to distinguish)
+    response.cookies.set('client-access-token', authSession.access_token, clientOptions)
+    response.cookies.set('client-user-id', authUser.id, clientOptions)
+    response.cookies.set('client-user-email', authUser.email || '', clientOptions)
+
+    // Also set session info for client-side state management
+    const sessionData = {
+      access_token: authSession.access_token,
+      refresh_token: authSession.refresh_token,
+      user_id: authUser.id,
+      email: authUser.email,
+      expires_at: authSession.expires_at
+    }
+
+    response.cookies.set('auth-session', JSON.stringify(sessionData), {
+      ...clientOptions,
+      maxAge: 24 * 60 * 60 // 1 day for session data
+    })
 
     console.log('Login successful for user:', authUser.id)
+    console.log('Set cookies:', {
+      secure: ['supabase-access-token', 'supabase-refresh-token', 'supabase-user-id', 'supabase-user-email'],
+      client: ['client-access-token', 'client-user-id', 'client-user-email', 'auth-session']
+    })
     console.log('=== LOGIN ROUTE COMPLETED SUCCESSFULLY ===')
     return response
 
