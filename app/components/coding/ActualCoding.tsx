@@ -1,6 +1,6 @@
 'use client';
-
 import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import CodeEditor from './CodeEditor';
 import ResultPopup from './ResultPopup';
 
@@ -16,22 +16,9 @@ interface UserProfile {
   coding_questions_attempted: number
   technical_questions_attempted: number
   fundamental_questions_attempted: number
-  aptitude_questions_attempted?: number
   tech_topics_covered: number
-  current_streak: number
+  current_streak: [string, number] | null // JSONB format: ["2025-08-04", 1]
   total_points: number
-  total_questions_attempted: number
-  categories: {
-    coding: number
-    technical: number
-    fundamental: number
-    aptitude: number
-  }
-  progress: {
-    tech_topics_covered: number
-    current_streak: number
-    total_points: number
-  }
   created_at: string
   updated_at: string
 }
@@ -49,6 +36,7 @@ interface ActualCodingProps {
   testCases: TestCase[];
   language: string;
   onNext: () => void;
+  questionId: number; // Add this prop to pass the question ID directly
 }
 
 export default function ActualCoding({
@@ -63,8 +51,12 @@ export default function ActualCoding({
   outputFormat,
   testCases,
   language,
-  onNext
+  onNext,
+  questionId
 }: ActualCodingProps) {
+  const params = useParams();
+  const currentQuestionId = parseInt(params.id as string); // Get sr_no from URL
+  
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [showAnimation, setShowAnimation] = useState(false);
@@ -98,6 +90,48 @@ export default function ActualCoding({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Get streak display based on JSONB format
+  const getStreakDisplay = (currentStreak: [string, number] | null) => {
+    console.log('getStreakDisplay called with:', { currentStreak, type: typeof currentStreak });
+    
+    if (!currentStreak || !Array.isArray(currentStreak) || currentStreak.length < 2) {
+      console.log('No valid streak data, returning 0');
+      return `0`;
+    }
+    
+    const [dateStr, streakValue] = currentStreak;
+    console.log('Streak data:', { dateStr, streakValue });
+    
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const streakDate = new Date(dateStr);
+    const todayStr = today.toDateString();
+    const yesterdayStr = yesterday.toDateString();
+    const streakDateStr = streakDate.toDateString();
+    
+    console.log('Date comparison:', { todayStr, yesterdayStr, streakDateStr });
+    
+    if (streakDateStr === todayStr) {
+      // Current date - show just the number
+      console.log('Today - showing:', streakValue);
+      return `${streakValue}`;
+    } else if (streakDateStr === yesterdayStr) {
+      // Yesterday's date - show number and emoji in gray
+      console.log('Yesterday - showing:', streakValue);
+      return (
+        <span className="text-gray-400">
+          {streakValue} 🔥
+        </span>
+      );
+    } else {
+      // Older date - show 0
+      console.log('Older date - showing: 0');
+      return `0`;
+    }
+  };
+
   const fetchProfile = async () => {
     try {
       const response = await fetch('/api/auth/profile', {
@@ -107,19 +141,116 @@ export default function ActualCoding({
         },
         credentials: 'include'
       });
-
+      
+      console.log('Profile fetch response status:', response.status);
+      
       if (response.ok) {
-        const data = await response.json();
-        if (data.profile) {
-          setProfile(data.profile);
+        const text = await response.text();
+        console.log('Raw profile response:', text);
+        
+        try {
+          const data = JSON.parse(text);
+          console.log('Parsed profile data:', data);
+          if (data.profile) {
+            setProfile(data.profile);
+            console.log('Profile set:', data.profile);
+          }
+        } catch (parseError) {
+          console.error('JSON parse error for profile:', parseError);
+          console.error('Response text that failed to parse:', text);
         }
       } else {
-        console.error('Failed to fetch profile');
+        console.error('Failed to fetch profile, status:', response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('Network error fetching profile:', error);
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  const shouldUpdateProgress = (): boolean => {
+    if (!profile) {
+      console.log('shouldUpdateProgress: No profile');
+      return false;
+    }
+    
+    const userProgress = profile.coding_questions_attempted || 0;
+    const shouldUpdate = questionId === userProgress + 1;
+    
+    console.log('Progress check:', {
+      questionId,
+      currentQuestionId,
+      userProgress,
+      shouldUpdate,
+      calculation: `${questionId} === ${userProgress} + 1`
+    });
+    
+    // Only update if current question is exactly one more than user's progress
+    // This ensures sequential progression
+    return shouldUpdate;
+  };
+
+  const updateCodingProgress = async () => {
+    console.log('updateCodingProgress called');
+    
+    if (!profile) {
+      console.log('No profile available');
+      return;
+    }
+    
+    const shouldUpdate = shouldUpdateProgress();
+    if (!shouldUpdate) {
+      console.log('No update needed:', { 
+        hasProfile: !!profile, 
+        shouldUpdate,
+        questionId,
+        currentQuestionId,
+        userProgress: profile?.coding_questions_attempted || 0
+      });
+      return;
+    }
+    
+    try {
+      console.log('Making API call to update progress...');
+      const response = await fetch('/api/update/coding-questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      console.log('API Response status:', response.status);
+      
+      if (response.ok) {
+        const text = await response.text();
+        console.log('Raw API response:', text);
+        
+        try {
+          const data = JSON.parse(text);
+          console.log('Progress update response:', data);
+          
+          if (data.success) {
+            // Update local profile state
+            setProfile(prev => prev ? {
+              ...prev,
+              coding_questions_attempted: data.new_count
+            } : null);
+            console.log('Successfully updated coding progress to:', data.new_count);
+          }
+        } catch (parseError) {
+          console.error('JSON parse error for progress update:', parseError);
+          console.error('Response text that failed to parse:', text);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+      }
+    } catch (error) {
+      console.error('Network Error updating coding progress:', error);
     }
   };
 
@@ -127,10 +258,8 @@ export default function ActualCoding({
     if (!allPassed) {
       return 0; // No points if tests don't pass
     }
-
     // Base points for solving the problem
     let points = 5;
-
     // Bonus points based on time remaining
     if (timeRemaining > 240) { // More than 4 minutes left
       points += 3; // Fast solver bonus
@@ -139,7 +268,6 @@ export default function ActualCoding({
     } else if (timeRemaining > 120) { // More than 2 minutes left
       points += 1;
     }
-
     return points;
   };
 
@@ -169,7 +297,6 @@ export default function ActualCoding({
           body: JSON.stringify({ points: pointsToAward }),
           credentials: 'include'
         });
-
         if (response.ok) {
           const data = await response.json();
           
@@ -177,18 +304,13 @@ export default function ActualCoding({
           if (data.new_total && profile) {
             setProfile(prev => prev ? {
               ...prev,
-              total_points: data.new_total,
-              progress: {
-                ...prev.progress,
-                total_points: data.new_total
-              }
+              total_points: data.new_total
             } : null);
           }
           
           setShowAnimation(true);
           setTimeout(() => setShowAnimation(false), 2000);
         }
-
         setSubmissionResult({
           success: true,
           message: `All tests passed! Great job! 🎉 You earned ${pointsToAward} fish!`,
@@ -209,6 +331,14 @@ export default function ActualCoding({
           testResults: mockResults,
           pointsAwarded: 0
         });
+      }
+      
+      // Update coding progress only if this is the next question in sequence and tests passed
+      if (allPassed) {
+        console.log('Tests passed, attempting to update progress...');
+        await updateCodingProgress();
+      } else {
+        console.log('Tests failed, not updating progress');
       }
       
       setShowResult(true);
@@ -269,7 +399,9 @@ export default function ActualCoding({
                 {profileLoading ? (
                   <span className="animate-pulse">Loading...</span>
                 ) : (
-                  `${profile?.current_streak || 0} 🔥`
+                  <>
+                    {getStreakDisplay(profile?.current_streak || null)} 🔥
+                  </>
                 )}
               </p>
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import CodeEditor from './Code';
 
 interface TestCase {
   input: string;
@@ -24,34 +25,30 @@ interface ExecutionResult {
   executionTime?: number;
 }
 
-interface CodeEditorProps {
+interface CodingInterfaceProps {
   className: string;
   functionName: string;
   language: string;
   testCases: TestCase[];
   completeCode: string;
   inputFormat: string;
-  onSubmit: (code: string) => Promise<void>;
+  onSubmit?: (code: string) => Promise<void>; // Made optional since we'll handle it internally
 }
 
 // Global cache for the sad cat gif
-let globalGifCache: string | null = null;
+let globalGifCache: string | undefined = undefined;
 let isGifLoading = false;
 const gifLoadPromises: Promise<string>[] = [];
 
-// Function to load and cache the gif globally
 const loadSadCatGifGlobally = async (): Promise<string> => {
-  // If already cached, return immediately
   if (globalGifCache) {
     return globalGifCache;
   }
 
-  // If already loading, wait for the existing promise
   if (isGifLoading && gifLoadPromises.length > 0) {
     return gifLoadPromises[gifLoadPromises.length - 1];
   }
 
-  // Start loading
   isGifLoading = true;
   const loadPromise = (async () => {
     try {
@@ -62,7 +59,7 @@ const loadSadCatGifGlobally = async (): Promise<string> => {
           const reader = new FileReader();
           reader.onload = () => {
             const dataUrl = reader.result as string;
-            globalGifCache = dataUrl; // Cache globally forever
+            globalGifCache = dataUrl;
             resolve(dataUrl);
           };
           reader.readAsDataURL(blob);
@@ -82,7 +79,36 @@ const loadSadCatGifGlobally = async (): Promise<string> => {
   return loadPromise;
 };
 
-export default function CodeEditor({
+// Function to update coding questions via API
+const updateCodingQuestions = async (): Promise<boolean> => {
+  try {
+    console.log('Calling coding questions update API...');
+    
+    const response = await fetch('/api/update/coding-questions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Include cookies for authentication
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      console.log('Coding questions updated successfully:', result.data);
+      return true;
+    } else {
+      console.error('Failed to update coding questions:', result.error);
+      console.error('API response:', result);
+      return false;
+    }
+  } catch (error) {
+    console.error('Network error while updating coding questions:', error);
+    return false;
+  }
+};
+
+export default function CodingInterface({
   className,
   functionName,
   language,
@@ -90,199 +116,31 @@ export default function CodeEditor({
   completeCode,
   inputFormat,
   onSubmit
-}: CodeEditorProps) {
-  // Generate initial code template based on language and actual code structure
-  const generateInitialCode = () => {
-    if (language.toLowerCase() === 'python') {
-      return extractPythonTemplate();
-    } else if (language.toLowerCase() === 'java') {
-      return extractJavaTemplate();
-    } else {
-      // Default fallback
-      return `class ${className} {
-    public String ${functionName}(String input) {
-        // Your code here
-        return "";
-    }
-}`;
-    }
-  };
-
-  const extractPythonTemplate = () => {
-    const lines = completeCode.split('\n');
-    let result = [];
-    let inFunction = false;
-    let functionIndent = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmedLine = line.trim();
-      
-      // Skip empty lines at the start
-      if (!trimmedLine && result.length === 0) continue;
-      
-      // Add imports
-      if (trimmedLine.startsWith('import ') || trimmedLine.startsWith('from ')) {
-        result.push(line);
-        continue;
-      }
-      
-      // Add class definition
-      if (trimmedLine.startsWith('class ')) {
-        result.push(line);
-        continue;
-      }
-      
-      // Handle function definitions
-      if (trimmedLine.startsWith('def ')) {
-        const functionMatch = trimmedLine.match(/def\s+(\w+)/);
-        if (functionMatch) {
-          const funcName = functionMatch[1];
-          
-          // If this is the target function, create empty template
-          if (funcName === functionName) {
-            result.push(line);
-            const indentMatch = line.match(/^(\s*)/);
-            const indent = indentMatch ? indentMatch[1] : '';
-            result.push(indent + '    # Your code here');
-            result.push(indent + '    pass');
-            
-            // Skip the actual implementation
-            inFunction = true;
-            functionIndent = indent.length;
-            continue;
-          } else {
-            // For other functions (like main), include them as-is
-            result.push(line);
-            inFunction = false;
-          }
-        }
-        continue;
-      }
-      
-      // Skip function body for target function
-      if (inFunction) {
-        const currentIndentMatch = line.match(/^(\s*)/);
-        const currentIndent = currentIndentMatch ? currentIndentMatch[1].length : 0;
-        // If we're back to class level or same level as function def, we're done with function
-        if (trimmedLine && currentIndent <= functionIndent) {
-          inFunction = false;
-          result.push(line);
-        }
-        // Skip lines inside the target function
-        continue;
-      }
-      
-      // Add everything else (main function, if __name__ == '__main__', etc.)
-      if (trimmedLine) {
-        result.push(line);
-      }
-    }
-    
-    return result.join('\n');
-  };
-
-  const extractJavaTemplate = () => {
-    const lines = completeCode.split('\n');
-    let result = [];
-    let inFunction = false;
-    let braceLevel = 0;
-    let functionBraceLevel = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmedLine = line.trim();
-      
-      // Skip empty lines at the start
-      if (!trimmedLine && result.length === 0) continue;
-      
-      // Add imports
-      if (trimmedLine.startsWith('import ') || trimmedLine.startsWith('package ')) {
-        result.push(line);
-        continue;
-      }
-      
-      // Add class definition
-      if (trimmedLine.includes('class ')) {
-        result.push(line);
-        continue;
-      }
-      
-      // Count braces for nesting level
-      const openBraces = (line.match(/{/g) || []).length;
-      const closeBraces = (line.match(/}/g) || []).length;
-      
-      // Handle function definitions
-      if (trimmedLine.includes(functionName) && (trimmedLine.includes('public') || trimmedLine.includes('private') || trimmedLine.includes('protected'))) {
-        // This is our target function
-        const methodSignature = trimmedLine.replace(/\s*\{.*$/, '') + ' {';
-        result.push(line.replace(trimmedLine, methodSignature));
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1] : '';
-        result.push(indent + '    // Your code here');
-        
-        // Determine appropriate return statement based on return type
-        let returnStatement = 'return "";';
-        if (trimmedLine.includes(' int ') || trimmedLine.includes(' Integer ')) {
-          returnStatement = 'return 0;';
-        } else if (trimmedLine.includes(' boolean ') || trimmedLine.includes(' Boolean ')) {
-          returnStatement = 'return false;';
-        } else if (trimmedLine.includes(' void ')) {
-          returnStatement = '// return; // void method';
-        } else if (trimmedLine.includes(' List<') || trimmedLine.includes(' ArrayList<')) {
-          returnStatement = 'return new ArrayList<>();';
-        } else if (trimmedLine.includes(' String[]')) {
-          returnStatement = 'return new String[0];';
-        } else if (trimmedLine.includes(' int[]')) {
-          returnStatement = 'return new int[0];';
-        }
-        
-        result.push(indent + '    ' + returnStatement);
-        result.push(indent + '}');
-        
-        // Skip the actual implementation
-        inFunction = true;
-        functionBraceLevel = braceLevel + 1;
-        braceLevel += openBraces - closeBraces;
-        continue;
-      }
-      
-      // Skip function body for target function
-      if (inFunction) {
-        braceLevel += openBraces - closeBraces;
-        if (braceLevel < functionBraceLevel) {
-          inFunction = false;
-        } else {
-          continue; // Skip lines inside the target function
-        }
-      }
-      
-      if (!inFunction) {
-        braceLevel += openBraces - closeBraces;
-        result.push(line);
-      }
-    }
-    
-    return result.join('\n');
-  };
-
-  const [code, setCode] = useState(generateInitialCode());
+}: CodingInterfaceProps) {
+  const [code, setCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'testcases' | 'results'>('editor');
-  const [sadCatGif, setSadCatGif] = useState<string | null>(null);
+  const [sadCatGif, setSadCatGif] = useState<string | undefined>(undefined);
   const [isGifFromCache, setIsGifFromCache] = useState(false);
   const [allTestsPassed, setAllTestsPassed] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [apiUpdateStatus, setApiUpdateStatus] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
 
-  // Load gif on component mount if already cached
   useEffect(() => {
     if (globalGifCache) {
       setSadCatGif(globalGifCache);
       setIsGifFromCache(true);
     }
   }, []);
+
+  // Auto-submit when all tests pass
+  useEffect(() => {
+    if (allTestsPassed && !hasSubmitted && !isSubmitting) {
+      handleSubmit();
+    }
+  }, [allTestsPassed, hasSubmitted, isSubmitting]);
 
   const executeCodeWithPiston = async (sourceCode: string, testInput: string): Promise<{ output: string; error?: string }> => {
     const pistonLanguage = language.toLowerCase() === 'java' ? 'java' : 'python';
@@ -335,14 +193,13 @@ export default function CodeEditor({
     try {
       const gifUrl = await loadSadCatGifGlobally();
       setSadCatGif(gifUrl);
-      setIsGifFromCache(globalGifCache !== null);
+      setIsGifFromCache(globalGifCache !== undefined);
     } catch (error) {
       console.error('Failed to load sad cat gif:', error);
     }
   };
 
   const runTestCases = async () => {
-    // Don't run tests if already submitted
     if (hasSubmitted) return;
     
     if (!testCases || testCases.length === 0) {
@@ -356,7 +213,7 @@ export default function CodeEditor({
     
     const startTime = Date.now();
     const results: TestResult[] = [];
-    let firstError: string | null = null;
+    let globalError: string | undefined = undefined;
     
     try {
       for (let i = 0; i < testCases.length; i++) {
@@ -365,10 +222,8 @@ export default function CodeEditor({
         const executionResponse = await executeCodeWithPiston(code, testCase.input);
         
         if (executionResponse.error) {
-          // Only capture the first error encountered
-          if (!firstError) {
-            firstError = executionResponse.error;
-            // Load sad cat gif when we encounter the first error
+          if (!globalError) {
+            globalError = executionResponse.error;
             await loadSadCatGif();
           }
           
@@ -377,7 +232,6 @@ export default function CodeEditor({
             input: testCase.input,
             expected: testCase.expected_output,
             actual: '',
-            error: firstError === executionResponse.error ? executionResponse.error : 'Same error as above',
             description: testCase.description
           });
         } else {
@@ -398,17 +252,16 @@ export default function CodeEditor({
       const executionTime = Date.now() - startTime;
       const success = results.every(r => r.passed);
       
-      // Load sad cat gif if any tests failed
       if (!success && !sadCatGif) {
         await loadSadCatGif();
       }
       
-      // Update test passing state
       setAllTestsPassed(success);
       
       setExecutionResult({
         success,
         results,
+        error: globalError,
         executionTime
       });
       
@@ -432,11 +285,29 @@ export default function CodeEditor({
     if (isSubmitting || !allTestsPassed) return;
     
     setIsSubmitting(true);
+    setApiUpdateStatus('updating');
+    
     try {
-      await onSubmit(code);
+      // First call the original onSubmit if provided
+      if (onSubmit) {
+        await onSubmit(code);
+      }
+      
+      // Then update the coding questions count via API
+      const apiSuccess = await updateCodingQuestions();
+      
+      if (apiSuccess) {
+        setApiUpdateStatus('success');
+        console.log('Coding question completed and count updated successfully!');
+      } else {
+        setApiUpdateStatus('error');
+        console.error('Code submitted but failed to update question count');
+      }
+      
       setHasSubmitted(true);
     } catch (error) {
-      console.error('Error submitting code:', error);
+      console.error('Error during submission process:', error);
+      setApiUpdateStatus('error');
     } finally {
       setIsSubmitting(false);
     }
@@ -451,13 +322,56 @@ export default function CodeEditor({
 
   const hasErrors = executionResult && (!executionResult.success || executionResult.error);
 
+  const getSubmitButtonText = () => {
+    if (hasSubmitted) {
+      switch (apiUpdateStatus) {
+        case 'success':
+          return 'Completed ✅';
+        case 'error':
+          return 'Submitted ⚠️';
+        default:
+          return 'Submitted ✓';
+      }
+    }
+    if (isSubmitting) {
+      return apiUpdateStatus === 'updating' ? 'Updating Progress...' : 'Submitting...';
+    }
+    return allTestsPassed ? 'Submit Solution' : 'Run Tests First';
+  };
+
+  const getSubmitButtonClass = () => {
+    if (hasSubmitted) {
+      switch (apiUpdateStatus) {
+        case 'success':
+          return 'bg-green-600 text-white border border-green-600';
+        case 'error':
+          return 'bg-orange-500 text-white border border-orange-500';
+        default:
+          return 'bg-gray-100 text-gray-600 border border-gray-200';
+      }
+    }
+    if (allTestsPassed && !isSubmitting) {
+      return 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm';
+    }
+    if (isSubmitting) {
+      return 'bg-blue-500 text-white';
+    }
+    return 'bg-gray-100 text-gray-400 border border-gray-200';
+  };
+
   return (
     <div className="w-1/2 flex flex-col h-full">
-      {/* Code Editor Header */}
+      {/* Header */}
       <div className="border-b border-gray-100 p-4 flex justify-between items-center flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-xl">👨‍💻</span>
           <h3 className="font-mono font-medium text-lg">Code Editor</h3>
+          {apiUpdateStatus === 'success' && (
+            <span className="text-green-600 text-sm font-mono">Progress Updated!</span>
+          )}
+          {apiUpdateStatus === 'error' && (
+            <span className="text-orange-500 text-sm font-mono">Progress Update Failed</span>
+          )}
         </div>
         <div className="flex gap-2">
           <button
@@ -476,17 +390,9 @@ export default function CodeEditor({
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || !allTestsPassed || hasSubmitted}
-            className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${
-              hasSubmitted
-                ? 'bg-gray-100 text-gray-600 border border-gray-200'
-                : allTestsPassed && !isSubmitting
-                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                : isSubmitting
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-gray-400 border border-gray-200'
-            }`}
+            className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${getSubmitButtonClass()}`}
           >
-            {hasSubmitted ? 'Submitted ✓' : isSubmitting ? 'Submitting...' : allTestsPassed ? 'Submit Solution' : 'Run Tests First'}
+            {getSubmitButtonText()}
           </button>
         </div>
       </div>
@@ -530,18 +436,13 @@ export default function CodeEditor({
       {/* Tab Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'editor' ? (
-          /* Code Editor Tab */
-          <div className="flex-1 p-4 overflow-hidden">
-            <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full h-full resize-none border border-gray-200 p-4 font-mono text-sm leading-relaxed focus:outline-none focus:border-black transition-colors duration-300"
-              placeholder="Write your code here..."
-              spellCheck={false}
-            />
-          </div>
+          <CodeEditor
+            language={language}
+            functionName={functionName}
+            completeCode={completeCode}
+            onCodeChange={setCode}
+          />
         ) : activeTab === 'testcases' ? (
-          /* Test Cases Tab */
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="p-4 pb-2 flex-shrink-0">
               <div className="flex items-center gap-2">
@@ -607,7 +508,6 @@ export default function CodeEditor({
             </div>
           </div>
         ) : (
-          /* Results Tab */
           <div className="flex-1 overflow-hidden flex flex-col">
             <div className="p-4 pb-2 flex-shrink-0">
               <div className="flex items-center gap-2">
@@ -624,21 +524,43 @@ export default function CodeEditor({
             <div className="flex-1 overflow-y-auto px-4 pb-4">
               {executionResult ? (
                 <div className="space-y-3">
-                  {/* Big Sad Cat GIF - Only show if there are errors */}
-                  {hasErrors && sadCatGif && (
-                    <div className="flex justify-center mb-4">
-                      <div className="relative">
-                        <img 
-                          src={sadCatGif} 
-                          alt="Sad cat" 
-                          className="w-32 h-32 rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow duration-300"
-                          title={isGifFromCache ? "Cached" : "Online"}
-                        />
-                        <div className="absolute -top-2 -right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded-full opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                          {isGifFromCache ? "Cached" : "Online"}
+                  {/* Show sad cat and global error if there are errors */}
+                  {hasErrors && (
+                    <>
+                      {sadCatGif && (
+                        <div className="flex justify-center mb-4">
+                          <div className="relative">
+                            <img 
+                              src={sadCatGif} 
+                              alt="Sad cat" 
+                              className="w-32 h-32 rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow duration-300"
+                              title={isGifFromCache ? "Cached" : "Online"}
+                            />
+                            <div className="absolute -top-2 -right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded-full opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                              {isGifFromCache ? "Cached" : "Online"}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      )}
+
+                      {executionResult.error && (
+                        <div className="border-2 border-red-200 bg-red-50">
+                          <div className="p-3 flex items-center gap-2">
+                            <span>❌</span>
+                            <div className="font-mono font-medium text-sm text-red-800">
+                              Error in All Test Cases
+                            </div>
+                          </div>
+                          <div className="p-3 bg-red-50 border-t border-red-200">
+                            <div className="font-mono text-xs text-red-800 max-h-32 overflow-y-auto">
+                              <pre className="whitespace-pre-wrap break-words">
+                                {executionResult.error}
+                              </pre>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Summary */}
@@ -652,7 +574,7 @@ export default function CodeEditor({
                         {executionResult.success ? '✅' : '❌'}
                       </span>
                       <span className="font-mono font-medium">
-                        {executionResult.success ? 'All tests passed! You can now submit.' : 'Some tests failed'}
+                        {executionResult.success ? 'All tests passed! Auto-submitting...' : 'Some tests failed'}
                       </span>
                     </div>
                     <div className="text-sm font-mono mt-1">
@@ -660,27 +582,8 @@ export default function CodeEditor({
                     </div>
                   </div>
 
-                  {/* Show error message only once if there's a global error */}
-                  {executionResult.error && (
-                    <div className="border-2 border-red-200 bg-red-50">
-                      <div className="p-3 flex items-center gap-2">
-                        <span>❌</span>
-                        <div className="font-mono font-medium text-sm text-red-800">
-                          Execution Error
-                        </div>
-                      </div>
-                      <div className="p-3 bg-red-50 border-t border-red-200">
-                        <div className="font-mono text-xs text-red-800 max-h-32 overflow-y-auto">
-                          <pre className="whitespace-pre-wrap break-words">
-                            {executionResult.error}
-                          </pre>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Individual Results */}
-                  {executionResult.results.map((result, index) => (
+                  {/* Individual Results - Only show if there's no global error */}
+                  {!executionResult.error && executionResult.results.map((result, index) => (
                     <div key={index} className={`border-2 ${
                       result.passed 
                         ? 'border-green-200 hover:border-green-300' 
@@ -714,27 +617,16 @@ export default function CodeEditor({
                           </div>
                         </div>
                         <div>
-                          <div className="font-mono font-medium text-sm mb-1">
-                            {result.error && result.error !== 'Same error as above' ? 'Error:' : 'Actual:'}
+                          <div className="font-mono font-medium text-sm mb-1">Actual:</div>
+                          <div className={`p-2 border font-mono text-xs max-h-16 overflow-y-auto ${
+                            result.passed 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <pre className="whitespace-pre-wrap break-words">
+                              {result.actual}
+                            </pre>
                           </div>
-                          {result.error && result.error === 'Same error as above' ? (
-                            <div className="bg-yellow-50 border border-yellow-200 p-2 font-mono text-xs text-yellow-800 flex items-center gap-2">
-                              <span>⚠️</span>
-                              <span>Same error as the first failed test case</span>
-                            </div>
-                          ) : (
-                            <div className={`p-2 border font-mono text-xs max-h-16 overflow-y-auto ${
-                              result.error 
-                                ? 'bg-red-50 border-red-200 text-red-800' 
-                                : result.passed 
-                                  ? 'bg-green-50 border-green-200' 
-                                  : 'bg-red-50 border-red-200'
-                            }`}>
-                              <pre className="whitespace-pre-wrap break-words">
-                                {result.error || result.actual}
-                              </pre>
-                            </div>
-                          )}
                         </div>
                         {result.description && (
                           <div>

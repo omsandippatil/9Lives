@@ -2,12 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-const supabase = createClient(supabaseUrl, supabaseKey)
 
 export default function Page() {
   const [loading, setLoading] = useState(true)
@@ -15,26 +9,56 @@ export default function Page() {
   const router = useRouter()
 
   useEffect(() => {
-    checkUser()
+    checkAuthentication()
   }, [])
 
-  const checkUser = async () => {
+  const checkAuthentication = async () => {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser()
+      console.log('Checking authentication...')
       
-      if (error) {
-        console.error('Auth error:', error)
-        router.push('/login')
-        return
-      }
+      // Use the same cookie-based authentication as your home page
+      const response = await fetch('/api/auth/profile', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include' // Essential for cookie-based auth
+      })
 
-      if (user) {
-        router.push('/home')
+      console.log('Auth check response status:', response.status)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Auth check successful, redirecting to home')
+        
+        if (data.profile) {
+          // User is authenticated and has a profile, redirect to home
+          router.push('/home')
+        } else {
+          console.log('No profile data, redirecting to login')
+          router.push('/login')
+        }
       } else {
-        router.push('/login')
+        console.log('Auth check failed, redirecting to login')
+        
+        if (response.status === 401) {
+          // Not authenticated
+          router.push('/login')
+        } else if (response.status === 404) {
+          // User exists but no profile found
+          setError('User profile not found. Please contact support.')
+          router.push('/login')
+        } else {
+          // Other error
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('Auth API Error:', errorData)
+          setError(errorData.error || `Authentication failed (${response.status})`)
+          router.push('/login')
+        }
       }
+      
     } catch (err) {
-      console.error('Error checking user:', err)
+      console.error('Authentication check error:', err)
       setError('Authentication error occurred')
       router.push('/login')
     } finally {
@@ -44,10 +68,13 @@ export default function Page() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Checking authentication...</p>
+          <div className="text-6xl mb-4 animate-pulse">🐱</div>
+          <p className="font-mono text-gray-600">Checking authentication...</p>
+          <div className="w-32 h-0.5 bg-gray-100 overflow-hidden">
+            <div className="h-full bg-black animate-pulse"></div>
+          </div>
         </div>
       </div>
     )
@@ -55,22 +82,41 @@ export default function Page() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <div className="text-red-600 text-center">
-            <p className="text-lg font-semibold">Authentication Error</p>
-            <p className="mt-2">{error}</p>
-            <button
-              onClick={() => router.push('/login')}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Go to Login
-            </button>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-6 animate-bounce">😿</div>
+          <div className="bg-white p-8 rounded-lg border border-gray-100">
+            <div className="text-center">
+              <p className="text-lg font-mono font-medium text-red-600 mb-2">Authentication Error</p>
+              <p className="font-mono text-sm text-gray-600 mb-6">{error}</p>
+              <div className="space-y-3">
+                <button 
+                  onClick={() => router.push('/login')}
+                  className="w-full py-3 px-4 bg-black text-white font-mono hover:bg-gray-800 transition-colors"
+                >
+                  Go to Login
+                </button>
+                <button 
+                  onClick={checkAuthentication}
+                  className="w-full py-3 px-4 border border-gray-200 font-mono hover:border-black hover:bg-gray-50 transition-all duration-300"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     )
   }
 
-  return null 
+  // This should rarely be reached since we redirect in most cases
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="text-center">
+        <div className="text-6xl mb-4">🐾</div>
+        <p className="font-mono text-gray-600">Redirecting...</p>
+      </div>
+    </div>
+  )
 }

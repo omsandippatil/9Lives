@@ -10,7 +10,7 @@ interface UserProfile {
   fundamental_questions_attempted: number
   aptitude_questions_attempted?: number
   tech_topics_covered: number
-  current_streak: number
+  current_streak: [string, number] | null
   total_points: number
   total_questions_attempted: number
   categories: {
@@ -57,6 +57,35 @@ const shuffleArray = (array: any[]) => {
   return shuffled;
 };
 
+const getRandomColors = (items: string[]) => {
+  const colors: Record<string, string> = {};
+  const shuffledColors = shuffleArray([...notionColors]);
+  
+  items.forEach((item, index) => {
+    colors[item] = shuffledColors[index % shuffledColors.length];
+  });
+  
+  return colors;
+};
+
+const getStreakDisplay = (currentStreak: [string, number] | null) => {
+  if (!currentStreak) {
+    return { number: 0, emoji: '🔥', className: 'text-gray-400' };
+  }
+
+  const [streakDate, streakDays] = currentStreak;
+  const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  if (streakDate === today) {
+    return { number: streakDays, emoji: '🔥', className: 'text-black' };
+  } else if (streakDate === yesterday) {
+    return { number: streakDays, emoji: '🔥', className: 'text-gray-400' };
+  } else {
+    return { number: 0, emoji: '🔥', className: 'text-gray-400' };
+  }
+};
+
 export default function DragCodeBlocks({
   question,
   pseudoCode,
@@ -82,15 +111,12 @@ export default function DragCodeBlocks({
   const [touchItem, setTouchItem] = useState<{item: string, index: number, isFromAvailable: boolean} | null>(null);
 
   useEffect(() => {
-    // Shuffle pseudoCode and assign colors
+    // Shuffle pseudoCode and assign random colors
     const shuffled = shuffleArray(pseudoCode);
     setAvailableItems(shuffled);
     
     // Assign random colors to each item
-    const colors: Record<string, string> = {};
-    pseudoCode.forEach((item, index) => {
-      colors[item] = notionColors[index % notionColors.length];
-    });
+    const colors = getRandomColors(pseudoCode);
     setItemColors(colors);
 
     fetchProfile();
@@ -137,8 +163,6 @@ export default function DragCodeBlocks({
     setShowError(false);
     setShowCorrectSequence(false);
   };
-
-
 
   const handleDragStart = (e: React.DragEvent, item: string, index: number, isFromAvailable: boolean) => {
     e.dataTransfer.setData('text/plain', JSON.stringify({ item, index, isFromAvailable }));
@@ -207,7 +231,11 @@ export default function DragCodeBlocks({
 
   const reset = () => {
     setDraggedItems([]);
-    setAvailableItems(shuffleArray(pseudoCode));
+    const shuffled = shuffleArray(pseudoCode);
+    setAvailableItems(shuffled);
+    // Reassign random colors on reset
+    const colors = getRandomColors(pseudoCode);
+    setItemColors(colors);
     setShowError(false);
     setShowCorrectSequence(false);
     setHasAttempted(false);
@@ -308,6 +336,8 @@ export default function DragCodeBlocks({
     }
   };
 
+  const streakDisplay = getStreakDisplay(profile?.current_streak || null);
+
   return (
     <div className="min-h-screen bg-white text-black font-mono pb-20 pt-20">
       {/* Header */}
@@ -339,11 +369,11 @@ export default function DragCodeBlocks({
             </div>
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-              <p className="text-lg font-light">
+              <p className={`text-lg font-light ${streakDisplay.className}`}>
                 {profileLoading ? (
                   <span className="animate-pulse">Loading...</span>
                 ) : (
-                  `${profile?.current_streak || 0} 🔥`
+                  `${streakDisplay.number} ${streakDisplay.emoji}`
                 )}
               </p>
             </div>
@@ -556,7 +586,7 @@ export default function DragCodeBlocks({
         <button 
           onClick={handleNext}
           disabled={isLoading}
-          className="py-3 px-6 bg-black text-white font-mono hover:bg-gray-800 transition-all duration-300 hover:scale-105 group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="py-2 px-4 bg-black text-white font-mono text-sm hover:bg-gray-800 transition-all duration-300 hover:scale-105 group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
         >
           <span className="flex items-center gap-2">
             {isLoading ? '⏳ Processing...' : isComplete ? (hasAttempted ? '🚀 Continue' : '🚀 Next: Coding') : '📝 Check & Continue'}

@@ -168,7 +168,8 @@ export default function CodingPage() {
     inputFormat: codingData.input_format,
     outputFormat: codingData.output_format,
     testCases: testCases,
-    language: lang
+    language: lang,
+    questionId: codingData.sr_no // Pass the sr_no as questionId prop
   };
 
   const components = [

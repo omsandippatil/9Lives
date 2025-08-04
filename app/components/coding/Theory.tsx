@@ -10,7 +10,7 @@ interface UserProfile {
   fundamental_questions_attempted: number
   aptitude_questions_attempted?: number
   tech_topics_covered: number
-  current_streak: number
+  current_streak: [string, number] // Format: ["2025-08-04", 1]
   total_points: number
   total_questions_attempted: number
   categories: {
@@ -21,7 +21,7 @@ interface UserProfile {
   }
   progress: {
     tech_topics_covered: number
-    current_streak: number
+    current_streak: [string, number]
     total_points: number
   }
   created_at: string
@@ -87,6 +87,28 @@ export default function Theory({
       console.error('Error fetching profile:', error);
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  // Function to get streak display based on current_streak data
+  const getStreakDisplay = () => {
+    if (!profile?.current_streak || !Array.isArray(profile.current_streak)) {
+      return { number: '0', emoji: '🔥', isGray: true };
+    }
+
+    const [streakDate, streakDays] = profile.current_streak;
+    const today = new Date().toISOString().split('T')[0]; // Format: "2025-08-04"
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (streakDate === today) {
+      // Today - show normal colors
+      return { number: streakDays.toString(), emoji: '🔥', isGray: false };
+    } else if (streakDate === yesterday) {
+      // Yesterday - show gray
+      return { number: streakDays.toString(), emoji: '🔥', isGray: true };
+    } else {
+      // Before yesterday - show 0 in gray
+      return { number: '0', emoji: '🔥', isGray: true };
     }
   };
 
@@ -158,6 +180,8 @@ export default function Theory({
     }
   };
 
+  const streakDisplay = getStreakDisplay();
+
   return (
     <div className="min-h-screen bg-white text-black font-mono pb-20 pt-20">
       {/* Header - Same as home page */}
@@ -189,11 +213,15 @@ export default function Theory({
             </div>
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-              <p className="text-lg font-light">
+              <p className={`text-lg font-light ${streakDisplay.isGray ? 'text-gray-400' : ''}`}>
                 {profileLoading ? (
                   <span className="animate-pulse">Loading...</span>
                 ) : (
-                  `${profile?.current_streak || 0} 🔥`
+                  <>
+                    <span className={streakDisplay.isGray ? 'text-gray-400' : ''}>{streakDisplay.number}</span>
+                    {' '}
+                    <span className={streakDisplay.isGray ? 'grayscale opacity-50' : ''}>{streakDisplay.emoji}</span>
+                  </>
                 )}
               </p>
             </div>

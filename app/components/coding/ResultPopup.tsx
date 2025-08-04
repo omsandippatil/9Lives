@@ -112,9 +112,8 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
   const [gifStatus, setGifStatus] = useState<'loading' | 'cached' | 'online' | 'error'>('loading');
   const [streak, setStreak] = useState<StreakResponse | null>(null);
 
-  // Load GIF with caching (only for successful results)
+  // Load GIF with caching
   useEffect(() => {
-    if (!result.success) return;
     
     const loadGif = async () => {
       if (isCacheValid()) {
@@ -146,11 +145,10 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
     };
 
     loadGif();
-  }, [result.success]);
+  }, []);
 
-  // Update streak and trigger confetti on mount (only for successful results)
+  // Update streak and trigger confetti on mount
   useEffect(() => {
-    if (!result.success) return;
     
     // Single confetti trigger with longer duration
     triggerConfettiFireworks();
@@ -171,7 +169,7 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
     };
 
     updateStreak();
-  }, [result.success]);
+  }, []);
 
   const getGifTooltip = () => {
     switch (gifStatus) {
@@ -195,10 +193,8 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-white">
-      {/* Only render if successful */}
-      {result.success && (
-        <div className="flex items-center justify-center min-h-screen p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200">
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200">
           
           {/* Header */}
           <div className="bg-green-50 p-6 border-b">
@@ -278,33 +274,32 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
           </div>
 
           {/* Footer with new button options */}
-          <div className="p-4 border-t bg-gray-50">
-            <div className="flex justify-between items-center mb-3">
+          <div className="p-6 border-t bg-gray-50">
+            <div className="flex justify-center items-center mb-4">
               <div className="text-gray-600 flex items-center gap-2">
                 <span>🐟</span>
-                <span>+5 fishes earned!</span>
+                <span className="font-mono">+5 fishes earned!</span>
               </div>
             </div>
             
-            {/* New button layout */}
-            <div className="flex gap-3 justify-center">
+            {/* Button layout */}
+            <div className="flex gap-4 justify-center">
               <button
                 onClick={handlePythonClick}
-                className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-all duration-300 font-mono rounded-lg flex items-center gap-2"
+                className="px-6 py-3 bg-black text-white hover:bg-gray-800 transition-all duration-300 font-mono text-sm flex items-center gap-2 min-w-[140px] justify-center"
               >
                 🐍 Python
               </button>
               <button
                 onClick={handleNextQuestionClick}
-                className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 transition-all duration-300 font-mono rounded-lg flex items-center gap-2"
+                className="px-6 py-3 bg-black text-white hover:bg-gray-800 transition-all duration-300 font-mono text-sm flex items-center gap-2 min-w-[140px] justify-center"
               >
-                Next Question ➡️
+                Next Question →
               </button>
             </div>
           </div>
-          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
