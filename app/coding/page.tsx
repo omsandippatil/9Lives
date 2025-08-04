@@ -25,10 +25,10 @@ interface ApiResponse {
 
 interface UserProfile {
   email: string;
-  current_streak: number;
+  current_streak: [string, number]; // ["2025-08-03", 3]
   total_points: number;
   progress: {
-    current_streak: number;
+    current_streak: [string, number];
     total_points: number;
   };
 }
@@ -157,6 +157,25 @@ export default function NineLives() {
     }
   };
 
+  // Helper function to get streak display info
+  const getStreakDisplay = () => {
+    if (!profile?.progress?.current_streak) {
+      return { text: 'Streak', emoji: '🔥', streakNumber: 0, isGrayscale: true };
+    }
+
+    const [streakDate, streakDays] = profile.progress.current_streak;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (streakDate === today) {
+      return { text: 'Streak', emoji: '🔥', streakNumber: streakDays, isGrayscale: false };
+    } else if (streakDate === yesterday) {
+      return { text: 'Streak', emoji: '🔥', streakNumber: streakDays, isGrayscale: true };
+    } else {
+      return { text: 'Streak', emoji: '🔥', streakNumber: 0, isGrayscale: true };
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -171,9 +190,11 @@ export default function NineLives() {
     );
   }
 
+  const streakDisplay = getStreakDisplay();
+
   return (
     <div className="min-h-screen bg-white text-black font-mono">
-      {/* Header - Same as HomePage */}
+      {/* Header - Updated with fish points and streak logic */}
       <header className="border-b border-gray-100 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center px-6">
           <div className="flex items-center gap-3">
@@ -185,12 +206,16 @@ export default function NineLives() {
             {profile && (
               <>
                 <div className="text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-                  <p className="text-lg font-light">{profile.progress.current_streak} 🔥</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">
+                    {streakDisplay.text}
+                  </p>
+                  <p className={`text-lg font-light ${streakDisplay.isGrayscale ? 'grayscale opacity-50' : ''}`}>
+                    {streakDisplay.streakNumber} <span>{streakDisplay.emoji}</span>
+                  </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Points</p>
-                  <p className="text-lg font-light">{profile.progress.total_points} ⭐</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
+                  <p className="text-lg font-light">{profile.progress.total_points} 🐟</p>
                 </div>
                 <button 
                   onClick={() => router.push('/leaderboard')}

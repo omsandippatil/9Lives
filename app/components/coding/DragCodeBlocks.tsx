@@ -70,19 +70,18 @@ const getRandomColors = (items: string[]) => {
 
 const getStreakDisplay = (currentStreak: [string, number] | null) => {
   if (!currentStreak) {
-    return { number: 0, emoji: '🔥', className: 'text-gray-400' };
+    return { number: 0, emoji: '🔥', className: 'text-gray-400', emojiClassName: 'grayscale' };
   }
 
   const [streakDate, streakDays] = currentStreak;
   const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+  // Only show active streak (black text) if the streak date is today
   if (streakDate === today) {
-    return { number: streakDays, emoji: '🔥', className: 'text-black' };
-  } else if (streakDate === yesterday) {
-    return { number: streakDays, emoji: '🔥', className: 'text-gray-400' };
+    return { number: streakDays, emoji: '🔥', className: 'text-black', emojiClassName: '' };
   } else {
-    return { number: 0, emoji: '🔥', className: 'text-gray-400' };
+    // For any other date (yesterday, older, etc.), show gray
+    return { number: streakDays, emoji: '🔥', className: 'text-gray-400', emojiClassName: 'grayscale' };
   }
 };
 
@@ -373,7 +372,9 @@ export default function DragCodeBlocks({
                 {profileLoading ? (
                   <span className="animate-pulse">Loading...</span>
                 ) : (
-                  `${streakDisplay.number} ${streakDisplay.emoji}`
+                  <span className={streakDisplay.className}>
+                    {streakDisplay.number} <span className={`${streakDisplay.className} ${streakDisplay.emojiClassName}`}>{streakDisplay.emoji}</span>
+                  </span>
                 )}
               </p>
             </div>

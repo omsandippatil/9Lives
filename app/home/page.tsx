@@ -1,5 +1,4 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { inspirationalQuotes } from './quotes'
@@ -12,8 +11,9 @@ interface UserProfile {
   fundamental_questions_attempted: number
   aptitude_questions_attempted?: number
   tech_topics_covered: number
-  current_streak: number
-  total_points: number
+  current_streak: [string, number] // [date, days] format
+  total_fish: number
+  total_points: number // Added total_points field
   total_questions_attempted: number
   categories: {
     coding: number
@@ -23,8 +23,9 @@ interface UserProfile {
   }
   progress: {
     tech_topics_covered: number
-    current_streak: number
-    total_points: number
+    current_streak: [string, number]
+    total_fish: number
+    total_points: number // Added total_points to progress
   }
   created_at: string
   updated_at: string
@@ -39,9 +40,41 @@ interface ProgressCardProps {
   onClick: () => void
 }
 
+interface StreakDisplayProps {
+  streakData: [string, number]
+}
+
+function StreakDisplay({ streakData }: StreakDisplayProps) {
+  const [streakDate, streakDays] = streakData
+  const today = new Date().toISOString().split('T')[0]
+  
+  let displayDays = streakDays
+  let textColor = 'text-gray-400'
+  let emojiStyle = 'opacity-50 grayscale'
+  
+  // Only show active colors if streak date is today
+  if (streakDate === today) {
+    textColor = 'text-orange-500'
+    emojiStyle = 'opacity-100'
+  } else {
+    // For any date that's not today (including yesterday), show gray
+    displayDays = 0
+    textColor = 'text-gray-400'
+    emojiStyle = 'opacity-50 grayscale'
+  }
+  
+  return (
+    <div className="text-center">
+      <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+      <p className={`text-lg font-light ${textColor}`}>
+        {displayDays} <span className={`${emojiStyle}`}>🔥</span>
+      </p>
+    </div>
+  )
+}
+
 function ProgressCard({ title, emoji, current, total, subtitle, onClick }: ProgressCardProps) {
   const percentage = total > 0 ? (current / total) * 100 : 0
-
   return (
     <div 
       onClick={onClick}
@@ -73,7 +106,6 @@ function ProgressCard({ title, emoji, current, total, subtitle, onClick }: Progr
   )
 }
  
-
 export default function HomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -260,13 +292,10 @@ export default function HomePage() {
           </div>
           
           <div className="flex items-center gap-8">
+            <StreakDisplay streakData={profile.progress.current_streak} />
             <div className="text-center">
-              <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-              <p className="text-lg font-light">{profile.progress.current_streak} 🔥</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-gray-400 uppercase tracking-wider">Points</p>
-              <p className="text-lg font-light">{profile.progress.total_points} ⭐</p>
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
+              <p className="text-lg font-light">{profile.total_points || profile.progress.total_points || 0} 🐟</p>
             </div>
             <button 
               onClick={() => router.push('/leaderboard')}
@@ -301,7 +330,7 @@ export default function HomePage() {
             Ready to pounce on some new challenges?
           </p>
           <p className="text-sm text-gray-400 font-light">
-            {profile.total_questions_attempted} questions conquered • {9 - (profile.progress.current_streak % 9)} lives remaining
+            {profile.total_questions_attempted} questions conquered • {9 - (profile.progress.current_streak[1] % 9)} lives remaining
           </p>
         </div>
 
@@ -371,12 +400,12 @@ export default function HomePage() {
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Topics Mastered</div>
               </div>
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.progress.current_streak}</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.progress.current_streak[1]}</div>
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Day Streak</div>
               </div>
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.progress.total_points}</div>
-                <div className="text-xs text-gray-500 uppercase tracking-wider">Total Points</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.total_points || profile.progress.total_points || 0}</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider">Total Fish</div>
               </div>
             </div>
           </div>

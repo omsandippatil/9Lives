@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 
@@ -52,16 +51,16 @@ const isCacheValid = (): boolean => {
   return true;
 };
 
-// Enhanced confetti fireworks effect - longer duration
-const triggerConfettiFireworks = () => {
-  const duration = 3000; // 3 seconds (increased from 1 second)
+// Enhanced confetti burst
+const triggerEnhancedConfetti = () => {
+  const duration = 2000;
   const animationEnd = Date.now() + duration;
   const defaults = { 
     startVelocity: 30, 
     spread: 360, 
     ticks: 60, 
     zIndex: 1000,
-    colors: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff']
+    colors: ['#ff6b35', '#f7931e', '#ffcc02', '#ffd700', '#ff9500', '#ffb347']
   };
   
   const randomInRange = (min: number, max: number) =>
@@ -75,20 +74,12 @@ const triggerConfettiFireworks = () => {
     
     const particleCount = 50 * (timeLeft / duration);
     
-    // Left side firework
     confetti({
       ...defaults,
       particleCount,
-      origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+      origin: { x: randomInRange(0.1, 0.9), y: Math.random() - 0.2 },
     });
-    
-    // Right side firework
-    confetti({
-      ...defaults,
-      particleCount,
-      origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-    });
-  }, 150); // Faster intervals for more continuous effect
+  }, 250);
 };
 
 // Helper function to get current question number from URL
@@ -111,10 +102,12 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
   const [gifUrl, setGifUrl] = useState<string>('');
   const [gifStatus, setGifStatus] = useState<'loading' | 'cached' | 'online' | 'error'>('loading');
   const [streak, setStreak] = useState<StreakResponse | null>(null);
+  const [showStreakAnimation, setShowStreakAnimation] = useState(false);
+  const [animatingNumber, setAnimatingNumber] = useState<number>(0);
+  const [emojiState, setEmojiState] = useState<'grey' | 'growing' | 'lit'>('grey');
 
   // Load GIF with caching
   useEffect(() => {
-    
     const loadGif = async () => {
       if (isCacheValid()) {
         const cached = getCachedGif();
@@ -147,12 +140,8 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
     loadGif();
   }, []);
 
-  // Update streak and trigger confetti on mount
+  // Update streak and trigger animations
   useEffect(() => {
-    
-    // Single confetti trigger with longer duration
-    triggerConfettiFireworks();
-    
     const updateStreak = async () => {
       try {
         const response = await fetch('/api/add/streak', {
@@ -163,6 +152,37 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
         });
         const streakData: StreakResponse = await response.json();
         setStreak(streakData);
+
+        // If streak was incremented, start the sequence
+        if (streakData.action === 'incremented' && streakData.previous_streak !== undefined) {
+          setShowStreakAnimation(true);
+          setAnimatingNumber(streakData.previous_streak);
+          
+          // Animation sequence
+          setTimeout(() => {
+            setEmojiState('growing');
+            
+            // Start number animation
+            const startNum = streakData.previous_streak!;
+            const endNum = streakData.current_streak;
+            const duration = 1800;
+            const steps = 25;
+            const increment = (endNum - startNum) / steps;
+            
+            let currentStep = 0;
+            const interval = setInterval(() => {
+              currentStep++;
+              if (currentStep >= steps) {
+                setAnimatingNumber(endNum);
+                setEmojiState('lit');
+                triggerEnhancedConfetti();
+                clearInterval(interval);
+              } else {
+                setAnimatingNumber(Math.floor(startNum + (increment * currentStep)));
+              }
+            }, duration / steps);
+          }, 500);
+        }
       } catch (error) {
         console.error('Failed to update streak:', error);
       }
@@ -171,13 +191,16 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
     updateStreak();
   }, []);
 
-  const getGifTooltip = () => {
-    switch (gifStatus) {
-      case 'cached': return 'Loaded from cache';
-      case 'online': return 'Fetched online and cached';
-      case 'loading': return 'Loading...';
-      case 'error': return 'Failed to load';
-      default: return '';
+  const getEmojiStyle = () => {
+    switch (emojiState) {
+      case 'grey':
+        return 'grayscale text-2xl transform scale-75 opacity-60 transition-all duration-700';
+      case 'growing':
+        return 'text-2xl transform scale-90 transition-all duration-800 opacity-90';
+      case 'lit':
+        return 'text-2xl transform scale-100 transition-all duration-800 text-orange-500 animate-pulse';
+      default:
+        return 'text-2xl';
     }
   };
 
@@ -192,27 +215,19 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-white">
+    <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm">
       <div className="flex items-center justify-center min-h-screen p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100">
           
-          {/* Header */}
-          <div className="bg-green-50 p-6 border-b">
+          {/* Minimal Header */}
+          <div className="p-6 pb-4 border-b border-gray-100">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-3xl">🎉</span>
-                <div>
-                  <h1 className="text-xl font-mono font-bold text-green-800">
-                    Purrfect Submission! 🐱
-                  </h1>
-                  <p className="text-green-600 text-sm mt-1">
-                    Great job solving this challenge!
-                  </p>
-                </div>
+              <div className="text-xl font-mono font-semibold text-gray-900">
+                Purrfect! 🐾
               </div>
               <button
                 onClick={onClose}
-                className="text-gray-500 hover:text-black transition-colors text-2xl font-mono w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full"
+                className="text-gray-400 hover:text-gray-600 transition-colors text-xl w-6 h-6 flex items-center justify-center"
               >
                 ×
               </button>
@@ -222,79 +237,88 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
           {/* Content */}
           <div className="p-6 text-center space-y-6">
             
-            {/* Dancing Cat GIF */}
+            {/* Cat GIF - Minimal */}
             <div className="flex justify-center">
               {gifStatus === 'loading' && (
-                <div className="w-48 h-64 bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center rounded-lg">
-                  <div className="text-gray-500 text-sm">Loading cat... 🐱</div>
+                <div className="w-24 h-32 bg-gray-50 border border-gray-200 flex items-center justify-center rounded-xl">
+                  <div className="text-gray-400 text-xs font-mono">loading...</div>
                 </div>
               )}
               {gifStatus === 'error' && (
-                <div className="w-48 h-64 bg-red-50 border-2 border-dashed border-red-300 flex items-center justify-center rounded-lg">
-                  <div className="text-red-500 text-sm">😿 Cat failed to load</div>
+                <div className="w-24 h-32 bg-gray-50 border border-gray-200 flex items-center justify-center rounded-xl">
+                  <div className="text-gray-400 text-xs font-mono">error</div>
                 </div>
               )}
               {(gifStatus === 'cached' || gifStatus === 'online') && gifUrl && (
-                <div className="relative group">
-                  <img 
-                    src={gifUrl} 
-                    alt="Dancing cat celebration" 
-                    className="w-48 h-64 object-cover rounded-lg shadow-lg"
-                  />
-                  <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                    {getGifTooltip()}
-                  </div>
-                </div>
+                <img 
+                  src={gifUrl} 
+                  alt="Success" 
+                  className="w-24 h-32 object-cover rounded-xl border border-gray-200"
+                />
               )}
             </div>
 
-            {/* Streak Display */}
-            {streak && streak.action === 'incremented' && (
-              <div className="bg-gradient-to-r from-orange-100 to-yellow-100 border-2 border-orange-300 rounded-lg p-4">
-                <div className="flex items-center justify-center gap-3 text-2xl mb-2">
-                  <span className="animate-bounce">🔥</span>
-                  <span className="font-bold text-orange-600 text-3xl">{streak.current_streak}</span>
-                  <span className="animate-bounce">🔥</span>
+            {/* Streak Display - Clean and Modern */}
+            {streak && streak.action === 'incremented' && showStreakAnimation && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <span className={getEmojiStyle()}>🔥</span>
+                  <div className="text-center">
+                    <div className="font-mono font-bold text-3xl text-gray-900 transition-all duration-300">
+                      {animatingNumber}
+                    </div>
+                    <div className="text-gray-500 text-xs font-mono uppercase tracking-wider mt-1">
+                      streak
+                    </div>
+                  </div>
                 </div>
-                <p className="text-orange-700 font-semibold">
-                  Meow-nificent streak! You're on fire! 🚀
+                
+                <p className="text-gray-600 font-mono text-sm">
+                  {emojiState === 'lit' ? "you're on fire! 🚀" : "building streak..."}
                 </p>
               </div>
             )}
 
-            {/* Success Message */}
-            <div className="space-y-2">
-              <div className="text-xl font-bold text-green-700">
-                Claw-some job! 🌟
+            {/* Regular streak display */}
+            {streak && streak.action === 'no_change' && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <span className="text-2xl">🔥</span>
+                  <div className="text-center">
+                    <div className="font-mono font-bold text-2xl text-gray-900">{streak.current_streak}</div>
+                    <div className="text-gray-500 text-xs font-mono uppercase tracking-wider">streak</div>
+                  </div>
+                  <span className="text-2xl">🔥</span>
+                </div>
+                <p className="text-gray-600 font-mono text-sm">keep it up! 💪</p>
               </div>
-              <div className="text-gray-600">
-                You've earned your cat-titude badge! 😸
+            )}
+
+            {/* Minimal Success Message */}
+            <div className="space-y-2">
+              <div className="text-lg font-mono font-semibold text-gray-900">
+                well done
+              </div>
+              <div className="text-gray-500 text-sm font-mono">
+                +5 points earned
               </div>
             </div>
           </div>
 
-          {/* Footer with new button options */}
-          <div className="p-6 border-t bg-gray-50">
-            <div className="flex justify-center items-center mb-4">
-              <div className="text-gray-600 flex items-center gap-2">
-                <span>🐟</span>
-                <span className="font-mono">+5 fishes earned!</span>
-              </div>
-            </div>
-            
-            {/* Button layout */}
-            <div className="flex gap-4 justify-center">
+          {/* Clean Footer */}
+          <div className="p-6 pt-4 border-t border-gray-100 bg-gray-50">
+            <div className="flex gap-3">
               <button
                 onClick={handlePythonClick}
-                className="px-6 py-3 bg-black text-white hover:bg-gray-800 transition-all duration-300 font-mono text-sm flex items-center gap-2 min-w-[140px] justify-center"
+                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all font-mono text-sm rounded-lg"
               >
-                🐍 Python
+                🐍 python
               </button>
               <button
                 onClick={handleNextQuestionClick}
-                className="px-6 py-3 bg-black text-white hover:bg-gray-800 transition-all duration-300 font-mono text-sm flex items-center gap-2 min-w-[140px] justify-center"
+                className="flex-1 px-4 py-2.5 bg-black text-white hover:bg-gray-800 transition-all font-mono text-sm rounded-lg"
               >
-                Next Question →
+                next →
               </button>
             </div>
           </div>

@@ -96,7 +96,7 @@ export default function ActualCoding({
     
     if (!currentStreak || !Array.isArray(currentStreak) || currentStreak.length < 2) {
       console.log('No valid streak data, returning 0');
-      return `0`;
+      return { text: `0`, isToday: false };
     }
     
     const [dateStr, streakValue] = currentStreak;
@@ -114,21 +114,17 @@ export default function ActualCoding({
     console.log('Date comparison:', { todayStr, yesterdayStr, streakDateStr });
     
     if (streakDateStr === todayStr) {
-      // Current date - show just the number
+      // Current date - show just the number, active today
       console.log('Today - showing:', streakValue);
-      return `${streakValue}`;
+      return { text: `${streakValue}`, isToday: true };
     } else if (streakDateStr === yesterdayStr) {
-      // Yesterday's date - show number and emoji in gray
+      // Yesterday's date - show number, not active today
       console.log('Yesterday - showing:', streakValue);
-      return (
-        <span className="text-gray-400">
-          {streakValue} 🔥
-        </span>
-      );
+      return { text: `${streakValue}`, isToday: false };
     } else {
-      // Older date - show 0
+      // Older date - show 0, not active today
       console.log('Older date - showing: 0');
-      return `0`;
+      return { text: `0`, isToday: false };
     }
   };
 
@@ -358,6 +354,9 @@ export default function ActualCoding({
     setSubmissionResult(null);
   };
 
+  // Get streak data
+  const streakData = getStreakDisplay(profile?.current_streak || null);
+
   return (
     <div className="min-h-screen bg-white text-black font-mono">
       {/* Header */}
@@ -400,7 +399,13 @@ export default function ActualCoding({
                   <span className="animate-pulse">Loading...</span>
                 ) : (
                   <>
-                    {getStreakDisplay(profile?.current_streak || null)} 🔥
+                    <span className={streakData.isToday ? '' : 'text-gray-400'}>
+                      {streakData.text}
+                    </span>
+                    {' '}
+                    <span className={streakData.isToday ? '' : 'grayscale opacity-60'}>
+                      🔥
+                    </span>
                   </>
                 )}
               </p>
@@ -548,6 +553,8 @@ export default function ActualCoding({
           inputFormat={inputFormat}
           completeCode={completeCode}
           onSubmit={handleCodeSubmission}
+          coding_questions_attempted={profile?.coding_questions_attempted || 0}
+          questionId={questionId}
         />
       </div>
 

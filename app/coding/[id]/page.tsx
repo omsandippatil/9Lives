@@ -86,7 +86,11 @@ export default function CodingPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center font-mono">
-        <div className="text-black">Loading...</div>
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-bounce">🐱</div>
+          <div className="text-black text-lg">Meow... fetching your purrfect code challenge!</div>
+          <div className="text-gray-600 text-sm mt-2">The cats are preparing something special... 😸</div>
+        </div>
       </div>
     );
   }
@@ -94,7 +98,11 @@ export default function CodingPage() {
   if (!data || !data.success) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center font-mono">
-        <div className="text-black">Error loading data</div>
+        <div className="text-center">
+          <div className="text-4xl mb-4">😿</div>
+          <div className="text-black text-lg">Oops! The cats knocked something over...</div>
+          <div className="text-gray-600 text-sm mt-2">Error loading your coding challenge</div>
+        </div>
       </div>
     );
   }
@@ -106,7 +114,11 @@ export default function CodingPage() {
   if (!codingData || !theoryData) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center font-mono">
-        <div className="text-black">No data found</div>
+        <div className="text-center">
+          <div className="text-4xl mb-4">🙀</div>
+          <div className="text-black text-lg">The cats seem to have hidden this challenge...</div>
+          <div className="text-gray-600 text-sm mt-2">No data found for this question</div>
+        </div>
       </div>
     );
   }

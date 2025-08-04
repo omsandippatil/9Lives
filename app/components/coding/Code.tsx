@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface CodeEditorProps {
   language: string;
@@ -8,6 +8,9 @@ interface CodeEditorProps {
   onCodeChange: (code: string) => void;
   initialCode?: string;
 }
+
+// In-memory cache for code persistence
+const codeCache = new Map<string, string>();
 
 function extractPythonTemplate(completeCode: string, functionName: string): string {
   const lines = completeCode.split('\n');
@@ -170,7 +173,6 @@ function highlightCode(code: string, language: string): React.ReactNode[] {
         </div>
       );
     }
-
     const tokens: React.ReactNode[] = [];
     let currentIndex = 0;
     
@@ -268,7 +270,76 @@ export default function CodeEditor({
 }: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
-  const [code, setCode] = useState(() => getInitialCode(initialCode, language, completeCode, functionName));
+  const autosaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  
+  // Create unique cache key based on function and language
+  const cacheKey = `${language}-${functionName}`;
+  
+  // Initialize code with priority: cached > initialCode > template
+  const [code, setCode] = useState(() => {
+    const cachedCode = codeCache.get(cacheKey);
+    if (cachedCode) {
+      // Use cached code if available
+      return cachedCode;
+    }
+    return getInitialCode(initialCode, language, completeCode, functionName);
+  });
+
+  // Auto-save function with error handling
+  const saveToCache = useCallback((codeToSave: string) => {
+    try {
+      codeCache.set(cacheKey, codeToSave);
+      setLastSaved(new Date());
+      setSaveStatus('saved');
+      console.log(`Code auto-saved for ${cacheKey} at ${new Date().toLocaleTimeString()}`);
+    } catch (error) {
+      console.error('Error saving code to cache:', error);
+      setSaveStatus('unsaved');
+    }
+  }, [cacheKey]);
+
+  // Debounced auto-save with immediate status update
+  const debouncedSave = useCallback((codeToSave: string) => {
+    if (autosaveIntervalRef.current) {
+      clearTimeout(autosaveIntervalRef.current);
+    }
+    
+    setSaveStatus('unsaved');
+    
+    autosaveIntervalRef.current = setTimeout(() => {
+      setSaveStatus('saving');
+      setTimeout(() => saveToCache(codeToSave), 100); // Brief delay to show saving status
+    }, 1000); // Save after 1 second of inactivity
+  }, [saveToCache]);
+
+  // Manual save function
+  const manualSave = useCallback(() => {
+    if (autosaveIntervalRef.current) {
+      clearTimeout(autosaveIntervalRef.current);
+    }
+    saveToCache(code);
+  }, [code, saveToCache]);
+
+  // Save on component unmount
+  useEffect(() => {
+    return () => {
+      if (autosaveIntervalRef.current) {
+        clearTimeout(autosaveIntervalRef.current);
+      }
+      saveToCache(code);
+    };
+  }, [code, saveToCache]);
+
+  // Initialize from cache only once on mount
+  useEffect(() => {
+    const cachedCode = codeCache.get(cacheKey);
+    if (cachedCode) {
+      setLastSaved(new Date());
+      setSaveStatus('saved');
+    }
+  }, []); // Empty dependency array - only run once on mount
 
   const getIndentSize = (): number => {
     return 4; // 4 spaces for both languages
@@ -335,6 +406,19 @@ export default function CodeEditor({
     }
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        manualSave();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [manualSave]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -352,6 +436,7 @@ export default function CodeEditor({
         const newValue = value.substring(0, selectionStart) + indent + value.substring(selectionEnd);
         setCode(newValue);
         onCodeChange(newValue);
+        debouncedSave(newValue);
         
         setTimeout(() => {
           textarea.selectionStart = textarea.selectionEnd = selectionStart + indentSize;
@@ -379,6 +464,7 @@ export default function CodeEditor({
         const newValue = lines.join('\n');
         setCode(newValue);
         onCodeChange(newValue);
+        debouncedSave(newValue);
       }
       return;
     }
@@ -411,6 +497,7 @@ export default function CodeEditor({
           
           setCode(newValue);
           onCodeChange(newValue);
+          debouncedSave(newValue);
           
           setTimeout(() => {
             textarea.selectionStart = textarea.selectionEnd = selectionStart + 1 + newIndent;
@@ -426,6 +513,7 @@ export default function CodeEditor({
       
       setCode(newValue);
       onCodeChange(newValue);
+      debouncedSave(newValue);
       
       setTimeout(() => {
         textarea.selectionStart = textarea.selectionEnd = selectionStart + 1 + newIndent;
@@ -451,6 +539,7 @@ export default function CodeEditor({
       
       setCode(newValue);
       onCodeChange(newValue);
+      debouncedSave(newValue);
       
       setTimeout(() => {
         textarea.selectionStart = textarea.selectionEnd = selectionStart + 1;
@@ -483,6 +572,7 @@ export default function CodeEditor({
         
         setCode(newValue);
         onCodeChange(newValue);
+        debouncedSave(newValue);
         
         setTimeout(() => {
           textarea.selectionStart = textarea.selectionEnd = selectionStart - 1;
@@ -505,6 +595,7 @@ export default function CodeEditor({
           
           setCode(newValue);
           onCodeChange(newValue);
+          debouncedSave(newValue);
           
           setTimeout(() => {
             textarea.selectionStart = textarea.selectionEnd = selectionStart - spacesToDelete;
@@ -519,11 +610,48 @@ export default function CodeEditor({
     const newCode = e.target.value;
     setCode(newCode);
     onCodeChange(newCode);
+    debouncedSave(newCode);
+  };
+
+  const getSaveStatusColor = () => {
+    switch (saveStatus) {
+      case 'saved': return '#10b981';
+      case 'saving': return '#f59e0b';
+      case 'unsaved': return '#ef4444';
+      default: return '#6b7280';
+    }
+  };
+
+  const getSaveStatusText = () => {
+    switch (saveStatus) {
+      case 'saved': return lastSaved ? `Saved at ${lastSaved.toLocaleTimeString()}` : 'Saved';
+      case 'saving': return 'Saving...';
+      case 'unsaved': return 'Unsaved changes';
+      default: return '';
+    }
   };
 
   return (
     <div className="flex-1 p-4 overflow-hidden relative">
       <div className="relative w-full h-full border border-gray-300 rounded-lg overflow-hidden bg-white">
+        {/* Auto-save status indicator */}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-white px-2 py-1 rounded shadow border text-xs">
+          <div 
+            className="w-2 h-2 rounded-full"
+            style={{ backgroundColor: getSaveStatusColor() }}
+          />
+          <span style={{ color: getSaveStatusColor() }}>
+            {getSaveStatusText()}
+          </span>
+          <button 
+            onClick={manualSave}
+            className="text-blue-600 hover:text-blue-800 underline"
+            title="Manual save (Ctrl+S)"
+          >
+            Save
+          </button>
+        </div>
+
         {/* Syntax highlighted background */}
         <div
           ref={highlightRef}
@@ -558,7 +686,7 @@ export default function CodeEditor({
       </div>
       
       <div className="absolute bottom-2 right-2 text-xs text-gray-500 bg-white px-2 py-1 rounded shadow border">
-        {language.toUpperCase()} | Tab: Indent | Shift+Tab: Unindent
+        {language.toUpperCase()} | Tab: Indent | Shift+Tab: Unindent | Ctrl+S: Save
       </div>
     </div>
   );

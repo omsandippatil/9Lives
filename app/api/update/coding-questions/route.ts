@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       
       if (user && !error) {
         userId = user.id
-        userEmail = user.email
+        userEmail = user.email ?? null
         console.log('Bearer auth successful:', { userId, userEmail })
       } else {
         console.log('Bearer auth failed:', error?.message)
@@ -59,11 +59,11 @@ export async function POST(request: NextRequest) {
       console.log('Attempting cookie-based auth...')
       const cookieStore = await cookies()
       
-      // Get all relevant cookies
-      const accessToken = cookieStore.get('supabase-access-token')?.value
-      const refreshToken = cookieStore.get('supabase-refresh-token')?.value
-      const userIdCookie = cookieStore.get('supabase-user-id')?.value
-      const userEmailCookie = cookieStore.get('supabase-user-email')?.value
+      // Get all relevant cookies - convert undefined to null
+      const accessToken = cookieStore.get('supabase-access-token')?.value ?? null
+      const refreshToken = cookieStore.get('supabase-refresh-token')?.value ?? null
+      const userIdCookie = cookieStore.get('supabase-user-id')?.value ?? null
+      const userEmailCookie = cookieStore.get('supabase-user-email')?.value ?? null
 
       console.log('Available cookies:', {
         hasAccessToken: !!accessToken,
@@ -77,18 +77,18 @@ export async function POST(request: NextRequest) {
         
         if (user && !error) {
           userId = user.id
-          userEmail = user.email
+          userEmail = user.email ?? null
           console.log('Cookie auth successful:', { userId, userEmail })
         } else {
           console.log('Cookie auth failed:', error?.message)
           // Fallback to cookie values
-          userId = userIdCookie || null
-          userEmail = userEmailCookie || null
+          userId = userIdCookie ?? null
+          userEmail = userEmailCookie ?? null
         }
       } else {
         // Direct fallback to cookie values
-        userId = userIdCookie || null
-        userEmail = userEmailCookie || null
+        userId = userIdCookie ?? null
+        userEmail = userEmailCookie ?? null
         console.log('Using direct cookie values:', { userId, userEmail })
       }
     }

@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import CodeEditor from './Code';
 
@@ -32,6 +31,8 @@ interface CodingInterfaceProps {
   testCases: TestCase[];
   completeCode: string;
   inputFormat: string;
+  coding_questions_attempted: number; // User's current progress
+  questionId: number; // Current question ID
   onSubmit?: (code: string) => Promise<void>; // Made optional since we'll handle it internally
 }
 
@@ -115,6 +116,8 @@ export default function CodingInterface({
   testCases,
   completeCode,
   inputFormat,
+  coding_questions_attempted,
+  questionId,
   onSubmit
 }: CodingInterfaceProps) {
   const [code, setCode] = useState('');
@@ -128,6 +131,23 @@ export default function CodingInterface({
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [apiUpdateStatus, setApiUpdateStatus] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
 
+  // Check if user can attempt this question (sequential progression)
+  const canAttemptQuestion = () => {
+    const shouldAllow = questionId === coding_questions_attempted + 1;
+    console.log('Progress check in CodingInterface:', {
+      questionId,
+      coding_questions_attempted,
+      shouldAllow,
+      calculation: `${questionId} === ${coding_questions_attempted} + 1`
+    });
+    return shouldAllow;
+  };
+
+  // Check if API should be called (only when questionId is exactly one more than current progress)
+  const shouldCallAPI = () => {
+    return questionId === coding_questions_attempted + 1;
+  };
+
   useEffect(() => {
     if (globalGifCache) {
       setSadCatGif(globalGifCache);
@@ -135,12 +155,12 @@ export default function CodingInterface({
     }
   }, []);
 
-  // Auto-submit when all tests pass
+  // Auto-submit when all tests pass (only if user can attempt this question)
   useEffect(() => {
-    if (allTestsPassed && !hasSubmitted && !isSubmitting) {
+    if (allTestsPassed && !hasSubmitted && !isSubmitting && canAttemptQuestion()) {
       handleSubmit();
     }
-  }, [allTestsPassed, hasSubmitted, isSubmitting]);
+  }, [allTestsPassed, hasSubmitted, isSubmitting, coding_questions_attempted, questionId]);
 
   const executeCodeWithPiston = async (sourceCode: string, testInput: string): Promise<{ output: string; error?: string }> => {
     const pistonLanguage = language.toLowerCase() === 'java' ? 'java' : 'python';
@@ -284,8 +304,14 @@ export default function CodingInterface({
   const handleSubmit = async () => {
     if (isSubmitting || !allTestsPassed) return;
     
+    // Check if user can attempt this question
+    if (!canAttemptQuestion()) {
+      console.log('Cannot attempt this question - not in sequence');
+      setApiUpdateStatus('error');
+      return;
+    }
+    
     setIsSubmitting(true);
-    setApiUpdateStatus('updating');
     
     try {
       // First call the original onSubmit if provided
@@ -293,15 +319,24 @@ export default function CodingInterface({
         await onSubmit(code);
       }
       
-      // Then update the coding questions count via API
-      const apiSuccess = await updateCodingQuestions();
-      
-      if (apiSuccess) {
-        setApiUpdateStatus('success');
-        console.log('Coding question completed and count updated successfully!');
+      // Only call API if this is the next question in sequence
+      if (shouldCallAPI()) {
+        setApiUpdateStatus('updating');
+        console.log('Calling API to update progress for question', questionId);
+        
+        const apiSuccess = await updateCodingQuestions();
+        
+        if (apiSuccess) {
+          setApiUpdateStatus('success');
+          console.log('Coding question completed and count updated successfully!');
+        } else {
+          setApiUpdateStatus('error');
+          console.error('Code submitted but failed to update question count');
+        }
       } else {
-        setApiUpdateStatus('error');
-        console.error('Code submitted but failed to update question count');
+        // If not calling API (e.g., already completed), just mark as success
+        console.log('Not calling API - question not in sequence or already completed');
+        setApiUpdateStatus('success');
       }
       
       setHasSubmitted(true);
@@ -323,6 +358,10 @@ export default function CodingInterface({
   const hasErrors = executionResult && (!executionResult.success || executionResult.error);
 
   const getSubmitButtonText = () => {
+    if (!canAttemptQuestion()) {
+      return `Complete Question ${coding_questions_attempted + 1} First`;
+    }
+    
     if (hasSubmitted) {
       switch (apiUpdateStatus) {
         case 'success':
@@ -340,6 +379,10 @@ export default function CodingInterface({
   };
 
   const getSubmitButtonClass = () => {
+    if (!canAttemptQuestion()) {
+      return 'bg-gray-100 text-gray-400 border border-gray-200';
+    }
+    
     if (hasSubmitted) {
       switch (apiUpdateStatus) {
         case 'success':
@@ -359,6 +402,27 @@ export default function CodingInterface({
     return 'bg-gray-100 text-gray-400 border border-gray-200';
   };
 
+  const getRunTestsButtonText = () => {
+    if (!canAttemptQuestion()) {
+      return `Complete Question ${coding_questions_attempted + 1} First`;
+    }
+    return isRunning ? 'Running...' : hasSubmitted ? 'Tests Complete' : 'Run Tests';
+  };
+
+  const getRunTestsButtonClass = () => {
+    if (!canAttemptQuestion()) {
+      return 'bg-gray-100 text-gray-400 border border-gray-200';
+    }
+    
+    if (hasSubmitted) {
+      return 'bg-gray-100 text-gray-500 border border-gray-200';
+    }
+    if (isRunning) {
+      return 'bg-gray-100 text-gray-600 border border-gray-200';
+    }
+    return 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400';
+  };
+
   return (
     <div className="w-1/2 flex flex-col h-full">
       {/* Header */}
@@ -366,36 +430,48 @@ export default function CodingInterface({
         <div className="flex items-center gap-3">
           <span className="text-xl">👨‍💻</span>
           <h3 className="font-mono font-medium text-lg">Code Editor</h3>
+          <div className="text-xs text-gray-500 font-mono">
+            Question {questionId} | Progress: {coding_questions_attempted}
+          </div>
           {apiUpdateStatus === 'success' && (
             <span className="text-green-600 text-sm font-mono">Progress Updated!</span>
           )}
           {apiUpdateStatus === 'error' && (
             <span className="text-orange-500 text-sm font-mono">Progress Update Failed</span>
           )}
+          {!canAttemptQuestion() && (
+            <span className="text-orange-500 text-sm font-mono">Sequential Progress Required</span>
+          )}
         </div>
         <div className="flex gap-2">
           <button
             onClick={runTestCases}
-            disabled={isRunning || !testCases || testCases.length === 0 || hasSubmitted}
-            className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${
-              hasSubmitted 
-                ? 'bg-gray-100 text-gray-500 border border-gray-200' 
-                : isRunning
-                ? 'bg-gray-100 text-gray-600 border border-gray-200'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-            }`}
+            disabled={isRunning || !testCases || testCases.length === 0 || hasSubmitted || !canAttemptQuestion()}
+            className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${getRunTestsButtonClass()}`}
           >
-            {isRunning ? 'Running...' : hasSubmitted ? 'Tests Complete' : 'Run Tests'}
+            {getRunTestsButtonText()}
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !allTestsPassed || hasSubmitted}
+            disabled={isSubmitting || !allTestsPassed || hasSubmitted || !canAttemptQuestion()}
             className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${getSubmitButtonClass()}`}
           >
             {getSubmitButtonText()}
           </button>
         </div>
       </div>
+
+      {/* Sequential Progress Warning */}
+      {!canAttemptQuestion() && (
+        <div className="bg-orange-50 border border-orange-200 p-3 mx-4 mt-2 rounded">
+          <div className="flex items-center gap-2 text-orange-800">
+            <span>⚠️</span>
+            <span className="font-mono text-sm">
+              You must complete questions in order. Current progress: {coding_questions_attempted}, Required: {questionId - 1}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-100 flex-shrink-0">
@@ -497,7 +573,7 @@ export default function CodingInterface({
                   </div>
                 )}
                 
-                {testCases && testCases.length > 0 && (
+                {testCases && testCases.length > 0 && canAttemptQuestion() && (
                   <div className="mt-4 p-3 bg-blue-50 border border-blue-200 text-center">
                     <div className="text-sm text-blue-800 font-mono">
                       💡 Click "Run Tests" to execute your code against all {testCases.length} test cases
@@ -542,7 +618,6 @@ export default function CodingInterface({
                           </div>
                         </div>
                       )}
-
                       {executionResult.error && (
                         <div className="border-2 border-red-200 bg-red-50">
                           <div className="p-3 flex items-center gap-2">
@@ -562,7 +637,6 @@ export default function CodingInterface({
                       )}
                     </>
                   )}
-
                   {/* Summary */}
                   <div className={`p-3 border-2 ${
                     executionResult.success 
@@ -574,14 +648,16 @@ export default function CodingInterface({
                         {executionResult.success ? '✅' : '❌'}
                       </span>
                       <span className="font-mono font-medium">
-                        {executionResult.success ? 'All tests passed! Auto-submitting...' : 'Some tests failed'}
+                        {executionResult.success 
+                          ? (canAttemptQuestion() ? 'All tests passed! Auto-submitting...' : 'All tests passed! (Sequential progress required)')
+                          : 'Some tests failed'
+                        }
                       </span>
                     </div>
                     <div className="text-sm font-mono mt-1">
                       {executionResult.results.filter(r => r.passed).length} / {executionResult.results.length} tests passed
                     </div>
                   </div>
-
                   {/* Individual Results - Only show if there's no global error */}
                   {!executionResult.error && executionResult.results.map((result, index) => (
                     <div key={index} className={`border-2 ${
@@ -645,7 +721,10 @@ export default function CodingInterface({
                   <div className="text-2xl mb-2">🏃‍♂️</div>
                   <div className="font-mono text-sm">Run your code to see results here</div>
                   <div className="text-xs text-gray-400 mt-2">
-                    Click "Run Tests" to execute your code against test cases
+                    {canAttemptQuestion() 
+                      ? 'Click "Run Tests" to execute your code against test cases'
+                      : `Complete question ${coding_questions_attempted + 1} first to run tests`
+                    }
                   </div>
                 </div>
               )}
