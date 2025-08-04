@@ -1,12 +1,39 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import CodeEditor from './CodeEditor';
+import ResultPopup from './ResultPopup';
 
 interface TestCase {
   input: string;
   expected_output: string;
   description: string;
+}
+
+interface UserProfile {
+  id: string
+  email: string
+  coding_questions_attempted: number
+  technical_questions_attempted: number
+  fundamental_questions_attempted: number
+  aptitude_questions_attempted?: number
+  tech_topics_covered: number
+  current_streak: number
+  total_points: number
+  total_questions_attempted: number
+  categories: {
+    coding: number
+    technical: number
+    fundamental: number
+    aptitude: number
+  }
+  progress: {
+    tech_topics_covered: number
+    current_streak: number
+    total_points: number
+  }
+  created_at: string
+  updated_at: string
 }
 
 interface ActualCodingProps {
@@ -38,201 +65,367 @@ export default function ActualCoding({
   language,
   onNext
 }: ActualCodingProps) {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [showAnimation, setShowAnimation] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [showSolution, setShowSolution] = useState(false);
-  const [activeTestCase, setActiveTestCase] = useState(0);
-  const [showNavigation, setShowNavigation] = useState(false);
-  const router = useRouter();
-  const params = useParams();
-  const currentId = params.id as string;
+  const [showResult, setShowResult] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    success: boolean;
+    message: string;
+    testResults?: { passed: boolean; input: string; expected: string; output: string }[];
+    pointsAwarded?: number;
+  } | null>(null);
 
-  const handleFinish = () => {
-    setShowNavigation(true);
+  // Fetch user profile on component mount
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  // Timer effect
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const timerId = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timerId);
+    }
+  }, [timeLeft]);
+
+  // Format time for display
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handlePython = () => {
-    router.push(`/coding/${currentId}?lang=python`);
+  const fetchProfile = async () => {
+    try {
+      const response = await fetch('/api/auth/profile', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          setProfile(data.profile);
+        }
+      } else {
+        console.error('Failed to fetch profile');
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
-  const handleNextQuestion = () => {
-    const nextId = parseInt(currentId) + 1;
-    router.push(`/coding/${nextId}`);
+  const calculatePoints = (allPassed: boolean, timeRemaining: number): number => {
+    if (!allPassed) {
+      return 0; // No points if tests don't pass
+    }
+
+    // Base points for solving the problem
+    let points = 5;
+
+    // Bonus points based on time remaining
+    if (timeRemaining > 240) { // More than 4 minutes left
+      points += 3; // Fast solver bonus
+    } else if (timeRemaining > 180) { // More than 3 minutes left
+      points += 2;
+    } else if (timeRemaining > 120) { // More than 2 minutes left
+      points += 1;
+    }
+
+    return points;
+  };
+
+  const handleCodeSubmission = async (code: string) => {
+    try {
+      // Here you would integrate with Piston API or your code execution service
+      // For now, we'll simulate the response structure
+      
+      // Simulate test execution - replace with actual Piston API call
+      const mockResults = testCases.map((testCase, index) => ({
+        passed: Math.random() > 0.2, // Higher chance of passing for demo
+        input: testCase.input,
+        expected: testCase.expected_output,
+        output: Math.random() > 0.2 ? testCase.expected_output : `Wrong output ${index}` // Mock output
+      }));
+      
+      const allPassed = mockResults.every(result => result.passed);
+      const pointsToAward = calculatePoints(allPassed, timeLeft);
+      
+      if (allPassed && pointsToAward > 0) {
+        // Add points for successful submission
+        const response = await fetch('/api/add/points', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ points: pointsToAward }),
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Update profile points
+          if (data.new_total && profile) {
+            setProfile(prev => prev ? {
+              ...prev,
+              total_points: data.new_total,
+              progress: {
+                ...prev.progress,
+                total_points: data.new_total
+              }
+            } : null);
+          }
+          
+          setShowAnimation(true);
+          setTimeout(() => setShowAnimation(false), 2000);
+        }
+
+        setSubmissionResult({
+          success: true,
+          message: `All tests passed! Great job! 🎉 You earned ${pointsToAward} fish!`,
+          testResults: mockResults,
+          pointsAwarded: pointsToAward
+        });
+      } else if (allPassed && pointsToAward === 0) {
+        setSubmissionResult({
+          success: true,
+          message: "All tests passed, but time ran out! No fish awarded this time. ⏰",
+          testResults: mockResults,
+          pointsAwarded: 0
+        });
+      } else {
+        setSubmissionResult({
+          success: false,
+          message: "Some tests failed. Please review your code and try again.",
+          testResults: mockResults,
+          pointsAwarded: 0
+        });
+      }
+      
+      setShowResult(true);
+    } catch (error) {
+      console.error('Error submitting code:', error);
+      setSubmissionResult({
+        success: false,
+        message: "An error occurred while submitting your code. Please try again.",
+        pointsAwarded: 0
+      });
+      setShowResult(true);
+    }
+  };
+
+  const closeResult = () => {
+    setShowResult(false);
+    setSubmissionResult(null);
   };
 
   return (
-    <div className="min-h-screen bg-white text-black font-mono p-2">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="border-b border-gray-300 pb-2 mb-4">
-          <h1 className="text-lg font-bold">{question}</h1>
-          <div className="text-sm text-gray-600 mt-1">
-            Language: {language.toUpperCase()} | Coding Practice
+    <div className="min-h-screen bg-white text-black font-mono">
+      {/* Header */}
+      <header className="border-b border-gray-100 py-3 px-6">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <span className="text-xl animate-pulse">🐾</span>
+            <h1 className="text-xl font-light">9lives</h1>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          {/* Left Side - Problem Details */}
-          <div className="space-y-4">
-            {/* Problem Description */}
-            <div className="border border-gray-300 p-3">
-              <h2 className="font-bold mb-2">Problem</h2>
-              <p className="text-sm text-gray-800 mb-3">{explanation}</p>
-              
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="font-bold">Input Format:</span>
-                  <p className="text-gray-800 ml-2">{inputFormat}</p>
-                </div>
-                <div>
-                  <span className="font-bold">Output Format:</span>
-                  <p className="text-gray-800 ml-2">{outputFormat}</p>
-                </div>
-              </div>
+          
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Timer</p>
+              <p className={`text-sm font-light ${timeLeft < 60 ? 'text-red-600' : timeLeft < 120 ? 'text-orange-500' : ''}`}>
+                {formatTime(timeLeft)} ⏰
+              </p>
             </div>
-
-            {/* Test Cases */}
-            <div className="border border-gray-300 p-3">
-              <h2 className="font-bold mb-2">Test Cases</h2>
-              <div className="space-y-2">
-                {testCases.map((testCase, index) => (
-                  <div 
-                    key={index}
-                    onClick={() => setActiveTestCase(index)}
-                    className={`p-2 border cursor-pointer text-sm ${
-                      activeTestCase === index 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-bold">Test Case {index + 1}</div>
-                    <div className="text-gray-600">{testCase.description}</div>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Active Test Case Details */}
-              {testCases[activeTestCase] && (
-                <div className="mt-3 p-2 bg-gray-100 border border-gray-300">
-                  <div className="text-sm space-y-1">
-                    <div>
-                      <span className="font-bold">Input:</span> 
-                      <code className="ml-2 bg-white px-1 border">
-                        {testCases[activeTestCase].input || 'No input'}
-                      </code>
-                    </div>
-                    <div>
-                      <span className="font-bold">Expected Output:</span> 
-                      <code className="ml-2 bg-white px-1 border">
-                        {testCases[activeTestCase].expected_output}
-                      </code>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Complexity */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="border border-gray-300 p-3">
-                <h3 className="font-bold mb-1 text-sm">Time Complexity</h3>
-                <p className="text-sm text-gray-800">{timeComplexity}</p>
-              </div>
-              <div className="border border-gray-300 p-3">
-                <h3 className="font-bold mb-1 text-sm">Space Complexity</h3>
-                <p className="text-sm text-gray-800">{spaceComplexity}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Side - Code Editor Area */}
-          <div className="space-y-4">
-            {/* Code Template/Solution */}
-            <div className="border border-gray-300">
-              <div className="border-b border-gray-300 p-2 flex justify-between items-center bg-gray-50">
-                <h2 className="font-bold text-sm">
-                  {showSolution ? 'Solution Code' : 'Code Template'}
-                </h2>
-                <button
-                  onClick={() => setShowSolution(!showSolution)}
-                  className="px-3 py-1 text-xs border border-gray-300 hover:bg-gray-100"
-                >
-                  {showSolution ? 'Hide Solution' : 'Show Solution'}
-                </button>
-              </div>
-              
-              <div className="p-3">
-                <pre className="text-xs overflow-x-auto bg-gray-50 p-2 border border-gray-200">
-                  <code>
-                    {showSolution ? completeCode : `// ${language} template for ${functionName}\n// Implement your solution here\n\nclass ${className} {\n    public ${language === 'java' ? 'String' : 'str'} ${functionName}(${language === 'java' ? 'String input' : 'input'}) {\n        // Your code here\n        return ${language === 'java' ? '""' : '""'};\n    }\n}`}
-                  </code>
-                </pre>
-              </div>
-            </div>
-
-            {/* Explanation */}
-            {showSolution && (
-              <div className="border border-gray-300 p-3">
-                <h2 className="font-bold mb-2 text-sm">Solution Explanation</h2>
-                <p className="text-sm text-gray-800 leading-relaxed">{explanation}</p>
-              </div>
-            )}
-
-            {/* Practice Area Placeholder */}
-            <div className="border border-gray-300 p-3">
-              <h2 className="font-bold mb-2 text-sm">Practice Area</h2>
-              <div className="bg-gray-50 border border-gray-200 p-4 min-h-32 text-sm text-gray-500">
-                <p>Interactive code editor would go here...</p>
-                <p className="mt-2">Features to implement:</p>
-                <ul className="mt-1 ml-4 space-y-1">
-                  <li>• Syntax highlighting</li>
-                  <li>• Code execution</li>
-                  <li>• Test case validation</li>
-                  <li>• Auto-completion</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <div className="mt-6 flex justify-between items-center">
-          <button 
-            onClick={onNext}
-            className="px-4 py-2 border border-gray-300 hover:bg-gray-100 transition-colors"
-          >
-            ← Back to Theory
-          </button>
-
-          <div className="flex items-center space-x-4">
-            {!showNavigation && (
-              <button 
-                onClick={handleFinish}
-                className="px-6 py-2 bg-green-600 text-white hover:bg-green-700 transition-colors"
-              >
-                Finish Coding
-              </button>
-            )}
-            
-            {showNavigation && (
-              <div className="flex space-x-3">
-                {language === 'java' && (
-                  <button 
-                    onClick={handlePython}
-                    className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                  >
-                    Try Python Version
-                  </button>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
+              <p className="text-sm font-light">
+                {profileLoading ? (
+                  <span className="animate-pulse">Loading...</span>
+                ) : (
+                  <>
+                    {profile?.total_points || 0} 🐟
+                    {showAnimation && submissionResult?.pointsAwarded && (
+                      <span className="inline-block ml-2">
+                        <span className="animate-bounce text-lg text-green-600">+{submissionResult.pointsAwarded}</span>
+                        <span className="inline-block animate-bounce ml-1" style={{animationDelay: '0.2s'}}>🐟</span>
+                      </span>
+                    )}
+                  </>
                 )}
-                <button 
-                  onClick={handleNextQuestion}
-                  className="px-4 py-2 bg-black text-white hover:bg-gray-800 transition-colors"
-                >
-                  Next Question →
-                </button>
-              </div>
-            )}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+              <p className="text-sm font-light">
+                {profileLoading ? (
+                  <span className="animate-pulse">Loading...</span>
+                ) : (
+                  `${profile?.current_streak || 0} 🔥`
+                )}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Language</p>
+              <p className="text-sm font-light">{language.toUpperCase()}</p>
+            </div>
           </div>
         </div>
+      </header>
+
+      {/* Main Content - Two Column Layout */}
+      <div className="flex h-[calc(100vh-80px)]">
+        {/* Left Panel - Problem Description */}
+        <div className="w-1/2 border-r border-gray-100 overflow-y-auto">
+          <div className="p-6 space-y-6">
+            {/* Problem Statement */}
+            <div className="border border-gray-100 hover:border-black transition-all duration-300">
+              <div className="p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xl">📋</span>
+                  <h3 className="font-mono font-medium text-lg">{question}</h3>
+                </div>
+                <p className="text-gray-700 font-light leading-relaxed mb-4">{explanation}</p>
+                
+                <div className="space-y-3">
+                  <div className="border-l-2 border-gray-100 pl-3">
+                    <div className="bg-gray-50 px-2 py-1 font-mono text-xs mb-1 inline-block">
+                      Input Format
+                    </div>
+                    <p className="text-gray-700 font-light text-sm">{inputFormat}</p>
+                  </div>
+                  <div className="border-l-2 border-gray-100 pl-3">
+                    <div className="bg-gray-50 px-2 py-1 font-mono text-xs mb-1 inline-block">
+                      Output Format
+                    </div>
+                    <p className="text-gray-700 font-light text-sm">{outputFormat}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Examples */}
+            <div className="border border-gray-100 hover:border-black transition-all duration-300">
+              <div className="p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xl">🧪</span>
+                  <h3 className="font-mono font-medium text-lg">Examples</h3>
+                </div>
+                
+                <div className="space-y-3">
+                  {testCases.slice(0, 2).map((testCase, index) => (
+                    <div key={index} className="bg-gray-50 border border-gray-200 p-3">
+                      <div className="font-mono font-medium text-sm mb-2">Example {index + 1}:</div>
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="font-mono font-medium">Input:</span>
+                          <div className="mt-1 bg-white p-2 border border-gray-200 font-mono text-xs">
+                            {testCase.input || 'No input'}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="font-mono font-medium">Output:</span>
+                          <div className="mt-1 bg-white p-2 border border-gray-200 font-mono text-xs">
+                            {testCase.expected_output}
+                          </div>
+                        </div>
+                        {testCase.description && (
+                          <div>
+                            <span className="font-mono font-medium">Explanation:</span>
+                            <p className="text-gray-600 text-xs mt-1">{testCase.description}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Points System Information */}
+            <div className="border border-gray-100 hover:border-black transition-all duration-300">
+              <div className="p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xl">🏆</span>
+                  <h3 className="font-mono font-medium text-lg">Points System</h3>
+                </div>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <p>• Base points: 5 🐟 (for correct solution)</p>
+                  <p>• Speed bonus: +3 🐟 ({'>'}4 min left) | +2 🐟 ({'>'}3 min) | +1 🐟 ({'>'}2 min)</p>
+                  <p>• No points if tests fail or time runs out</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Solution Code - Hidden by default */}
+            <div className="border border-gray-100 hover:border-black transition-all duration-300">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">💡</span>
+                    <h3 className="font-mono font-medium text-lg">Solution Code</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowSolution(!showSolution)}
+                    className="px-3 py-1 text-xs border border-gray-200 hover:border-black hover:bg-gray-50 transition-all duration-300 font-mono"
+                  >
+                    {showSolution ? 'Hide Code' : 'Show Code'}
+                  </button>
+                </div>
+                
+                {showSolution && (
+                  <div className="bg-gray-50 border border-gray-200 p-4 overflow-x-auto">
+                    <pre className="text-sm font-mono leading-relaxed text-gray-800">
+                      <code>{completeCode}</code>
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Constraints & Complexity */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="border border-gray-100 p-3 text-center hover:border-black transition-all duration-300">
+                <div className="text-lg mb-2">⏱️</div>
+                <div className="font-mono font-medium text-sm mb-1">Time Complexity</div>
+                <div className="text-sm text-gray-700">{timeComplexity}</div>
+              </div>
+              <div className="border border-gray-100 p-3 text-center hover:border-black transition-all duration-300">
+                <div className="text-lg mb-2">💾</div>
+                <div className="font-mono font-medium text-sm mb-1">Space Complexity</div>
+                <div className="text-sm text-gray-700">{spaceComplexity}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Code Editor */}
+        <CodeEditor
+          className={className}
+          functionName={functionName}
+          language={language}
+          testCases={testCases}
+          inputFormat={inputFormat}
+          completeCode={completeCode}
+          onSubmit={handleCodeSubmission}
+        />
       </div>
+
+      {/* Result Popup */}
+      {showResult && submissionResult && (
+        <ResultPopup
+          result={submissionResult}
+          onClose={closeResult}
+        />
+      )}
     </div>
   );
 }
