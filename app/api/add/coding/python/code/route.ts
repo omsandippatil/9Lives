@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 // Environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const groqApiKey = process.env.GROQ_API_KEY!;
+const groqApiKey = process.env.PYTHON_CODE_GROQ_API_KEY!;
 
 // Initialize Supabase client
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
