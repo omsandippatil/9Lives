@@ -199,7 +199,7 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
         }
       ],
       temperature: 0.1,
-      max_tokens: 8000,
+      max_tokens: 6000,
     }),
   });
 
