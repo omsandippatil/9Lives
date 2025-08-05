@@ -59,6 +59,85 @@ interface QuestionsDoneRecord {
   coding_python: number | null;
 }
 
+// Function to safely clean and parse JSON with control characters
+function cleanAndParseJSON(jsonString: string): any {
+  try {
+    // First, try to parse as-is
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.log('Initial JSON parse failed, attempting to clean...');
+    
+    // Clean the JSON string by replacing problematic control characters
+    let cleaned = jsonString;
+    
+    // Replace literal newlines, tabs, and other control characters within string values
+    // This regex finds quoted strings and replaces control characters within them
+    cleaned = cleaned.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+      return match
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t')
+        .replace(/\b/g, '\\b')
+        .replace(/\f/g, '\\f')
+        .replace(/\v/g, '\\v')
+        .replace(/\0/g, '\\0');
+    });
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (secondError) {
+      console.log('Second JSON parse failed, attempting more aggressive cleaning...');
+      
+      // More aggressive cleaning - replace all remaining control characters
+      cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, (char) => {
+        switch (char) {
+          case '\n': return '\\n';
+          case '\r': return '\\r';
+          case '\t': return '\\t';
+          case '\b': return '\\b';
+          case '\f': return '\\f';
+          case '\v': return '\\v';
+          case '\0': return '\\0';
+          default: return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
+        }
+      });
+      
+      try {
+        return JSON.parse(cleaned);
+      } catch (thirdError) {
+        console.log('All JSON cleaning attempts failed');
+        throw new Error(`Failed to parse JSON even after cleaning. Original error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    }
+  }
+}
+
+// Function to extract JSON from response content
+function extractJSON(content: string): string {
+  // Remove markdown code blocks
+  if (content.includes('```json')) {
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      return jsonMatch[1].trim();
+    }
+  } else if (content.includes('```')) {
+    const codeMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+    if (codeMatch) {
+      return codeMatch[1].trim();
+    }
+  }
+
+  // Find JSON boundaries
+  const jsonStart = content.indexOf('{');
+  const jsonEnd = content.lastIndexOf('}');
+  
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    return content.substring(jsonStart, jsonEnd + 1);
+  }
+
+  return content.trim();
+}
+
 // Function to get the next question number from questions_done table
 async function getNextQuestionNumber(): Promise<number> {
   try {
@@ -97,7 +176,7 @@ async function getNextQuestionNumber(): Promise<number> {
 
 // Groq API prompt template for generating dynamic Python code
 const createGroqPrompt = (question: string, approach: string): string => {
-  return `Generate a complete, runnable Python solution for this coding question that reads input from stdin and writes output to stdout. Return ONLY a valid JSON object with no additional text.
+  return `Generate a complete, runnable Python solution for this coding question that reads input from stdin and writes output to stdout. IMPORTANT: Return ONLY a valid JSON object with properly escaped strings. All newlines, tabs, and special characters in code must be properly escaped as \\n, \\t, etc.
 
 Question: ${question}
 Approach: ${approach}
@@ -112,11 +191,17 @@ Requirements:
 - Handle edge cases appropriately
 - Use Python 3.x syntax
 
-Required JSON format:
+CRITICAL: In the JSON response, ensure all string values are properly escaped:
+- Newlines as \\n
+- Tabs as \\t  
+- Backslashes as \\\\
+- Quotes as \\"
+
+Required JSON format (with properly escaped strings):
 {
   "class_name": "Solution",
   "function_name": "solve",
-  "complete_code": "import sys\nfrom typing import List, Optional\n\nclass Solution:\n    def solve(self, *args):\n        # Solution implementation\n        pass\n\ndef main():\n    solution = Solution()\n    \n    # Read input from stdin\n    # Process and call solve method\n    # Print result to stdout\n    \nif __name__ == '__main__':\n    main()",
+  "complete_code": "import sys\\nfrom typing import List, Optional\\n\\nclass Solution:\\n    def solve(self, *args):\\n        # Solution implementation\\n        pass\\n\\ndef main():\\n    solution = Solution()\\n    \\n    # Read input from stdin\\n    # Process and call solve method\\n    # Print result to stdout\\n    \\nif __name__ == '__main__':\\n    main()",
   "test_cases": [
     {
       "input": "exact input string that will be passed to stdin",
@@ -148,7 +233,8 @@ Important Guidelines:
 - Use standard Python libraries (sys, typing, collections, etc.)
 - Use Python 3.x features and syntax
 - Follow PEP 8 style guidelines
-- Return ONLY the JSON object`;
+- ENSURE ALL STRINGS IN JSON ARE PROPERLY ESCAPED
+- Return ONLY the JSON object with no additional text or formatting`;
 };
 
 // Function to update questions_done table
@@ -194,7 +280,7 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
       messages: [
         {
           role: 'system',
-          content: 'You are a Python programming expert specializing in competitive programming and LeetCode-style problems. Always respond with valid JSON only. Create complete, runnable Python code that reads from stdin and writes to stdout, suitable for automated testing platforms like Piston API. Use Python 3.x syntax and follow PEP 8 guidelines.'
+          content: 'You are a Python programming expert specializing in competitive programming and LeetCode-style problems. Always respond with valid JSON only. Create complete, runnable Python code that reads from stdin and writes to stdout, suitable for automated testing platforms like Piston API. Use Python 3.x syntax and follow PEP 8 guidelines. CRITICAL: Ensure all strings in JSON responses are properly escaped - newlines as \\n, tabs as \\t, quotes as \\", backslashes as \\\\.'
         },
         {
           role: 'user',
@@ -218,30 +304,15 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
   }
 
   let content = data.choices[0].message.content.trim();
+  console.log('Raw Groq response length:', content.length);
+  console.log('Raw Groq response preview:', content.substring(0, 200) + '...');
   
-  // Clean up the response - remove any markdown code blocks or extra text
-  if (content.includes('```json')) {
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      content = jsonMatch[1].trim();
-    }
-  } else if (content.includes('```')) {
-    const codeMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-    if (codeMatch) {
-      content = codeMatch[1].trim();
-    }
-  }
-
-  // Remove any leading/trailing text that's not JSON
-  const jsonStart = content.indexOf('{');
-  const jsonEnd = content.lastIndexOf('}');
+  // Extract JSON from the response
+  content = extractJSON(content);
   
-  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-    content = content.substring(jsonStart, jsonEnd + 1);
-  }
-
   try {
-    const parsed = JSON.parse(content);
+    // Use the improved JSON parsing function
+    const parsed = cleanAndParseJSON(content);
     
     // Validate that all required fields are present
     const requiredFields = [
@@ -273,10 +344,11 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
       }
     }
     
+    console.log('Successfully parsed Groq response');
     return parsed as GroqCodeResponse;
   } catch (parseError) {
-    console.error('Raw Groq response:', content);
-    console.error('Parse error:', parseError);
+    console.error('Final parse error:', parseError);
+    console.error('Content that failed to parse:', content);
     throw new Error(`Failed to parse Groq response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
   }
 }
