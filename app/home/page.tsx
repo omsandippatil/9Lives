@@ -340,7 +340,7 @@ export default function HomePage() {
             title="Coding Challenges"
             emoji="💻"
             current={profile.categories.coding}
-            total={100}
+            total={200}
             subtitle="Claw your way through algorithms"
             onClick={() => router.push('/coding')}
           />
@@ -349,7 +349,7 @@ export default function HomePage() {
             title="Technical Questions"
             emoji="⚙️"
             current={profile.categories.technical}
-            total={75}
+            total={50}
             subtitle="Technical prowess that's paw-some"
             onClick={() => router.push('/technical')}
           />
@@ -367,7 +367,7 @@ export default function HomePage() {
             title="Aptitude Tests"
             emoji="🧮"
             current={profile.categories.aptitude}
-            total={60}
+            total={50}
             subtitle="Sharp as a cat's claw logic"
             onClick={() => router.push('/aptitude')}
           />
