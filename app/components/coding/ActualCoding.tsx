@@ -185,7 +185,7 @@ export default function ActualCoding({
     });
     
     // Only update if current question is exactly one more than user's progress
-    // This ensures sequential progression
+    // This ensures sequential progression and prevents skipping questions
     return shouldUpdate;
   };
 
@@ -194,19 +194,17 @@ export default function ActualCoding({
     
     if (!profile) {
       console.log('No profile available');
-      return;
+      return false;
     }
     
     const shouldUpdate = shouldUpdateProgress();
     if (!shouldUpdate) {
-      console.log('No update needed:', { 
-        hasProfile: !!profile, 
-        shouldUpdate,
+      console.log('Progress update skipped - question not in sequence:', { 
         questionId,
-        currentQuestionId,
-        userProgress: profile?.coding_questions_attempted || 0
+        userProgress: profile.coding_questions_attempted || 0,
+        requiredQuestionId: (profile.coding_questions_attempted || 0) + 1
       });
-      return;
+      return false;
     }
     
     try {
@@ -236,6 +234,7 @@ export default function ActualCoding({
               coding_questions_attempted: data.new_count
             } : null);
             console.log('Successfully updated coding progress to:', data.new_count);
+            return true;
           }
         } catch (parseError) {
           console.error('JSON parse error for progress update:', parseError);
@@ -248,6 +247,7 @@ export default function ActualCoding({
     } catch (error) {
       console.error('Network Error updating coding progress:', error);
     }
+    return false;
   };
 
   const calculatePoints = (allPassed: boolean, timeRemaining: number): number => {
@@ -307,12 +307,25 @@ export default function ActualCoding({
           setShowAnimation(true);
           setTimeout(() => setShowAnimation(false), 2000);
         }
-        setSubmissionResult({
-          success: true,
-          message: `All tests passed! Great job! 🎉 You earned ${pointsToAward} fish!`,
-          testResults: mockResults,
-          pointsAwarded: pointsToAward
-        });
+        
+        // Update coding progress only if this is the next question in sequence
+        const progressUpdated = await updateCodingProgress();
+        
+        if (progressUpdated) {
+          setSubmissionResult({
+            success: true,
+            message: `All tests passed! Great job! 🎉 You earned ${pointsToAward} fish and completed question ${questionId}!`,
+            testResults: mockResults,
+            pointsAwarded: pointsToAward
+          });
+        } else {
+          setSubmissionResult({
+            success: true,
+            message: `All tests passed! Great job! 🎉 You earned ${pointsToAward} fish! (Progress not updated - complete questions in sequence)`,
+            testResults: mockResults,
+            pointsAwarded: pointsToAward
+          });
+        }
       } else if (allPassed && pointsToAward === 0) {
         setSubmissionResult({
           success: true,
@@ -327,14 +340,6 @@ export default function ActualCoding({
           testResults: mockResults,
           pointsAwarded: 0
         });
-      }
-      
-      // Update coding progress only if this is the next question in sequence and tests passed
-      if (allPassed) {
-        console.log('Tests passed, attempting to update progress...');
-        await updateCodingProgress();
-      } else {
-        console.log('Tests failed, not updating progress');
       }
       
       setShowResult(true);
@@ -498,6 +503,7 @@ export default function ActualCoding({
                   <p>• Base points: 5 🐟 (for correct solution)</p>
                   <p>• Speed bonus: +3 🐟 ({'>'}4 min left) | +2 🐟 ({'>'}3 min) | +1 🐟 ({'>'}2 min)</p>
                   <p>• No points if tests fail or time runs out</p>
+                  <p>• Progress only updates when completing questions in sequence</p>
                 </div>
               </div>
             </div>
