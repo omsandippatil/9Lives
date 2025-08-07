@@ -59,57 +59,202 @@ interface QuestionsDoneRecord {
   coding_python: number | null;
 }
 
-// Function to safely clean and parse JSON with control characters
+// Enhanced JSON cleaning and parsing function
 function cleanAndParseJSON(jsonString: string): any {
+  console.log('Attempting to parse JSON string of length:', jsonString.length);
+  console.log('First 200 characters:', jsonString.substring(0, 200));
+  
   try {
-    // First, try to parse as-is
+    // First attempt: parse as-is
     return JSON.parse(jsonString);
   } catch (error) {
-    console.log('Initial JSON parse failed, attempting to clean...');
+    console.log('Initial JSON parse failed, attempting comprehensive cleaning...');
     
-    // Clean the JSON string by replacing problematic control characters
-    let cleaned = jsonString;
+    let cleaned = jsonString.trim();
     
-    // Replace literal newlines, tabs, and other control characters within string values
-    // This regex finds quoted strings and replaces control characters within them
-    cleaned = cleaned.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-      return match
-        .replace(/\n/g, '\\n')
-        .replace(/\r/g, '\\r')
-        .replace(/\t/g, '\\t')
-        .replace(/\b/g, '\\b')
-        .replace(/\f/g, '\\f')
-        .replace(/\v/g, '\\v')
-        .replace(/\0/g, '\\0');
-    });
+    // Step 1: Remove any leading/trailing non-JSON content
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+      throw new Error('No valid JSON object boundaries found');
+    }
+    
+    cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+    
+    // Step 2: Fix common JSON issues systematically
+    
+    // Remove comments (single line and multi-line)
+    cleaned = cleaned.replace(/\/\/.*$/gm, '');
+    cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+    
+    // Fix trailing commas
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+    
+    // Step 3: Handle string content more carefully
+    // Split by quotes to handle string content separately
+    const parts: string[] = [];
+    let currentIndex = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < cleaned.length; i++) {
+      const char = cleaned[i];
+      
+      if (!inString && char === '"') {
+        // Starting a string
+        parts.push(cleaned.substring(currentIndex, i));
+        currentIndex = i;
+        inString = true;
+        escapeNext = false;
+      } else if (inString && !escapeNext && char === '"') {
+        // Ending a string
+        const stringContent = cleaned.substring(currentIndex, i + 1);
+        parts.push(cleanStringContent(stringContent));
+        currentIndex = i + 1;
+        inString = false;
+        escapeNext = false;
+      } else if (inString && char === '\\') {
+        escapeNext = !escapeNext;
+      } else {
+        escapeNext = false;
+      }
+    }
+    
+    // Add remaining content
+    if (currentIndex < cleaned.length) {
+      parts.push(cleaned.substring(currentIndex));
+    }
+    
+    cleaned = parts.join('');
     
     try {
       return JSON.parse(cleaned);
     } catch (secondError) {
-      console.log('Second JSON parse failed, attempting more aggressive cleaning...');
+      console.log('Advanced cleaning failed, trying fallback approach...');
       
-      // More aggressive cleaning - replace all remaining control characters
-      cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, (char) => {
-        switch (char) {
-          case '\n': return '\\n';
-          case '\r': return '\\r';
-          case '\t': return '\\t';
-          case '\b': return '\\b';
-          case '\f': return '\\f';
-          case '\v': return '\\v';
-          case '\0': return '\\0';
-          default: return '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0');
-        }
-      });
-      
+      // Fallback: Try to reconstruct JSON more aggressively
       try {
-        return JSON.parse(cleaned);
-      } catch (thirdError) {
-        console.log('All JSON cleaning attempts failed');
-        throw new Error(`Failed to parse JSON even after cleaning. Original error: ${error instanceof Error ? error.message : 'Unknown'}`);
+        const fallbackResult = fallbackJSONParse(jsonString);
+        return fallbackResult;
+      } catch (fallbackError) {
+        console.error('All JSON parsing attempts failed');
+        console.error('Original error:', error);
+        console.error('Second error:', secondError);
+        console.error('Fallback error:', fallbackError);
+        console.error('Final cleaned content:', cleaned.substring(0, 500));
+        
+        throw new Error(`Failed to parse JSON after all attempts. Last error: ${secondError instanceof Error ? secondError.message : 'Unknown'}`);
       }
     }
   }
+}
+
+// Helper function to clean string content
+function cleanStringContent(str: string): string {
+  // Don't modify the outer quotes, only clean the content inside
+  if (str.length < 2 || !str.startsWith('"') || !str.endsWith('"')) {
+    return str;
+  }
+  
+  const innerContent = str.slice(1, -1);
+  let cleaned = innerContent;
+  
+  // Fix common escape sequence issues
+  cleaned = cleaned.replace(/\\\\/g, '\\'); // Fix double backslashes
+  cleaned = cleaned.replace(/\\"/g, '"'); // Fix escaped quotes
+  cleaned = cleaned.replace(/\\n/g, '\n'); // Fix newlines
+  cleaned = cleaned.replace(/\\t/g, '\t'); // Fix tabs
+  cleaned = cleaned.replace(/\\r/g, '\r'); // Fix carriage returns
+  
+  // Re-escape for JSON
+  cleaned = cleaned.replace(/\\/g, '\\\\'); // Escape backslashes
+  cleaned = cleaned.replace(/"/g, '\\"'); // Escape quotes
+  cleaned = cleaned.replace(/\n/g, '\\n'); // Escape newlines
+  cleaned = cleaned.replace(/\t/g, '\\t'); // Escape tabs
+  cleaned = cleaned.replace(/\r/g, '\\r'); // Escape carriage returns
+  cleaned = cleaned.replace(/\f/g, '\\f'); // Escape form feeds
+  cleaned = cleaned.replace(/\b/g, '\\b'); // Escape backspaces
+  
+  return `"${cleaned}"`;
+}
+
+// Fallback JSON parsing using regex and manual reconstruction
+function fallbackJSONParse(jsonString: string): any {
+  console.log('Using fallback JSON parsing approach...');
+  
+  // Extract the main structure
+  const jsonStart = jsonString.indexOf('{');
+  const jsonEnd = jsonString.lastIndexOf('}');
+  
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error('No JSON object boundaries found in fallback parse');
+  }
+  
+  const content = jsonString.substring(jsonStart + 1, jsonEnd);
+  
+  // Simple field extraction using regex
+  const result: any = {};
+  
+  // Extract string fields
+  const stringFields = [
+    'class_name', 'function_name', 'complete_code', 'explanation', 
+    'time_complexity', 'space_complexity', 'input_format', 'output_format'
+  ];
+  
+  for (const field of stringFields) {
+    const regex = new RegExp(`"${field}"\\s*:\\s*"([^"]*(?:\\\\.[^"]*)*)"`, 's');
+    const match = content.match(regex);
+    if (match) {
+      result[field] = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\\\/g, '\\');
+    }
+  }
+  
+  // Extract test_cases array
+  const testCasesRegex = /"test_cases"\s*:\s*\[([\s\S]*?)\]/;
+  const testCasesMatch = content.match(testCasesRegex);
+  
+  if (testCasesMatch) {
+    const testCasesContent = testCasesMatch[1];
+    const testCases: any[] = [];
+    
+    // Split test cases by object boundaries
+    const testCaseRegex = /\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g;
+    let match;
+    
+    while ((match = testCaseRegex.exec(testCasesContent)) !== null) {
+      const testCaseContent = match[1];
+      const testCase: any = {};
+      
+      // Extract input, expected_output, description
+      const inputMatch = testCaseContent.match(/"input"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      const outputMatch = testCaseContent.match(/"expected_output"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      const descMatch = testCaseContent.match(/"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      
+      if (inputMatch) testCase.input = inputMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      if (outputMatch) testCase.expected_output = outputMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      if (descMatch) testCase.description = descMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      
+      testCases.push(testCase);
+    }
+    
+    result.test_cases = testCases;
+  }
+  
+  // Validate required fields
+  const requiredFields = [
+    'class_name', 'function_name', 'complete_code', 'test_cases',
+    'explanation', 'time_complexity', 'space_complexity', 'input_format', 'output_format'
+  ];
+  
+  for (const field of requiredFields) {
+    if (!(field in result)) {
+      throw new Error(`Fallback parse: Missing required field: ${field}`);
+    }
+  }
+  
+  console.log('Fallback parsing successful');
+  return result;
 }
 
 // Function to extract JSON from response content
@@ -174,67 +319,53 @@ async function getNextQuestionNumber(): Promise<number> {
   }
 }
 
-// Groq API prompt template for generating dynamic Python code
+// Improved Groq API prompt template
 const createGroqPrompt = (question: string, approach: string): string => {
-  return `Generate a complete, runnable Python solution for this coding question that reads input from stdin and writes output to stdout. IMPORTANT: Return ONLY a valid JSON object with properly escaped strings. All newlines, tabs, and special characters in code must be properly escaped as \\n, \\t, etc.
+  return `Generate a complete Python solution for this coding question. You must return ONLY a valid JSON object with no additional text, markdown, or formatting.
 
 Question: ${question}
 Approach: ${approach}
 
-Requirements:
-- Create a Python solution that reads input from sys.stdin or input()
-- Write output to stdout using print()
-- The solution should work like LeetCode - read dynamic input, process it, output result
-- Include multiple test cases with different inputs
-- The code must be testable with Piston API
-- Use proper Python naming conventions (snake_case)
-- Handle edge cases appropriately
-- Use Python 3.x syntax
+CRITICAL JSON FORMAT REQUIREMENTS:
+1. Return ONLY the JSON object - no explanatory text before or after
+2. Use double quotes for all string values
+3. Properly escape all special characters in strings:
+   - Newlines: \\n
+   - Tabs: \\t
+   - Backslashes: \\\\
+   - Double quotes: \\"
+4. No trailing commas
+5. No comments in JSON
 
-CRITICAL: In the JSON response, ensure all string values are properly escaped:
-- Newlines as \\n
-- Tabs as \\t  
-- Backslashes as \\\\
-- Quotes as \\"
-
-Required JSON format (with properly escaped strings):
+Required JSON structure:
 {
   "class_name": "Solution",
   "function_name": "solve",
-  "complete_code": "import sys\\nfrom typing import List, Optional\\n\\nclass Solution:\\n    def solve(self, *args):\\n        # Solution implementation\\n        pass\\n\\ndef main():\\n    solution = Solution()\\n    \\n    # Read input from stdin\\n    # Process and call solve method\\n    # Print result to stdout\\n    \\nif __name__ == '__main__':\\n    main()",
+  "complete_code": "import sys\\nfrom typing import List\\n\\nclass Solution:\\n    def solve(self):\\n        # Implementation here\\n        pass\\n\\ndef main():\\n    solution = Solution()\\n    # Read input and call solve\\n    pass\\n\\nif __name__ == '__main__':\\n    main()",
   "test_cases": [
     {
-      "input": "exact input string that will be passed to stdin",
-      "expected_output": "exact expected output string",
-      "description": "what this test case validates"
-    },
-    {
-      "input": "another test input",
-      "expected_output": "another expected output", 
-      "description": "edge case or different scenario"
+      "input": "test input string",
+      "expected_output": "expected output string",
+      "description": "test case description"
     }
   ],
-  "explanation": "Brief explanation of the solution approach (max 150 words)",
-  "time_complexity": "Time complexity with brief explanation",
-  "space_complexity": "Space complexity with brief explanation",
-  "input_format": "Description of input format (e.g., 'First line: n (integer), Second line: n space-separated integers')",
-  "output_format": "Description of output format (e.g., 'Single integer representing the result')"
+  "explanation": "Brief solution explanation",
+  "time_complexity": "O(n) - explanation",
+  "space_complexity": "O(1) - explanation", 
+  "input_format": "Input format description",
+  "output_format": "Output format description"
 }
 
-Important Guidelines:
-- The main function should read from stdin using input() or sys.stdin and write to stdout using print()
-- Do NOT hardcode test values in the main function
-- The code should handle input exactly as described in input_format
-- Output should match exactly as described in output_format
-- Provide at least 2-3 diverse test cases
-- Each test case input should be the exact string that gets passed to stdin
-- Each expected output should be the exact string expected from stdout
-- Make the code robust and handle typical constraints
-- Use standard Python libraries (sys, typing, collections, etc.)
-- Use Python 3.x features and syntax
+Python Code Requirements:
+- Read from stdin using input() or sys.stdin
+- Write to stdout using print()
+- Handle dynamic input (not hardcoded values)
+- Include proper error handling
+- Use Python 3.x syntax
 - Follow PEP 8 style guidelines
-- ENSURE ALL STRINGS IN JSON ARE PROPERLY ESCAPED
-- Return ONLY the JSON object with no additional text or formatting`;
+- Provide 2-3 diverse test cases
+
+RESPOND WITH ONLY THE JSON OBJECT - NO OTHER TEXT`;
 };
 
 // Function to update questions_done table
@@ -269,6 +400,8 @@ async function updateQuestionsDoneTable(questionNumber: number, category: 'codin
 
 // Function to call Groq API
 async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
+  console.log('Calling Groq API...');
+  
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -280,7 +413,7 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
       messages: [
         {
           role: 'system',
-          content: 'You are a Python programming expert specializing in competitive programming and LeetCode-style problems. Always respond with valid JSON only. Create complete, runnable Python code that reads from stdin and writes to stdout, suitable for automated testing platforms like Piston API. Use Python 3.x syntax and follow PEP 8 guidelines. CRITICAL: Ensure all strings in JSON responses are properly escaped - newlines as \\n, tabs as \\t, quotes as \\", backslashes as \\\\.'
+          content: 'You are a Python programming expert. Always return ONLY valid JSON objects with properly escaped strings. Never include markdown formatting, explanatory text, or comments. Ensure all newlines are \\n, tabs are \\t, quotes are \\", and backslashes are \\\\ in JSON string values.'
         },
         {
           role: 'user',
@@ -294,25 +427,29 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('Groq API error response:', errorText);
     throw new Error(`Groq API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
   
   if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    console.error('Invalid Groq API response structure:', JSON.stringify(data, null, 2));
     throw new Error('Invalid Groq API response structure');
   }
 
   let content = data.choices[0].message.content.trim();
-  console.log('Raw Groq response length:', content.length);
-  console.log('Raw Groq response preview:', content.substring(0, 200) + '...');
+  console.log('Raw Groq response received, length:', content.length);
+  console.log('Response preview:', content.substring(0, 300) + '...');
   
   // Extract JSON from the response
   content = extractJSON(content);
+  console.log('Extracted JSON length:', content.length);
   
   try {
     // Use the improved JSON parsing function
     const parsed = cleanAndParseJSON(content);
+    console.log('Successfully parsed Groq JSON response');
     
     // Validate that all required fields are present
     const requiredFields = [
@@ -338,37 +475,46 @@ async function callGroqAPI(prompt: string): Promise<GroqCodeResponse> {
         throw new Error(`test_cases[${i}] must be an object`);
       }
       for (const field of testCaseFields) {
-        if (!(field in testCase)) {
-          throw new Error(`Missing test_cases[${i}].${field}`);
+        if (!(field in testCase) || typeof testCase[field] !== 'string') {
+          throw new Error(`Missing or invalid test_cases[${i}].${field}`);
         }
       }
     }
     
-    console.log('Successfully parsed Groq response');
+    console.log('Groq response validation successful');
     return parsed as GroqCodeResponse;
+    
   } catch (parseError) {
-    console.error('Final parse error:', parseError);
-    console.error('Content that failed to parse:', content);
-    throw new Error(`Failed to parse Groq response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    console.error('JSON parsing failed:', parseError);
+    console.error('Content that failed to parse (first 1000 chars):', content.substring(0, 1000));
+    console.error('Content that failed to parse (last 1000 chars):', content.substring(Math.max(0, content.length - 1000)));
+    
+    throw new Error(`Failed to parse Groq response as JSON: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
   }
 }
 
 // GET handler for App Router
 export async function GET(request: NextRequest) {
   try {
+    console.log('API endpoint called');
+    
     // Extract api_key from URL search params
     const { searchParams } = new URL(request.url);
     const api_key = searchParams.get('api_key');
 
     // Validate API key
     if (!api_key || api_key !== process.env.API_KEY) {
+      console.log('Invalid API key provided');
       return Response.json({ error: 'Invalid or missing API key' }, { status: 401 });
     }
 
     // Step 1: Get the next question number automatically
+    console.log('Getting next question number...');
     const questionNumber = await getNextQuestionNumber();
+    console.log('Next question number:', questionNumber);
 
     // Step 2: Fetch question from codingquestionrepo table
+    console.log('Fetching question from database...');
     const { data: questionData, error: fetchError } = await supabase
       .from('codingquestionrepo')
       .select('sr_no, question, approach')
@@ -376,6 +522,7 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (fetchError || !questionData) {
+      console.log('Question not found:', fetchError);
       return Response.json({ 
         error: 'Question not found', 
         details: `No question found with sr_no: ${questionNumber}`,
@@ -383,7 +530,10 @@ export async function GET(request: NextRequest) {
       }, { status: 404 });
     }
 
+    console.log('Question found:', questionData.sr_no);
+
     // Step 3: Check if code already exists
+    console.log('Checking for existing code...');
     const { data: existingCode } = await supabase
       .from('python_code')
       .select('*')
@@ -393,6 +543,7 @@ export async function GET(request: NextRequest) {
     let codeResult: PythonCodeRecord;
 
     if (existingCode) {
+      console.log('Using existing code');
       // Return existing code and still update questions_done table
       codeResult = existingCode;
       
@@ -405,6 +556,8 @@ export async function GET(request: NextRequest) {
         // Don't fail the entire request, just log the error
       }
     } else {
+      console.log('Generating new code...');
+      
       // Step 4: Generate Groq prompt and call API
       const prompt = createGroqPrompt(questionData.question, questionData.approach);
       const groqResponse = await callGroqAPI(prompt);
@@ -426,6 +579,7 @@ export async function GET(request: NextRequest) {
         created_at: new Date().toISOString(),
       };
 
+      console.log('Storing code in database...');
       // Step 6: Store code in python_code table
       const { error: insertError } = await supabase
         .from('python_code')
@@ -460,6 +614,7 @@ export async function GET(request: NextRequest) {
         : codeResult.test_cases
     };
 
+    console.log('API request completed successfully');
     return Response.json({
       success: true,
       data: responseData,
@@ -469,9 +624,12 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('API Error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack available');
+    
     return Response.json({
       error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     }, { status: 500 });
   }
 }
