@@ -6,7 +6,7 @@ import { inspirationalQuotes } from './quotes'
 interface UserProfile {
   id: string
   email: string
-  coding_questions_attempted: number
+  coding_questions_atteFindmpted: number
   technical_questions_attempted: number
   fundamental_questions_attempted: number
   aptitude_questions_attempted?: number
