@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+
+// Extend the Window interface to include our custom _gifCache property
+declare global {
+  interface Window {
+    _gifCache?: { [key: string]: string }
+  }
+}
 
 interface QuestionData {
   id: number
@@ -18,17 +25,113 @@ interface QuestionComponentProps {
 interface UserProfile {
   id: string
   email: string
-  coding_questions_attempted: number
-  technical_questions_attempted: number
-  fundamental_questions_attempted: number
-  tech_topics_covered: number
-  current_streak: [string, number] | null // JSONB format: ["2025-08-04", 1]
+  aptitude_questions_attempted: number
+  current_streak: [string, number] | null
   total_points: number
   created_at: string
   updated_at: string
 }
 
-// Mathematical formula renderer (same as theory component)
+// Enhanced GIF caching utility
+const GifCache = {
+  getCache: () => {
+    if (typeof window === 'undefined') return null
+    if (!window._gifCache) {
+      window._gifCache = {}
+    }
+    return window._gifCache
+  },
+
+  async loadGif(url: string, fallbackUrl?: string): Promise<{ src: string, isCached: boolean }> {
+    const cache = GifCache.getCache()
+    if (!cache) return { src: url, isCached: false }
+
+    const cacheKey = url.split('/').pop() || url
+    
+    // Check if already cached
+    if (cache[cacheKey]) {
+      return { src: cache[cacheKey], isCached: true }
+    }
+
+    try {
+      // Try to fetch the GIF
+      const response = await fetch(fallbackUrl || url)
+      if (!response.ok) throw new Error('Failed to fetch')
+      
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      
+      // Cache it globally
+      cache[cacheKey] = objectUrl
+      
+      return { src: objectUrl, isCached: false }
+    } catch (error) {
+      console.error('Failed to cache GIF:', error)
+      return { src: url, isCached: false }
+    }
+  },
+
+  // Preload both GIFs
+  async preloadGifs(): Promise<{ happy: { src: string, isCached: boolean } | null, sad: { src: string, isCached: boolean } | null }> {
+    const happyGifUrl = 'https://jfxihkyidrxhdyvdygnt.supabase.co/storage/v1/object/public/gifs/happy-dance.gif'
+    const sadGifUrl = 'https://jfxihkyidrxhdyvdygnt.supabase.co/storage/v1/object/public/gifs/cry.gif'
+    
+    const [happy, sad] = await Promise.allSettled([
+      GifCache.loadGif(happyGifUrl),
+      GifCache.loadGif(sadGifUrl)
+    ])
+
+    return {
+      happy: happy.status === 'fulfilled' ? happy.value : null,
+      sad: sad.status === 'fulfilled' ? sad.value : null
+    }
+  }
+}
+
+// Confetti effect
+const createConfetti = () => {
+  const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8']
+  const confettiCount = 150
+  const duration = 3000
+
+  for (let i = 0; i < confettiCount; i++) {
+    const confetti = document.createElement('div')
+    confetti.style.position = 'fixed'
+    confetti.style.left = Math.random() * 100 + 'vw'
+    confetti.style.top = '-10px'
+    confetti.style.width = Math.random() * 10 + 5 + 'px'
+    confetti.style.height = confetti.style.width
+    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)]
+    confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0%'
+    confetti.style.pointerEvents = 'none'
+    confetti.style.zIndex = '9999'
+    confetti.style.transform = `rotate(${Math.random() * 360}deg)`
+    
+    document.body.appendChild(confetti)
+
+    const animation = confetti.animate([
+      {
+        transform: `translateY(0) rotate(${Math.random() * 360}deg)`,
+        opacity: 1
+      },
+      {
+        transform: `translateY(100vh) rotate(${Math.random() * 720 + 360}deg)`,
+        opacity: 0
+      }
+    ], {
+      duration: Math.random() * 2000 + 2000,
+      easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+    })
+
+    animation.onfinish = () => {
+      if (confetti.parentNode) {
+        confetti.parentNode.removeChild(confetti)
+      }
+    }
+  }
+}
+
+// Mathematical formula renderer
 const MathRenderer = ({ content }: { content: string }) => {
   if (!content) return null
 
@@ -37,7 +140,7 @@ const MathRenderer = ({ content }: { content: string }) => {
     let remaining = text
     let keyCounter = 0
 
-    // Process fractions first (most complex)
+    // Process fractions
     const fractionRegex = /\(([^()]*(?:\([^)]*\)[^()]*)*)\)\s*\/\s*\(([^()]*(?:\([^)]*\)[^()]*)*)\)|([a-zA-Z0-9\+\-\*\s]+)\s*\/\s*([a-zA-Z0-9\+\-\*\s]+)/g
     let lastIndex = 0
     let match
@@ -92,7 +195,7 @@ const MathRenderer = ({ content }: { content: string }) => {
       return `__${id}__`
     })
 
-    // Handle exponents
+    // Handle exponents and subscripts
     remaining = remaining.replace(/\^(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, exp) => {
       const id = `SUP_${keyCounter++}`
       const cleanExp = exp.replace(/[\{\}()]/g, '')
@@ -100,7 +203,6 @@ const MathRenderer = ({ content }: { content: string }) => {
       return `__${id}__`
     })
 
-    // Handle subscripts
     remaining = remaining.replace(/_(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, sub) => {
       const id = `SUB_${keyCounter++}`
       const cleanSub = sub.replace(/[\{\}()]/g, '')
@@ -151,19 +253,14 @@ const MathRenderer = ({ content }: { content: string }) => {
   )
 }
 
-// Enhanced markdown renderer (same as theory component)
+// Markdown renderer
 const MarkdownRenderer = ({ content }: { content: string }) => {
   if (!content) return null
 
-  const lines = content.split('\n')
-  const elements: React.ReactElement[] = []
-
   const renderInlineContent = (text: string) => {
-    let processedText = text
-
-    // LaTeX-style inline math $formula$
+    // LaTeX-style inline math
     const inlineMathRegex = /\$([^$]+)\$/g
-    const inlineMathParts = processedText.split(inlineMathRegex)
+    const inlineMathParts = text.split(inlineMathRegex)
     
     return inlineMathParts.map((part, i) => {
       if (i % 2 === 1) {
@@ -175,168 +272,119 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
             <MathRenderer content={part} />
           </span>
         )
-      } else {
-        return processOtherFormats(part, i)
       }
-    })
-  }
-
-  const processOtherFormats = (text: string, baseIndex: number) => {
-    const codeRegex = /`([^`]+)`/g
-    const parts = text.split(codeRegex)
-    
-    return parts.map((part, i) => {
-      if (i % 2 === 1) {
-        return (
-          <span 
-            key={`${baseIndex}-code-${i}`} 
-            className="inline-block bg-gray-100 text-gray-800 px-3 py-2 border mx-1 font-serif text-base"
-          >
-            <MathRenderer content={part} />
-          </span>
-        )
-      } else {
-        return processTextFormatting(part, `${baseIndex}-${i}`)
-      }
-    })
-  }
-
-  const processTextFormatting = (text: string, keyPrefix: string) => {
-    const boldRegex = /\*\*(.*?)\*\*/g
-    const boldParts = text.split(boldRegex)
-    
-    return boldParts.map((segment, j) => {
-      if (j % 2 === 1) {
-        return <strong key={`${keyPrefix}-bold-${j}`} className="font-semibold text-gray-900">{segment}</strong>
-      } else {
-        const italicRegex = /\*([^*]+)\*/g
-        const italicParts = segment.split(italicRegex)
+      
+      // Process code blocks
+      const codeRegex = /`([^`]+)`/g
+      const codeParts = part.split(codeRegex)
+      
+      return codeParts.map((codePart, j) => {
+        if (j % 2 === 1) {
+          return (
+            <span 
+              key={`${i}-code-${j}`} 
+              className="inline-block bg-gray-100 text-gray-800 px-3 py-2 border mx-1 font-serif text-base"
+            >
+              <MathRenderer content={codePart} />
+            </span>
+          )
+        }
         
-        return italicParts.map((italicSegment, k) => {
+        // Process bold and italic
+        const boldRegex = /\*\*(.*?)\*\*/g
+        const boldParts = codePart.split(boldRegex)
+        
+        return boldParts.map((boldPart, k) => {
           if (k % 2 === 1) {
-            return <em key={`${keyPrefix}-italic-${j}-${k}`} className="italic text-gray-800">{italicSegment}</em>
-          } else {
-            return italicSegment
+            return <strong key={`${i}-${j}-bold-${k}`} className="font-semibold text-gray-900">{boldPart}</strong>
           }
+          
+          const italicRegex = /\*([^*]+)\*/g
+          const italicParts = boldPart.split(italicRegex)
+          
+          return italicParts.map((italicPart, l) => {
+            if (l % 2 === 1) {
+              return <em key={`${i}-${j}-${k}-italic-${l}`} className="italic text-gray-800">{italicPart}</em>
+            }
+            return italicPart
+          })
         })
-      }
+      })
     })
   }
 
-  lines.forEach((line, index) => {
-    const trimmedLine = line.trim()
-    
-    if (!trimmedLine) {
-      elements.push(<div key={index} className="mb-4" />)
-      return
-    }
-
-    elements.push(
-      <p key={index} className="mb-4 text-sm text-gray-700 leading-relaxed">
-        {renderInlineContent(trimmedLine)}
-      </p>
-    )
-  })
-
-  return <>{elements}</>
+  const lines = content.split('\n')
+  
+  return (
+    <>
+      {lines.map((line, index) => (
+        line.trim() ? (
+          <p key={index} className="mb-4 text-sm text-gray-700 leading-relaxed">
+            {renderInlineContent(line.trim())}
+          </p>
+        ) : (
+          <div key={index} className="mb-4" />
+        )
+      ))}
+    </>
+  )
 }
 
 export default function QuestionComponent({ questionData, questionId }: QuestionComponentProps) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
   const [showHint, setShowHint] = useState(false)
-  const [catAnimation, setCatAnimation] = useState('🤔')
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [showAnimation, setShowAnimation] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(120) // 2 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(120) // 2 minutes
   const [isTimeUp, setIsTimeUp] = useState(false)
+  const [preloadedGifs, setPreloadedGifs] = useState<{ happy: { src: string, isCached: boolean } | null, sad: { src: string, isCached: boolean } | null }>({ happy: null, sad: null })
+  const [lastClickTime, setLastClickTime] = useState<{ [key: number]: number }>({})
   const router = useRouter()
 
-  // Fetch user profile on component mount
+  // Shuffle options while tracking correct answer
+  const { shuffledOptions, correctIndex } = useMemo(() => {
+    const correctAnswer = questionData.options[0] // First option is always correct
+    const shuffled = [...questionData.options].sort(() => Math.random() - 0.5)
+    const correctIdx = shuffled.indexOf(correctAnswer)
+    
+    return {
+      shuffledOptions: shuffled,
+      correctIndex: correctIdx
+    }
+  }, [questionData.options])
+
+  // Preload GIFs on component mount
+  useEffect(() => {
+    const loadGifs = async () => {
+      const gifs = await GifCache.preloadGifs()
+      setPreloadedGifs(gifs)
+    }
+    loadGifs()
+  }, [])
+
+  // Fetch profile and start timer
   useEffect(() => {
     fetchProfile()
   }, [])
 
-  // Timer effect
+  // Timer
   useEffect(() => {
     if (timeLeft > 0 && !showExplanation) {
-      const timerId = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
-      return () => clearTimeout(timerId)
+      const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000)
+      return () => clearTimeout(timer)
     } else if (timeLeft === 0 && !showExplanation) {
       setIsTimeUp(true)
-      // Auto-submit when time runs out
       handleSubmit(true)
     }
   }, [timeLeft, showExplanation])
 
-  // Cat animation effect
-  useEffect(() => {
-    if (showExplanation) {
-      const celebrationCats = ['🎉', '😸', '🏆', '😻', '✨', '🌟']
-      let index = 0
-      
-      const interval = setInterval(() => {
-        index = (index + 1) % celebrationCats.length
-        setCatAnimation(celebrationCats[index])
-      }, 1000)
-      
-      return () => clearInterval(interval)
-    } else {
-      const thinkingCats = ['🤔', '😺', '🧐', '😸', '💭']
-      let index = 0
-      
-      const interval = setInterval(() => {
-        index = (index + 1) % thinkingCats.length
-        setCatAnimation(thinkingCats[index])
-      }, 2000)
-      
-      return () => clearInterval(interval)
-    }
-  }, [showExplanation])
-
-  // Format time for display
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Get streak display based on JSONB format
-  const getStreakDisplay = (currentStreak: [string, number] | null) => {
-    if (!currentStreak || !Array.isArray(currentStreak) || currentStreak.length < 2) {
-      return { text: `0`, isToday: false }
-    }
-    
-    const [dateStr, streakValue] = currentStreak
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    const streakDate = new Date(dateStr)
-    const todayStr = today.toDateString()
-    const yesterdayStr = yesterday.toDateString()
-    const streakDateStr = streakDate.toDateString()
-    
-    if (streakDateStr === todayStr) {
-      return { text: `${streakValue}`, isToday: true }
-    } else if (streakDateStr === yesterdayStr) {
-      return { text: `${streakValue}`, isToday: false }
-    } else {
-      return { text: `0`, isToday: false }
-    }
-  }
-
   const fetchProfile = async () => {
     try {
       const response = await fetch('/api/auth/profile', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         credentials: 'include'
       })
-      
       if (response.ok) {
         const data = await response.json()
         if (data.profile) {
@@ -350,124 +398,151 @@ export default function QuestionComponent({ questionData, questionId }: Question
     }
   }
 
-  const shouldUpdateProgress = (): boolean => {
+  const updateAptitudeProgress = async () => {
     if (!profile) return false
     
-    const userProgress = profile.technical_questions_attempted || 0
-    const shouldUpdate = questionId === userProgress + 1
-    
-    return shouldUpdate
-  }
-
-  const updateTechnicalProgress = async () => {
-    if (!profile) return false
-    
-    const shouldUpdate = shouldUpdateProgress()
-    if (!shouldUpdate) {
-      console.log('Progress update skipped - question not in sequence')
-      return false
-    }
+    // Only update if this is the next question in sequence
+    const shouldUpdate = questionId === (profile.aptitude_questions_attempted || 0) + 1
+    if (!shouldUpdate) return false
     
     try {
-      const response = await fetch('/api/update/technical-questions', {
+      const response = await fetch('/api/update/aptitude-questions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         credentials: 'include'
       })
       
       if (response.ok) {
         const data = await response.json()
-        
         if (data.success) {
-          // Update local profile state
           setProfile(prev => prev ? {
             ...prev,
-            technical_questions_attempted: data.new_count
+            aptitude_questions_attempted: data.new_count
           } : null)
           return true
         }
       }
     } catch (error) {
-      console.error('Error updating technical progress:', error)
+      console.error('Error updating aptitude progress:', error)
     }
     return false
   }
 
   const calculatePoints = (isCorrect: boolean, timeRemaining: number, isTimeUp: boolean): number => {
-    if (!isCorrect) {
-      return 0 // No points for wrong answer
-    }
-    
-    if (isTimeUp) {
-      return 0 // No points if time is up
-    }
-    
-    // Base points for correct answer: 2 fish
-    // Time bonus: +3 fish for completing in time
-    return 5 // Total 5 fish for correct answer within time limit
+    if (!isCorrect || isTimeUp) return 0
+    return 5 // 5 fish for correct answer within time limit
   }
 
-  const handleOptionSelect = (optionIndex: number) => {
-    if (!showExplanation) {
-      setSelectedOption(optionIndex)
+  const handleOptionClick = (index: number) => {
+    if (showExplanation) return
+
+    const currentTime = Date.now()
+    const lastClick = lastClickTime[index] || 0
+    
+    // Check for double click (within 500ms)
+    if (currentTime - lastClick < 500) {
+      // Double click - auto submit
+      setSelectedOption(index)
+      setTimeout(() => handleSubmit(), 100) // Small delay to show selection
+    } else {
+      // Single click - just select
+      setSelectedOption(index)
     }
+    
+    setLastClickTime(prev => ({ ...prev, [index]: currentTime }))
   }
 
   const handleSubmit = async (timeUpSubmission = false) => {
     if (selectedOption === null && !timeUpSubmission) return
 
-    const isCorrect = selectedOption === 0 // First option is always correct
+    const isCorrect = selectedOption === correctIndex
     const pointsToAward = calculatePoints(isCorrect, timeLeft, timeUpSubmission)
     
-    if (isCorrect && pointsToAward > 0) {
-      // Add points for correct answer
+    // Trigger confetti for correct answers
+    if (isCorrect && !timeUpSubmission) {
+      createConfetti()
+    }
+    
+    // Award points if correct
+    if (pointsToAward > 0) {
       try {
-        const response = await fetch('/api/add/points', {
+        const pointsResponse = await fetch('/api/add/points', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ points: pointsToAward }),
           credentials: 'include'
         })
         
-        if (response.ok) {
-          const data = await response.json()
-          
-          // Update profile points
+        if (pointsResponse.ok) {
+          const data = await pointsResponse.json()
           if (data.new_total && profile) {
-            setProfile(prev => prev ? {
-              ...prev,
-              total_points: data.new_total
-            } : null)
+            setProfile(prev => prev ? { ...prev, total_points: data.new_total } : null)
           }
-          
           setShowAnimation(true)
           setTimeout(() => setShowAnimation(false), 2000)
         }
-        
-        // Update technical progress
-        await updateTechnicalProgress()
       } catch (error) {
         console.error('Error awarding points:', error)
       }
     }
 
+    // Update progress
+    await updateAptitudeProgress()
     setShowExplanation(true)
   }
 
-  const handleNext = () => {
-    const nextId = questionId + 1
-    router.push(`/aptitude/${nextId}`)
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Get streak data
+  const getStreakDisplay = (currentStreak: [string, number] | null) => {
+    if (!currentStreak || !Array.isArray(currentStreak) || currentStreak.length < 2) {
+      return { text: '0', isToday: false }
+    }
+    
+    const [dateStr, streakValue] = currentStreak
+    const today = new Date().toDateString()
+    const yesterday = new Date(Date.now() - 86400000).toDateString()
+    const streakDate = new Date(dateStr).toDateString()
+    
+    if (streakDate === today) {
+      return { text: `${streakValue}`, isToday: true }
+    } else if (streakDate === yesterday) {
+      return { text: `${streakValue}`, isToday: false }
+    } else {
+      return { text: '0', isToday: false }
+    }
+  }
+
   const streakData = getStreakDisplay(profile?.current_streak || null)
+
+  const getResultGif = () => {
+    if (isTimeUp) return null
+    if (selectedOption === correctIndex) return preloadedGifs.happy
+    return preloadedGifs.sad
+  }
+
+  const resultGif = getResultGif()
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-mono">
+      {/* CSS for animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
       {/* Header */}
       <header className="bg-white border-b border-gray-200 py-4 shadow-sm">
         <div className="max-w-full mx-auto flex justify-between items-center px-4">
@@ -493,7 +568,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
                     {profile?.total_points || 0} 🐟
                     {showAnimation && (
                       <span className="inline-block ml-2">
-                        <span className="animate-bounce text-lg text-green-600">+{calculatePoints(selectedOption === 0, timeLeft, isTimeUp)}</span>
+                        <span className="animate-bounce text-lg text-green-600">+5</span>
                         <span className="inline-block animate-bounce ml-1" style={{animationDelay: '0.2s'}}>🐟</span>
                       </span>
                     )}
@@ -521,7 +596,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
             </div>
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Question {questionId}</p>
-              <p className="text-sm font-light">Practice Mode</p>
+              <p className="text-sm font-light">Aptitude Mode</p>
             </div>
           </div>
         </div>
@@ -551,17 +626,18 @@ export default function QuestionComponent({ questionData, questionId }: Question
               <div className="flex items-center gap-3 mb-6">
                 <span className="text-2xl">🎯</span>
                 <h3 className="font-mono font-medium text-lg">Choose Your Answer</h3>
+                <span className="text-xs text-gray-500 ml-2">(Double-click to auto-submit)</span>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {questionData.options?.map((option, index) => (
+                {shuffledOptions.map((option, index) => (
                   <button
                     key={index}
-                    onClick={() => handleOptionSelect(index)}
+                    onClick={() => handleOptionClick(index)}
                     disabled={showExplanation}
                     className={`w-full p-4 text-left border transition-all duration-200 font-mono text-sm ${
                       showExplanation
-                        ? index === 0
+                        ? index === correctIndex
                           ? 'bg-green-50 border-green-500 text-green-800'
                           : selectedOption === index
                             ? 'bg-red-50 border-red-500 text-red-800'
@@ -580,11 +656,19 @@ export default function QuestionComponent({ questionData, questionId }: Question
                           <MarkdownRenderer content={option} />
                         </div>
                       </div>
-                      {showExplanation && index === 0 && (
-                        <span className="text-green-600 text-lg ml-2">✓</span>
+                      {showExplanation && index === correctIndex && (
+                        <div className="flex items-center justify-center w-8 h-8 bg-green-100 rounded-full border-2 border-green-500 ml-2">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                          </svg>
+                        </div>
                       )}
-                      {showExplanation && selectedOption === index && index !== 0 && (
-                        <span className="text-red-600 text-lg ml-2">✗</span>
+                      {showExplanation && selectedOption === index && index !== correctIndex && (
+                        <div className="flex items-center justify-center w-8 h-8 bg-red-100 rounded-full border-2 border-red-500 ml-2">
+                          <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"></path>
+                          </svg>
+                        </div>
                       )}
                     </div>
                   </button>
@@ -596,38 +680,26 @@ export default function QuestionComponent({ questionData, questionId }: Question
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mb-8">
-          {/* Submit Button */}
           {!showExplanation && !isTimeUp && (
             <button
               onClick={() => handleSubmit()}
               disabled={selectedOption === null}
-              className={`py-3 px-8 font-mono text-base transition-all duration-300 ${
+              className={`py-3 px-8 font-mono text-base transition-all duration-300 border-2 ${
                 selectedOption !== null
-                  ? 'bg-gray-900 text-white hover:bg-gray-800'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  ? 'bg-gray-900 text-white hover:bg-gray-800 border-gray-700 hover:border-gray-600'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-300'
               }`}
             >
               {selectedOption !== null ? 'Submit Answer' : 'Select an option first'}
             </button>
           )}
 
-          {/* Hint Button */}
           {questionData.formula_or_logic && (
             <button
               onClick={() => setShowHint(!showHint)}
-              className="py-3 px-6 bg-orange-100 text-orange-800 border border-orange-200 hover:bg-orange-200 font-mono text-base transition-all duration-300"
+              className="py-3 px-6 bg-orange-100 text-orange-800 border-2 border-orange-200 hover:bg-orange-200 font-mono text-base transition-all duration-300"
             >
               {showHint ? 'Hide Hint' : 'Show Hint'} 💡
-            </button>
-          )}
-
-          {/* Show Explanation Button */}
-          {showExplanation && (
-            <button
-              onClick={() => setShowExplanation(!showExplanation)}
-              className="py-3 px-6 bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-200 font-mono text-base transition-all duration-300"
-            >
-              {showExplanation ? 'Hide Explanation' : 'View Explanation'} 📝
             </button>
           )}
         </div>
@@ -649,65 +721,135 @@ export default function QuestionComponent({ questionData, questionId }: Question
           </div>
         )}
 
-        {/* Explanation */}
+        {/* Explanation Popup Modal */}
         {showExplanation && (
-          <div className="mb-8">
-            <div className="bg-blue-50 border border-blue-200">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-2xl">📝</span>
-                  <h3 className="font-mono font-medium text-lg text-blue-800">Explanation</h3>
-                </div>
-                <div className="text-blue-900">
-                  <MarkdownRenderer content={questionData.explanation} />
-                </div>
-                
-                {/* Result Summary */}
-                <div className="mt-6 p-4 bg-white border-l-4 border-blue-400">
-                  <div className="flex items-center gap-2 mb-2">
-                    {isTimeUp ? (
-                      <>
-                        <span className="text-xl">⏰</span>
-                        <span className="font-medium text-red-600">Time's Up!</span>
-                      </>
-                    ) : selectedOption === 0 ? (
-                      <>
-                        <span className="text-xl">🎉</span>
-                        <span className="font-medium text-green-600">Correct Answer!</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-xl">❌</span>
-                        <span className="font-medium text-red-600">Incorrect Answer</span>
-                      </>
-                    )}
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden animate-fadeIn">
+              <div className="flex h-full">
+                {/* Left Side - GIF */}
+                <div className="w-1/3 bg-gradient-to-br from-blue-50 to-purple-50 flex flex-col items-center justify-center p-8 border-r border-gray-200">
+                  {resultGif && !isTimeUp ? (
+                    <div className="text-center">
+                      <img 
+                        src={resultGif.src}
+                        alt={selectedOption === correctIndex ? "Celebration" : "Sad reaction"}
+                        className={selectedOption === correctIndex ? "w-56 h-72 object-contain mb-4" : "w-48 h-48 object-contain mb-4"}
+                        title={`GIF ${resultGif.isCached ? 'loaded from cache' : 'fetched online'}`}
+                      />
+                      <div className="text-center">
+                        {selectedOption === correctIndex ? (
+                          <div>
+                            <span className="text-2xl font-bold text-green-600 block mb-2">🎉 Fantastic! 🎉</span>
+                            <span className="text-lg text-green-700">You got it right!</span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-xl font-medium text-red-600 block mb-2">Don't worry!</span>
+                            <span className="text-lg text-red-700">Keep learning! 💪</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : isTimeUp ? (
+                    <div className="text-center">
+                      <span className="text-8xl mb-4 block">⏰</span>
+                      <span className="text-2xl font-bold text-red-600 block mb-2">Time's Up!</span>
+                      <span className="text-lg text-red-700">Better luck next time!</span>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <span className="text-6xl mb-4 block">🤔</span>
+                      <span className="text-xl text-gray-600">Loading...</span>
+                    </div>
+                  )}
+                  
+                  {/* Result Summary in Left Panel */}
+                  <div className="mt-8 p-4 bg-white rounded-lg shadow-sm border w-full">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        {isTimeUp ? (
+                          <span className="font-medium text-red-600">⏰ Time's Up!</span>
+                        ) : selectedOption === correctIndex ? (
+                          <span className="font-medium text-green-600">✅ Correct Answer!</span>
+                        ) : (
+                          <span className="font-medium text-red-600">❌ Incorrect Answer</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700">
+                        {isTimeUp 
+                          ? "No points awarded when time runs out."
+                          : selectedOption === correctIndex
+                            ? "Great job! You earned 5 fish! 🐟"
+                            : "Better luck next time! Keep practicing to improve."
+                        }
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-700">
-                    {isTimeUp 
-                      ? "No points awarded when time runs out."
-                      : selectedOption === 0
-                        ? `Great job! You earned ${calculatePoints(true, timeLeft, false)} fish! 🐟`
-                        : "Better luck next time! Keep practicing to improve."
-                    }
-                  </p>
+                </div>
+
+                {/* Right Side - Explanation & Controls */}
+                <div className="w-2/3 flex flex-col">
+                  {/* Header */}
+                  <div className="bg-blue-600 text-white p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">📝</span>
+                      <h3 className="font-mono font-medium text-xl">Explanation</h3>
+                    </div>
+                    <button
+                      onClick={() => setShowExplanation(false)}
+                      className="text-white hover:text-gray-200 transition-colors p-1"
+                      title="Close"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Scrollable Content */}
+                  <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <div className="text-gray-800 prose prose-sm max-w-none">
+                        <MarkdownRenderer content={questionData.explanation} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer with Actions */}
+                  <div className="bg-white border-t border-gray-200 p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                        Correct: {String.fromCharCode(65 + correctIndex)}. {shuffledOptions[correctIndex].substring(0, 30)}...
+                      </span>
+                      {selectedOption !== null && selectedOption !== correctIndex && (
+                        <span className="flex items-center gap-2">
+                          <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                          Your choice: {String.fromCharCode(65 + selectedOption)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowExplanation(false)}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300"
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={() => router.push(`/aptitude/${questionId + 1}`)}
+                        className="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm"
+                      >
+                        Next Question
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Next Button */}
-        {showExplanation && (
-          <div className="text-center py-6 border-t border-gray-200 bg-white">
-            <p className="text-base text-gray-600 font-light mb-4">
-              Ready for the next challenge?
-            </p>
-            <button
-              onClick={handleNext}
-              className="py-3 px-8 bg-gray-900 text-white font-mono text-base hover:bg-gray-800 transition-all duration-300"
-            >
-              Next Question →
-            </button>
           </div>
         )}
       </main>
