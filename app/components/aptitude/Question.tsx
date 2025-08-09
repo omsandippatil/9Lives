@@ -1,5 +1,12 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import ExplanationPopup from './Popup'
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // Extend the Window interface to include our custom _gifCache property
 declare global {
@@ -341,7 +348,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
   const [isTimeUp, setIsTimeUp] = useState(false)
   const [preloadedGifs, setPreloadedGifs] = useState<{ happy: { src: string, isCached: boolean } | null, sad: { src: string, isCached: boolean } | null }>({ happy: null, sad: null })
   const [lastClickTime, setLastClickTime] = useState<{ [key: number]: number }>({})
-  const router = useRouter()
 
   // Shuffle options while tracking correct answer
   const { shuffledOptions, correctIndex } = useMemo(() => {
@@ -355,6 +361,21 @@ export default function QuestionComponent({ questionData, questionId }: Question
     }
   }, [questionData.options])
 
+  // Determine if this is a new question based on aptitude_questions_attempted
+  const isNewQuestion = useMemo(() => {
+    if (!profile || profileLoading) return false
+    
+    const attemptedQuestions = profile.aptitude_questions_attempted || 0
+    console.log('Question status check:', {
+      questionId,
+      attemptedQuestions,
+      isNew: questionId === attemptedQuestions + 1
+    })
+    
+    // New question if current questionId is exactly one more than attempted count
+    return questionId === attemptedQuestions + 1
+  }, [profile, profileLoading, questionId])
+
   // Preload GIFs on component mount
   useEffect(() => {
     const loadGifs = async () => {
@@ -364,12 +385,12 @@ export default function QuestionComponent({ questionData, questionId }: Question
     loadGifs()
   }, [])
 
-  // Fetch profile and start timer
+  // Fetch profile on component mount
   useEffect(() => {
     fetchProfile()
   }, [])
 
-  // Timer
+  // Timer effect
   useEffect(() => {
     if (timeLeft > 0 && !showExplanation) {
       const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000)
@@ -381,15 +402,44 @@ export default function QuestionComponent({ questionData, questionId }: Question
   }, [timeLeft, showExplanation])
 
   const fetchProfile = async () => {
+    setProfileLoading(true)
     try {
+      // First get the user profile from your existing API to get the user ID
       const response = await fetch('/api/auth/profile', {
         credentials: 'include'
       })
-      if (response.ok) {
-        const data = await response.json()
-        if (data.profile) {
-          setProfile(data.profile)
-        }
+      
+      if (!response.ok) {
+        console.error('Failed to fetch profile from API:', response.status)
+        return
+      }
+
+      const apiData = await response.json()
+      if (!apiData.profile || !apiData.profile.id) {
+        console.error('No profile or user ID received from API')
+        return
+      }
+
+      const userId = apiData.profile.id
+      console.log('Got user ID from profile API:', userId)
+
+      // Now fetch the full profile data directly from Supabase users table
+      const { data: profileData, error: profileError } = await supabase
+        .from('users')
+        .select('id, email, aptitude_questions_attempted, current_streak, total_points, created_at, updated_at')
+        .eq('id', userId)
+        .single()
+
+      if (profileError) {
+        console.error('Error fetching profile from users table:', profileError)
+        return
+      }
+
+      if (profileData) {
+        console.log('Fetched complete profile from Supabase:', profileData)
+        setProfile(profileData)
+      } else {
+        console.error('No profile data found in users table')
       }
     } catch (error) {
       console.error('Error fetching profile:', error)
@@ -398,28 +448,38 @@ export default function QuestionComponent({ questionData, questionId }: Question
     }
   }
 
-  const updateAptitudeProgress = async () => {
-    if (!profile) return false
-    
-    // Only update if this is the next question in sequence
-    const shouldUpdate = questionId === (profile.aptitude_questions_attempted || 0) + 1
-    if (!shouldUpdate) return false
+  const updateAptitudeProgress = async (): Promise<boolean> => {
+    // Only update progress for new questions
+    if (!isNewQuestion || !profile) {
+      console.log('Skipping progress update - not a new question or no profile')
+      return false
+    }
     
     try {
-      const response = await fetch('/api/update/aptitude-questions', {
-        method: 'POST',
-        credentials: 'include'
-      })
+      const newAttemptedCount = (profile.aptitude_questions_attempted || 0) + 1
       
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setProfile(prev => prev ? {
-            ...prev,
-            aptitude_questions_attempted: data.new_count
-          } : null)
-          return true
-        }
+      const { data, error } = await supabase
+        .from('users')
+        .update({ aptitude_questions_attempted: newAttemptedCount })
+        .eq('id', profile.id)
+        .select('aptitude_questions_attempted')
+        .single()
+      
+      if (error) {
+        console.error('Error updating aptitude progress:', error)
+        return false
+      }
+
+      if (data) {
+        console.log('Progress updated from', profile.aptitude_questions_attempted, 'to', data.aptitude_questions_attempted)
+        
+        // Update the profile state with new attempted count
+        setProfile(prev => prev ? {
+          ...prev,
+          aptitude_questions_attempted: data.aptitude_questions_attempted
+        } : null)
+        
+        return true
       }
     } catch (error) {
       console.error('Error updating aptitude progress:', error)
@@ -427,9 +487,54 @@ export default function QuestionComponent({ questionData, questionId }: Question
     return false
   }
 
+  const awardPoints = async (points: number): Promise<boolean> => {
+    if (!profile) return false
+    
+    try {
+      const newTotalPoints = (profile.total_points || 0) + points
+      
+      const { data, error } = await supabase
+        .from('users')
+        .update({ total_points: newTotalPoints })
+        .eq('id', profile.id)
+        .select('total_points')
+        .single()
+      
+      if (error) {
+        console.error('Error awarding points:', error)
+        return false
+      }
+
+      if (data) {
+        console.log('Points awarded:', points, 'New total:', data.total_points)
+        
+        // Update profile with new points total
+        setProfile(prev => prev ? { 
+          ...prev, 
+          total_points: data.total_points 
+        } : null)
+        
+        // Show animation
+        setShowAnimation(true)
+        setTimeout(() => setShowAnimation(false), 2000)
+        
+        return true
+      }
+    } catch (error) {
+      console.error('Error awarding points:', error)
+    }
+    return false
+  }
+
   const calculatePoints = (isCorrect: boolean, timeRemaining: number, isTimeUp: boolean): number => {
-    if (!isCorrect || isTimeUp) return 0
-    return 5 // 5 fish for correct answer within time limit
+    // Only award points for correct answers on new questions within time limit
+    if (!isCorrect || isTimeUp || !isNewQuestion) {
+      console.log('No points awarded:', { isCorrect, isTimeUp, isNewQuestion })
+      return 0
+    }
+    
+    console.log('Points will be awarded: 5 fish')
+    return 5 // 5 fish for correct answer
   }
 
   const handleOptionClick = (index: number) => {
@@ -457,36 +562,29 @@ export default function QuestionComponent({ questionData, questionId }: Question
     const isCorrect = selectedOption === correctIndex
     const pointsToAward = calculatePoints(isCorrect, timeLeft, timeUpSubmission)
     
-    // Trigger confetti for correct answers
-    if (isCorrect && !timeUpSubmission) {
+    console.log('Submitting answer:', {
+      selectedOption,
+      correctIndex,
+      isCorrect,
+      isNewQuestion,
+      pointsToAward,
+      timeUpSubmission
+    })
+    
+    // Show confetti for correct answers on new questions
+    if (isCorrect && !timeUpSubmission && isNewQuestion) {
       createConfetti()
     }
     
-    // Award points if correct
+    // Award points if eligible
     if (pointsToAward > 0) {
-      try {
-        const pointsResponse = await fetch('/api/add/points', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points: pointsToAward }),
-          credentials: 'include'
-        })
-        
-        if (pointsResponse.ok) {
-          const data = await pointsResponse.json()
-          if (data.new_total && profile) {
-            setProfile(prev => prev ? { ...prev, total_points: data.new_total } : null)
-          }
-          setShowAnimation(true)
-          setTimeout(() => setShowAnimation(false), 2000)
-        }
-      } catch (error) {
-        console.error('Error awarding points:', error)
-      }
+      await awardPoints(pointsToAward)
     }
 
-    // Update progress
+    // Update progress for new questions (regardless of correctness)
     await updateAptitudeProgress()
+    
+    // Show explanation
     setShowExplanation(true)
   }
 
@@ -517,32 +615,35 @@ export default function QuestionComponent({ questionData, questionId }: Question
 
   const streakData = getStreakDisplay(profile?.current_streak || null)
 
-  const getResultGif = () => {
-    if (isTimeUp) return null
-    if (selectedOption === correctIndex) return preloadedGifs.happy
-    return preloadedGifs.sad
+  // Get status message for user feedback
+  const getQuestionStatus = () => {
+    if (profileLoading) return null
+    if (!profile) return null
+    
+    const attempted = profile.aptitude_questions_attempted || 0
+    
+    if (questionId <= attempted) {
+      return {
+        type: 'already_attempted',
+        message: `Question ${questionId} already completed - no points available`
+      }
+    } else if (questionId > attempted + 1) {
+      return {
+        type: 'future_question',
+        message: `Complete question ${attempted + 1} first to unlock this question`
+      }
+    } else {
+      return {
+        type: 'new_question',
+        message: `New question ${questionId} - 5 fish available for correct answer!`
+      }
+    }
   }
 
-  const resultGif = getResultGif()
+  const questionStatus = getQuestionStatus()
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-mono">
-      {/* CSS for animations */}
-      <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-out;
-        }
-      `}</style>
       {/* Header */}
       <header className="bg-white border-b border-gray-200 py-4 shadow-sm">
         <div className="max-w-full mx-auto flex justify-between items-center px-4">
@@ -595,12 +696,35 @@ export default function QuestionComponent({ questionData, questionId }: Question
               </p>
             </div>
             <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Progress</p>
+              <p className="text-sm font-light">
+                {profileLoading ? (
+                  <span className="animate-pulse">Loading...</span>
+                ) : (
+                  `${profile?.aptitude_questions_attempted || 0} completed`
+                )}
+              </p>
+            </div>
+            <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Question {questionId}</p>
               <p className="text-sm font-light">Aptitude Mode</p>
             </div>
           </div>
         </div>
       </header>
+
+      {/* Question Status Banner */}
+      {questionStatus && (
+        <div className={`px-4 py-2 text-center text-sm ${
+          questionStatus.type === 'new_question' 
+            ? 'bg-green-100 text-green-800 border-b border-green-200' 
+            : questionStatus.type === 'already_attempted'
+            ? 'bg-yellow-100 text-yellow-800 border-b border-yellow-200'
+            : 'bg-red-100 text-red-800 border-b border-red-200'
+        }`}>
+          {questionStatus.message}
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-full mx-auto px-4 py-8">
@@ -611,6 +735,16 @@ export default function QuestionComponent({ questionData, questionId }: Question
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-2xl">❓</span>
                 <h3 className="font-mono font-medium text-lg">Question {questionId}</h3>
+                {isNewQuestion && (
+                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
+                    NEW
+                  </span>
+                )}
+                {!isNewQuestion && questionStatus?.type === 'already_attempted' && (
+                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
+                    COMPLETED
+                  </span>
+                )}
               </div>
               <div className="text-gray-800 text-base leading-relaxed">
                 <MarkdownRenderer content={questionData.question} />
@@ -721,138 +855,30 @@ export default function QuestionComponent({ questionData, questionId }: Question
           </div>
         )}
 
-        {/* Explanation Popup Modal */}
-        {showExplanation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden animate-fadeIn">
-              <div className="flex h-full">
-                {/* Left Side - GIF */}
-                <div className="w-1/3 bg-gradient-to-br from-blue-50 to-purple-50 flex flex-col items-center justify-center p-8 border-r border-gray-200">
-                  {resultGif && !isTimeUp ? (
-                    <div className="text-center">
-                      <img 
-                        src={resultGif.src}
-                        alt={selectedOption === correctIndex ? "Celebration" : "Sad reaction"}
-                        className={selectedOption === correctIndex ? "w-56 h-72 object-contain mb-4" : "w-48 h-48 object-contain mb-4"}
-                        title={`GIF ${resultGif.isCached ? 'loaded from cache' : 'fetched online'}`}
-                      />
-                      <div className="text-center">
-                        {selectedOption === correctIndex ? (
-                          <div>
-                            <span className="text-2xl font-bold text-green-600 block mb-2">🎉 Fantastic! 🎉</span>
-                            <span className="text-lg text-green-700">You got it right!</span>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="text-xl font-medium text-red-600 block mb-2">Don't worry!</span>
-                            <span className="text-lg text-red-700">Keep learning! 💪</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : isTimeUp ? (
-                    <div className="text-center">
-                      <span className="text-8xl mb-4 block">⏰</span>
-                      <span className="text-2xl font-bold text-red-600 block mb-2">Time's Up!</span>
-                      <span className="text-lg text-red-700">Better luck next time!</span>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <span className="text-6xl mb-4 block">🤔</span>
-                      <span className="text-xl text-gray-600">Loading...</span>
-                    </div>
-                  )}
-                  
-                  {/* Result Summary in Left Panel */}
-                  <div className="mt-8 p-4 bg-white rounded-lg shadow-sm border w-full">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        {isTimeUp ? (
-                          <span className="font-medium text-red-600">⏰ Time's Up!</span>
-                        ) : selectedOption === correctIndex ? (
-                          <span className="font-medium text-green-600">✅ Correct Answer!</span>
-                        ) : (
-                          <span className="font-medium text-red-600">❌ Incorrect Answer</span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-700">
-                        {isTimeUp 
-                          ? "No points awarded when time runs out."
-                          : selectedOption === correctIndex
-                            ? "Great job! You earned 5 fish! 🐟"
-                            : "Better luck next time! Keep practicing to improve."
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Side - Explanation & Controls */}
-                <div className="w-2/3 flex flex-col">
-                  {/* Header */}
-                  <div className="bg-blue-600 text-white p-6 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">📝</span>
-                      <h3 className="font-mono font-medium text-xl">Explanation</h3>
-                    </div>
-                    <button
-                      onClick={() => setShowExplanation(false)}
-                      className="text-white hover:text-gray-200 transition-colors p-1"
-                      title="Close"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Scrollable Content */}
-                  <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-                    <div className="bg-white rounded-lg p-6 shadow-sm">
-                      <div className="text-gray-800 prose prose-sm max-w-none">
-                        <MarkdownRenderer content={questionData.explanation} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer with Actions */}
-                  <div className="bg-white border-t border-gray-200 p-6 flex items-center justify-between">
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                        Correct: {String.fromCharCode(65 + correctIndex)}. {shuffledOptions[correctIndex].substring(0, 30)}...
-                      </span>
-                      {selectedOption !== null && selectedOption !== correctIndex && (
-                        <span className="flex items-center gap-2">
-                          <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                          Your choice: {String.fromCharCode(65 + selectedOption)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setShowExplanation(false)}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300"
-                      >
-                        Close
-                      </button>
-                      <button
-                        onClick={() => router.push(`/aptitude/${questionId + 1}`)}
-                        className="px-6 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm"
-                      >
-                        Next Question
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+        {/* Debug Info (remove in production) */}
+        {profile && (
+          <div className="mt-8 p-4 bg-gray-100 border border-gray-300 text-xs text-gray-600">
+            <h4 className="font-bold mb-2">Debug Info:</h4>
+            <p>Question ID: {questionId}</p>
+            <p>Attempted Questions: {profile.aptitude_questions_attempted}</p>
+            <p>Is New Question: {isNewQuestion ? 'Yes' : 'No'}</p>
+            <p>Profile Loading: {profileLoading ? 'Yes' : 'No'}</p>
           </div>
         )}
       </main>
+
+      {/* Explanation Popup */}
+      <ExplanationPopup
+        isVisible={showExplanation}
+        onClose={() => setShowExplanation(false)}
+        questionData={questionData}
+        selectedOption={selectedOption}
+        correctIndex={correctIndex}
+        shuffledOptions={shuffledOptions}
+        isTimeUp={isTimeUp}
+        preloadedGifs={preloadedGifs}
+        questionId={questionId}
+      />
     </div>
   )
 }
