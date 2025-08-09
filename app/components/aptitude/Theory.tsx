@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 interface TheoryData {
   id: number
@@ -17,383 +21,132 @@ interface TheoryComponentProps {
   onNext: () => void
 }
 
-// Mathematical formula renderer that creates actual React elements
-const MathRenderer = ({ content }: { content: string }) => {
-  if (!content) return null
-
-  const parseMath = (text: string): (string | React.ReactNode)[] => {
-    const result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Process fractions first (most complex)
-    const fractionRegex = /\(([^()]*(?:\([^)]*\)[^()]*)*)\)\s*\/\s*\(([^()]*(?:\([^)]*\)[^()]*)*)\)|([a-zA-Z0-9\+\-\*\s]+)\s*\/\s*([a-zA-Z0-9\+\-\*\s]+)/g
-    let lastIndex = 0
-    let match
-
-    while ((match = fractionRegex.exec(remaining)) !== null) {
-      // Add text before the match
-      if (match.index > lastIndex) {
-        const beforeText = remaining.slice(lastIndex, match.index)
-        result.push(...parseSimpleMath(beforeText))
-      }
-
-      // Create fraction element
-      const numerator = match[1] || match[3] || ''
-      const denominator = match[2] || match[4] || ''
-      
-      result.push(
-        <span key={`fraction-${keyCounter++}`} className="inline-block text-center align-middle mx-1 relative">
-          <span className="block border-b-2 border-gray-700 px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(numerator.trim())}
-          </span>
-          <span className="block px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(denominator.trim())}
-          </span>
-        </span>
-      )
-
-      lastIndex = match.index + match[0].length
-    }
-
-    // Add remaining text
-    if (lastIndex < remaining.length) {
-      result.push(...parseSimpleMath(remaining.slice(lastIndex)))
-    }
-
-    return result
-  }
-
-  const parseSimpleMath = (text: string): (string | React.ReactNode)[] => {
-    if (!text) return []
+// Custom components for react-markdown
+const MarkdownComponents = {
+  // Headings
+  h1: ({ children }: any) => (
+    <h1 className="text-2xl font-bold mb-4 text-gray-900">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: any) => (
+    <h2 className="text-xl font-semibold mb-3 text-gray-800">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: any) => (
+    <h3 className="text-lg font-medium mb-2 text-gray-700">
+      {children}
+    </h3>
+  ),
+  
+  // Paragraphs
+  p: ({ children }: any) => (
+    <p className="mb-4 text-sm text-gray-700 leading-relaxed">
+      {children}
+    </p>
+  ),
+  
+  // Lists
+  ul: ({ children }: any) => <ul className="mb-6 space-y-2 pl-4 list-disc">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-6 space-y-2 pl-4 list-decimal">{children}</ol>,
+  li: ({ children }: any) => (
+    <li className="text-sm text-gray-700 leading-relaxed">
+      {children}
+    </li>
+  ),
+  
+  // Code blocks
+  code: ({ children, className }: any) => {
+    const isBlock = className?.includes('language-')
     
-    let result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Square roots
-    remaining = remaining.replace(/sqrt\s*\(\s*([^)]+)\s*\)/g, (match, content) => {
-      const id = `SQRT_${keyCounter++}`
-      result.push(
-        <span key={id} className="relative inline-block mx-0.5 text-lg align-middle">
-          √<span className="border-t-2 border-gray-700 pt-0.5 ml-0.5 pl-0.5 pr-0.5 min-w-4 inline-block">
-            {content}
-          </span>
-        </span>
-      )
-      return `__${id}__`
-    })
-
-    // Handle exponents
-    remaining = remaining.replace(/\^(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, exp) => {
-      const id = `SUP_${keyCounter++}`
-      const cleanExp = exp.replace(/[\{\}()]/g, '')
-      result.push(<sup key={id} className="text-xs align-super leading-none mx-0.5">{cleanExp}</sup>)
-      return `__${id}__`
-    })
-
-    // Handle subscripts
-    remaining = remaining.replace(/_(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, sub) => {
-      const id = `SUB_${keyCounter++}`
-      const cleanSub = sub.replace(/[\{\}()]/g, '')
-      result.push(<sub key={id} className="text-xs align-sub leading-none mx-0.5">{cleanSub}</sub>)
-      return `__${id}__`
-    })
-
-    // Greek letters and symbols (expanded list)
-    const symbols = {
-      // Greek lowercase
-      '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ',
-      '\\epsilon': 'ε', '\\varepsilon': 'ε', '\\zeta': 'ζ', '\\eta': 'η',
-      '\\theta': 'θ', '\\vartheta': 'θ', '\\iota': 'ι', '\\kappa': 'κ',
-      '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ',
-      '\\pi': 'π', '\\varpi': 'π', '\\rho': 'ρ', '\\varrho': 'ρ',
-      '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
-      '\\phi': 'φ', '\\varphi': 'φ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
-      
-      // Greek uppercase
-      '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ',
-      '\\Xi': 'Ξ', '\\Pi': 'Π', '\\Sigma': 'Σ', '\\Upsilon': 'Υ',
-      '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω',
-      
-      // Math operators
-      '\\pm': '±', '\\mp': '∓', '\\times': '×', '\\div': '÷',
-      '\\cdot': '·', '\\ast': '∗', '\\star': '⋆', '\\dagger': '†',
-      '\\ddagger': '‡', '\\amalg': '∐', '\\cap': '∩', '\\cup': '∪',
-      '\\uplus': '⊎', '\\sqcap': '⊓', '\\sqcup': '⊔', '\\vee': '∨',
-      '\\wedge': '∧', '\\oplus': '⊕', '\\ominus': '⊖', '\\otimes': '⊗',
-      '\\circ': '∘', '\\bullet': '∙',
-      
-      // Relations
-      '\\leq': '≤', '\\le': '≤', '\\geq': '≥', '\\ge': '≥',
-      '\\neq': '≠', '\\ne': '≠', '\\sim': '∼', '\\not\\sim': '≁',
-      '\\simeq': '≃', '\\approx': '≈', '\\cong': '≅', '\\equiv': '≡',
-      '\\prec': '≺', '\\succ': '≻', '\\preceq': '≼', '\\succeq': '≽',
-      '\\subset': '⊂', '\\supset': '⊃', '\\subseteq': '⊆', '\\supseteq': '⊇',
-      '\\in': '∈', '\\ni': '∋', '\\notin': '∉', '\\propto': '∝',
-      
-      // Arrows
-      '\\leftarrow': '←', '\\gets': '←', '\\rightarrow': '→', '\\to': '→',
-      '\\leftrightarrow': '↔', '\\Leftarrow': '⇐', '\\Rightarrow': '⇒',
-      '\\Leftrightarrow': '⇔', '\\mapsto': '↦', '\\hookleftarrow': '↩',
-      '\\hookrightarrow': '↪', '\\leftharpoonup': '↼', '\\rightharpoonup': '⇀',
-      '\\leftharpoondown': '↽', '\\rightharpoondown': '⇁', '\\rightleftharpoons': '⇌',
-      
-      // Other symbols
-      '\\infty': '∞', '\\partial': '∂', '\\nabla': '∇', '\\emptyset': '∅',
-      '\\varnothing': '∅', '\\wp': '℘', '\\Re': 'ℜ', '\\Im': 'ℑ',
-      '\\mho': '℧', '\\prime': '′', '\\ldots': '…', '\\cdots': '⋯',
-      '\\vdots': '⋮', '\\ddots': '⋱', '\\forall': '∀', '\\exists': '∃',
-      '\\nexists': '∄', '\\neg': '¬', '\\lnot': '¬', '\\flat': '♭',
-      '\\natural': '♮', '\\sharp': '♯', '\\clubsuit': '♣', '\\diamondsuit': '♢',
-      '\\heartsuit': '♡', '\\spadesuit': '♠',
-      
-      // Functions
-      '\\sin': 'sin', '\\cos': 'cos', '\\tan': 'tan', '\\cot': 'cot',
-      '\\sec': 'sec', '\\csc': 'csc', '\\arcsin': 'arcsin', '\\arccos': 'arccos',
-      '\\arctan': 'arctan', '\\sinh': 'sinh', '\\cosh': 'cosh', '\\tanh': 'tanh',
-      '\\log': 'log', '\\ln': 'ln', '\\lg': 'lg', '\\exp': 'exp',
-      '\\max': 'max', '\\min': 'min', '\\sup': 'sup', '\\inf': 'inf',
-      '\\lim': 'lim', '\\limsup': 'lim sup', '\\liminf': 'lim inf',
-      '\\dim': 'dim', '\\ker': 'ker', '\\hom': 'hom', '\\arg': 'arg',
-      '\\deg': 'deg', '\\det': 'det', '\\gcd': 'gcd', '\\lcm': 'lcm'
-    }
-
-    for (const [latex, symbol] of Object.entries(symbols)) {
-      remaining = remaining.replace(new RegExp(latex.replace('\\', '\\\\'), 'g'), symbol)
-    }
-
-    // Split by placeholders and rebuild
-    const parts = remaining.split(/(__[A-Z_0-9]+__)/g)
-    const finalResult: (string | React.ReactNode)[] = []
-
-    parts.forEach(part => {
-      if (part.startsWith('__') && part.endsWith('__')) {
-        // Find corresponding element
-        const element = result.find(el => 
-          el && typeof el === 'object' && 'key' in el && el.key === part.slice(2, -2)
-        )
-        if (element) {
-          finalResult.push(element)
-        }
-      } else if (part) {
-        finalResult.push(part)
-      }
-    })
-
-    return finalResult.length > 0 ? finalResult : [remaining]
-  }
-
-  return (
-    <span className="font-serif text-base leading-relaxed inline-block align-middle">
-      {parseMath(content)}
-    </span>
-  )
-}
-
-// Enhanced markdown renderer
-const MarkdownRenderer = ({ content }: { content: string }) => {
-  if (!content) return null
-
-  const lines = content.split('\n')
-  const elements: React.ReactElement[] = []
-  let currentList: React.ReactElement[] = []
-  let listType: 'bullet' | 'number' | null = null
-
-  const flushList = () => {
-    if (currentList.length > 0) {
-      if (listType === 'number') {
-        elements.push(
-          <ol key={`list-${elements.length}`} className="mb-6 space-y-3 pl-4">
-            {currentList}
-          </ol>
-        )
-      } else if (listType === 'bullet') {
-        elements.push(
-          <ul key={`list-${elements.length}`} className="mb-6 space-y-3 pl-4">
-            {currentList}
-          </ul>
-        )
-      }
-      currentList = []
-      listType = null
-    }
-  }
-
-  const renderInlineContent = (text: string) => {
-    // Process text through multiple passes for different math formats
-    let processedText = text
-
-    // First pass: Handle LaTeX-style inline math $formula$
-    const inlineMathRegex = /\$([^$]+)\$/g
-    const inlineMathParts = processedText.split(inlineMathRegex)
-    
-    return inlineMathParts.map((part, i) => {
-      if (i % 2 === 1) {
-        // This is an inline LaTeX formula
-        return (
-          <span 
-            key={`inline-${i}`} 
-            className="inline-block bg-blue-50 text-gray-800 px-2 py-1 border mx-1 font-serif text-base"
-          >
-            <MathRenderer content={part} />
-          </span>
-        )
-      } else {
-        // Process this part for other formats
-        return processOtherFormats(part, i)
-      }
-    })
-  }
-
-  const processOtherFormats = (text: string, baseIndex: number) => {
-    // Handle backtick formulas and other markdown
-    const codeRegex = /`([^`]+)`/g
-    const parts = text.split(codeRegex)
-    
-    return parts.map((part, i) => {
-      if (i % 2 === 1) {
-        // This is a backtick formula/code block
-        return (
-          <span 
-            key={`${baseIndex}-code-${i}`} 
-            className="inline-block bg-gray-100 text-gray-800 px-3 py-2 border mx-1 font-serif text-base"
-          >
-            <MathRenderer content={part} />
-          </span>
-        )
-      } else {
-        // Handle other markdown formatting
-        return processTextFormatting(part, `${baseIndex}-${i}`)
-      }
-    })
-  }
-
-  const processTextFormatting = (text: string, keyPrefix: string) => {
-    // Handle bold text **text**
-    const boldRegex = /\*\*(.*?)\*\*/g
-    const boldParts = text.split(boldRegex)
-    
-    return boldParts.map((segment, j) => {
-      if (j % 2 === 1) {
-        return <strong key={`${keyPrefix}-bold-${j}`} className="font-semibold text-gray-900">{segment}</strong>
-      } else {
-        // Handle italic text *text*
-        const italicRegex = /\*([^*]+)\*/g
-        const italicParts = segment.split(italicRegex)
-        
-        return italicParts.map((italicSegment, k) => {
-          if (k % 2 === 1) {
-            return <em key={`${keyPrefix}-italic-${j}-${k}`} className="italic text-gray-800">{italicSegment}</em>
-          } else {
-            // Handle inline code without math
-            const inlineCodeRegex = /(?<!`)`([^`\$]+)`(?!`)/g
-            const codeParts = italicSegment.split(inlineCodeRegex)
-            
-            return codeParts.map((codePart, l) => {
-              if (l % 2 === 1) {
-                return (
-                  <code key={`${keyPrefix}-inlinecode-${j}-${k}-${l}`} className="bg-gray-200 text-gray-800 px-1 py-0.5 text-sm font-mono">
-                    {codePart}
-                  </code>
-                )
-              }
-              return codePart
-            })
-          }
-        })
-      }
-    })
-  }
-
-  lines.forEach((line, index) => {
-    const trimmedLine = line.trim()
-    
-    if (!trimmedLine) {
-      flushList()
-      elements.push(<div key={index} className="mb-4" />)
-      return
-    }
-
-    // Handle numbered lists
-    const numberedMatch = trimmedLine.match(/^(\d+)\.\s*(.+)$/)
-    if (numberedMatch) {
-      if (listType !== 'number') {
-        flushList()
-        listType = 'number'
-      }
-      const [, , content] = numberedMatch
-      currentList.push(
-        <li key={index} className="text-sm text-gray-700 leading-relaxed">
-          {renderInlineContent(content)}
-        </li>
-      )
-      return
-    }
-
-    // Handle bullet points
-    const bulletMatch = trimmedLine.match(/^[-*]\s*(.+)$/)
-    if (bulletMatch) {
-      const content = bulletMatch[1]
-      
-      // Check if it's a standalone formula line (backtick or LaTeX style)
-      if (content.startsWith(':') || content.match(/^\$.*\$/)) {
-        flushList()
-        let formula = content
-        if (content.startsWith(':')) {
-          formula = content.substring(1).trim()
-        } else if (content.match(/^\$.*\$/)) {
-          formula = content.slice(1, -1) // Remove $ delimiters
-        }
-        elements.push(
-          <div key={index} className="mb-6 flex justify-center">
-            <div className="bg-gray-50 border-2 border-gray-300 px-8 py-6 text-center font-serif text-lg shadow-sm">
-              <MathRenderer content={formula} />
-            </div>
-          </div>
-        )
-        return
-      }
-      
-      // Regular bullet point
-      if (listType !== 'bullet') {
-        flushList()
-        listType = 'bullet'
-      }
-      currentList.push(
-        <li key={index} className="text-sm text-gray-700 leading-relaxed list-disc ml-4">
-          {renderInlineContent(content)}
-        </li>
-      )
-      return
-    }
-
-    // Check for standalone display formulas (LaTeX style $formula$ or block formulas)
-    const displayMathMatch = trimmedLine.match(/^\$\$(.+)\$\$/)
-    if (displayMathMatch) {
-      flushList()
-      const formula = displayMathMatch[1]
-      elements.push(
-        <div key={index} className="mb-6 flex justify-center">
-          <div className="bg-blue-50 border-2 border-blue-200 px-8 py-6 text-center font-serif text-xl shadow-sm">
-            <MathRenderer content={formula} />
+    if (isBlock) {
+      return (
+        <div className="mb-6 flex justify-center">
+          <div className="bg-gray-50 border-2 border-gray-300 px-8 py-6 text-center shadow-sm">
+            <code className="font-mono text-sm text-gray-800">{children}</code>
           </div>
         </div>
       )
-      return
     }
-
-    // Regular paragraph
-    flushList()
-    elements.push(
-      <p key={index} className="mb-4 text-sm text-gray-700 leading-relaxed">
-        {renderInlineContent(trimmedLine)}
-      </p>
+    
+    return (
+      <code className="bg-gray-200 text-gray-800 px-1 py-0.5 text-sm font-mono mx-0.5">
+        {children}
+      </code>
     )
-  })
-
-  flushList()
-  return <>{elements}</>
+  },
+  
+  // Pre blocks
+  pre: ({ children }: any) => (
+    <div className="mb-6 flex justify-center">
+      <div className="bg-gray-50 border-2 border-gray-300 px-8 py-6 text-center shadow-sm">
+        {children}
+      </div>
+    </div>
+  ),
+  
+  // Text formatting
+  em: ({ children }: any) => (
+    <em className="italic text-gray-800">
+      {children}
+    </em>
+  ),
+  strong: ({ children }: any) => (
+    <strong className="font-semibold text-gray-900">
+      {children}
+    </strong>
+  ),
+  
+  // Blockquotes
+  blockquote: ({ children }: any) => (
+    <blockquote className="border-l-4 border-blue-200 bg-blue-50 pl-4 py-2 mb-4 italic text-gray-700">
+      {children}
+    </blockquote>
+  ),
+  
+  // Tables
+  table: ({ children }: any) => (
+    <div className="overflow-x-auto mb-6">
+      <table className="min-w-full border border-gray-200">{children}</table>
+    </div>
+  ),
+  th: ({ children }: any) => (
+    <th className="border border-gray-200 bg-gray-50 px-3 py-2 text-left font-medium text-gray-900">
+      {children}
+    </th>
+  ),
+  td: ({ children }: any) => (
+    <td className="border border-gray-200 px-3 py-2 text-sm text-gray-700">
+      {children}
+    </td>
+  ),
+  
+  // Math display blocks (KaTeX will handle these)
+  div: ({ children, className }: any) => {
+    if (className === 'math math-display') {
+      return (
+        <div className="mb-6 flex justify-center">
+          <div className="bg-blue-50 border-2 border-blue-200 px-8 py-6 text-center shadow-sm">
+            {children}
+          </div>
+        </div>
+      )
+    }
+    return <div className={className}>{children}</div>
+  },
+  
+  // Inline math spans (KaTeX will handle these)
+  span: ({ children, className }: any) => {
+    if (className === 'math math-inline') {
+      return (
+        <span className="inline-flex items-baseline bg-gray-100 text-gray-800 px-2 py-1 border mx-1">
+          {children}
+        </span>
+      )
+    }
+    return <span className={className}>{children}</span>
+  }
 }
 
 interface SectionCardProps {
@@ -404,6 +157,9 @@ interface SectionCardProps {
 }
 
 function SectionCard({ title, emoji, content, fullWidth = false }: SectionCardProps) {
+  // Clean the content by removing extra quotes
+  const cleanContent = content.replace(/^["']|["']$/g, '').trim()
+  
   return (
     <div className="bg-white border border-gray-200 hover:border-gray-400 transition-all duration-500 ease-out hover:shadow-lg group">
       <div className="p-6">
@@ -412,8 +168,14 @@ function SectionCard({ title, emoji, content, fullWidth = false }: SectionCardPr
           <h3 className="font-mono font-medium text-xl group-hover:text-black transition-colors">{title}</h3>
         </div>
         
-        <div className="text-gray-800">
-          <MarkdownRenderer content={content.replace(/['"]/g, '')} />
+        <div className="text-gray-800 prose prose-sm max-w-none">
+          <ReactMarkdown 
+            components={MarkdownComponents}
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {cleanContent}
+          </ReactMarkdown>
         </div>
       </div>
     </div>
@@ -434,6 +196,9 @@ export default function TheoryComponent({ theoryData, onNext }: TheoryComponentP
     
     return () => clearInterval(interval)
   }, [])
+
+  // Clean the topic name
+  const cleanTopicName = theoryData.topic_name.replace(/^["']|["']$/g, '').trim()
 
   return (
     <div className="min-h-screen bg-gray-50 text-black font-mono">
@@ -460,7 +225,7 @@ export default function TheoryComponent({ theoryData, onNext }: TheoryComponentP
         <div className="text-center mb-10">
           <div className="text-6xl mb-6 transition-all duration-500">{catAnimation}</div>
           <h2 className="text-4xl font-light mb-4 text-gray-900">
-            {theoryData.topic_name.replace(/['"]/g, '')}
+            {cleanTopicName}
           </h2>
           <p className="text-xl text-gray-600 font-light mb-2">
             Master the fundamentals, one paw at a time
