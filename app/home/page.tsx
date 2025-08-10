@@ -232,9 +232,9 @@ export default function HomePage() {
 
   const calculateTotalQuestions = (profile: UserProfile) => {
     return profile.coding_questions_attempted +
-           profile.technical_questions_attempted +
-           profile.fundamental_questions_attempted +
-           profile.aptitude_questions_attempted +
+           Math.floor(profile.technical_questions_attempted / 50) +
+           Math.floor(profile.fundamental_questions_attempted / 50) +
+           Math.floor(profile.aptitude_questions_attempted / 50) +
            profile.hr_questions_attempted +
            profile.artificial_intelligence_questions_attempted +
            profile.blueprint_questions_attempted
@@ -365,7 +365,7 @@ export default function HomePage() {
           <ProgressCard
             title="Aptitude Tests"
             emoji="🧮"
-            current={profile.aptitude_questions_attempted}
+            current={Math.floor(profile.aptitude_questions_attempted / 50)}
             total={50}
             subtitle="Sharp as a cat's claw logic"
             onClick={() => router.push('/aptitude')}
@@ -383,7 +383,7 @@ export default function HomePage() {
           <ProgressCard
             title="Technical Questions"
             emoji="⚙️"
-            current={profile.technical_questions_attempted}
+            current={Math.floor(profile.technical_questions_attempted / 50)}
             total={50}
             subtitle="Technical prowess that's paw-some"
             onClick={() => router.push('/technical')}
@@ -401,7 +401,7 @@ export default function HomePage() {
           <ProgressCard
             title="Fundamental Questions"
             emoji="📚"
-            current={profile.fundamental_questions_attempted}
+            current={Math.floor(profile.fundamental_questions_attempted / 50)}
             total={50}
             subtitle="Master the cat-egories of knowledge"
             onClick={() => router.push('/fundamentals')}
@@ -429,7 +429,7 @@ export default function HomePage() {
             title="Tech Topics Mastered"
             emoji="🧠"
             current={profile.tech_topics_covered}
-            total={25}
+            total={50}
             subtitle="Curiosity didn't kill this cat"
             onClick={() => router.push('/topics')}
           />
