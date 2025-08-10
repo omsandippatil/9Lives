@@ -29,11 +29,48 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// In-memory cache for UID mapping (email -> UID)
+// This will persist for the lifetime of the server process
+const uidCache = new Map<string, string>()
+
+// Cache expiry tracking (optional - for cleanup if needed)
+const cacheTimestamps = new Map<string, number>()
+
+// Helper function to get cached UID
+function getCachedUID(email: string): string | null {
+  const normalizedEmail = email.toLowerCase().trim()
+  return uidCache.get(normalizedEmail) || null
+}
+
+// Helper function to cache UID
+function cacheUID(email: string, uid: string): void {
+  const normalizedEmail = email.toLowerCase().trim()
+  uidCache.set(normalizedEmail, uid)
+  cacheTimestamps.set(normalizedEmail, Date.now())
+  console.log(`Cached UID for ${normalizedEmail}: ${uid}`)
+}
+
+// Helper function to get specific user data only
+async function getSpecificUserData(uid: string) {
+  const { data: userProfile, error: profileError } = await supabaseAdmin
+    .from('users')
+    .select('id, email, current_streak, total_points')
+    .eq('id', uid)
+    .single()
+
+  if (profileError) {
+    console.error('Failed to fetch specific user data:', profileError)
+    return null
+  }
+
+  return userProfile
+}
+
 export async function POST(request: NextRequest) {
   console.log('=== LOGIN ROUTE STARTED ===')
   console.log('Request method:', request.method)
   console.log('Request URL:', request.url)
-  console.log('Request headers:', Object.fromEntries(request.headers.entries()))
+  console.log('Current cache size:', uidCache.size)
 
   try {
     // Test if we can parse the request body
@@ -63,6 +100,24 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Login attempt for:', email)
+    const normalizedEmail = email.toLowerCase().trim()
+
+    // Check if we have cached UID first
+    let cachedUID = getCachedUID(normalizedEmail)
+    if (cachedUID) {
+      console.log(`Found cached UID for ${normalizedEmail}: ${cachedUID}`)
+      
+      // Verify the cached UID still exists and get minimal data
+      const specificUserData = await getSpecificUserData(cachedUID)
+      if (!specificUserData) {
+        console.log('Cached UID is stale, removing from cache')
+        uidCache.delete(normalizedEmail)
+        cacheTimestamps.delete(normalizedEmail)
+        cachedUID = null
+      } else {
+        console.log('Cached UID is valid, proceeding with fast path')
+      }
+    }
 
     // Test database connection first
     console.log('Testing database connection...')
@@ -89,17 +144,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Check if user exists in your custom users table
-    console.log('Querying users table for email:', email)
+    // Only fetch minimal data needed for authentication
+    console.log('Querying users table for email:', normalizedEmail)
     const { data: userRecord, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, email, password_hash')
-      .eq('email', email.toLowerCase().trim())
+      .eq('email', normalizedEmail)
       .single()
 
     console.log('User query result:', {
       found: !!userRecord,
       error: userError?.message,
-      errorCode: userError?.code
+      errorCode: userError?.code,
+      hasCachedUID: !!cachedUID,
+      uidMatch: cachedUID === userRecord?.id
     })
 
     if (userError || !userRecord) {
@@ -112,6 +170,11 @@ export async function POST(request: NextRequest) {
           errorCode: userError?.code
         }
       }, { status: 401 })
+    }
+
+    // Cache the UID immediately when we find the user
+    if (userRecord.id) {
+      cacheUID(normalizedEmail, userRecord.id)
     }
 
     // Step 2: Verify password
@@ -128,14 +191,14 @@ export async function POST(request: NextRequest) {
     console.log('Password verification result:', passwordMatch)
 
     if (!passwordMatch) {
-      console.log('Password mismatch for user:', email)
+      console.log('Password mismatch for user:', normalizedEmail)
       return NextResponse.json({ 
         error: 'Invalid email or password',
         debug: 'Password mismatch'
       }, { status: 401 })
     }
 
-    console.log('Password verified for user:', email)
+    console.log('Password verified for user:', normalizedEmail)
 
     // Step 3: Handle Supabase Auth
     let authUser = null
@@ -147,7 +210,7 @@ export async function POST(request: NextRequest) {
       // First try to sign in with existing credentials
       console.log('Attempting sign in...')
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
         password
       })
 
@@ -161,6 +224,11 @@ export async function POST(request: NextRequest) {
         authUser = signInData.user
         authSession = signInData.session
         console.log('Successfully signed in existing user')
+        
+        // Update cache with auth UID if different
+        if (authUser.id !== userRecord.id) {
+          cacheUID(normalizedEmail, authUser.id)
+        }
       } else {
         console.log('Sign in failed, checking if user exists in auth...')
         
@@ -172,7 +240,7 @@ export async function POST(request: NextRequest) {
           console.log('Found', users?.length || 0, 'users in auth system')
         }
         
-        const existingAuthUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
+        const existingAuthUser = users?.find(u => u.email?.toLowerCase() === normalizedEmail)
         
         if (existingAuthUser) {
           console.log('User exists in auth, updating password...')
@@ -188,7 +256,7 @@ export async function POST(request: NextRequest) {
             console.log('Password updated, trying sign in again...')
             // Try signing in again with updated password
             const { data: retrySignIn, error: retryError } = await supabase.auth.signInWithPassword({
-              email: email.toLowerCase().trim(),
+              email: normalizedEmail,
               password
             })
             
@@ -196,6 +264,9 @@ export async function POST(request: NextRequest) {
               authUser = retrySignIn.user
               authSession = retrySignIn.session
               console.log('Successfully signed in after password update')
+              
+              // Update cache with correct UID
+              cacheUID(normalizedEmail, authUser.id)
             } else {
               console.error('Still failed to sign in after password update:', retryError)
             }
@@ -204,7 +275,7 @@ export async function POST(request: NextRequest) {
           // Create new user in Supabase Auth
           console.log('Creating new auth user...')
           const { data: newAuthData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-            email: email.toLowerCase().trim(),
+            email: normalizedEmail,
             password: password,
             email_confirm: true,
             user_metadata: {
@@ -224,10 +295,15 @@ export async function POST(request: NextRequest) {
           authUser = newAuthData.user
           console.log('Created new auth user:', authUser?.id)
 
+          // Cache the new auth UID
+          if (authUser?.id) {
+            cacheUID(normalizedEmail, authUser.id)
+          }
+
           // Sign them in to get a session
           console.log('Signing in newly created user...')
           const { data: newSignInData, error: newSignInError } = await supabase.auth.signInWithPassword({
-            email: email.toLowerCase().trim(),
+            email: normalizedEmail,
             password
           })
 
@@ -273,39 +349,27 @@ export async function POST(request: NextRequest) {
       const { error: updateError } = await supabaseAdmin
         .from('users')
         .update({ id: authUser.id })
-        .eq('email', email.toLowerCase().trim())
+        .eq('email', normalizedEmail)
 
       if (updateError) {
         console.error('Failed to update user ID:', updateError)
         // Don't fail the login for this, but log it
       } else {
         console.log('Successfully updated user ID in users table')
+        // Update cache with the correct UID
+        cacheUID(normalizedEmail, authUser.id)
       }
     }
 
-    // Step 5: Get full user profile using the auth UUID
-    console.log('Fetching user profile...')
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('users')
-      .select(`
-        id,
-        email,
-        coding_questions_attempted,
-        technical_questions_attempted,
-        fundamental_questions_attempted,
-        tech_topics_covered,
-        current_streak,
-        total_points,
-        created_at,
-        updated_at
-      `)
-      .eq('id', authUser.id)
-      .single()
+    // Step 5: Get only specific user data we need
+    console.log('Fetching specific user profile data...')
+    const userProfile = await getSpecificUserData(authUser.id)
 
-    if (profileError) {
-      console.error('Failed to fetch user profile:', profileError)
+    if (!userProfile) {
+      console.error('Failed to fetch user profile')
+      // Don't fail login, but note the issue
     } else {
-      console.log('User profile fetched successfully')
+      console.log('Specific user profile data fetched successfully')
     }
 
     // Prepare response with tokens for client-side access
@@ -327,7 +391,11 @@ export async function POST(request: NextRequest) {
           email: authUser.email
         }
       },
-      debug: 'Login completed successfully'
+      debug: {
+        message: 'Login completed successfully',
+        cacheSize: uidCache.size,
+        uidFromCache: !!cachedUID
+      }
     }
 
     const response = NextResponse.json(responseData)
@@ -379,6 +447,8 @@ export async function POST(request: NextRequest) {
     })
 
     console.log('Login successful for user:', authUser.id)
+    console.log('UID cached permanently for:', normalizedEmail)
+    console.log('Current cache entries:', Array.from(uidCache.keys()).length)
     console.log('Set cookies:', {
       secure: ['supabase-access-token', 'supabase-refresh-token', 'supabase-user-id', 'supabase-user-email'],
       client: ['client-access-token', 'client-user-id', 'client-user-email', 'auth-session']
@@ -412,4 +482,18 @@ export async function OPTIONS(request: NextRequest) {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   })
+}
+
+// Export helper functions for accessing cached UIDs from other routes
+export function getCachedUserID(email: string): string | null {
+  return getCachedUID(email)
+}
+
+// Export function to get cache stats
+export function getCacheStats() {
+  return {
+    size: uidCache.size,
+    entries: Array.from(uidCache.keys()),
+    timestamps: Array.from(cacheTimestamps.entries())
+  }
 }

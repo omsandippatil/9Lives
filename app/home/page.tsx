@@ -1,32 +1,23 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import { inspirationalQuotes } from './quotes'
 
 interface UserProfile {
   id: string
   email: string
-  coding_questions_atteFindmpted: number
+  coding_questions_attempted: number
   technical_questions_attempted: number
   fundamental_questions_attempted: number
-  aptitude_questions_attempted?: number
+  aptitude_questions_attempted: number
+  language_covered: number
+  hr_questions_attempted: number
+  artificial_intelligence_questions_attempted: number
+  blueprint_questions_attempted: number
   tech_topics_covered: number
   current_streak: [string, number] // [date, days] format
-  total_fish: number
-  total_points: number // Added total_points field
-  total_questions_attempted: number
-  categories: {
-    coding: number
-    technical: number
-    fundamental: number
-    aptitude: number
-  }
-  progress: {
-    tech_topics_covered: number
-    current_streak: [string, number]
-    total_fish: number
-    total_points: number // Added total_points to progress
-  }
+  total_points: number
   created_at: string
   updated_at: string
 }
@@ -43,6 +34,25 @@ interface ProgressCardProps {
 interface StreakDisplayProps {
   streakData: [string, number]
 }
+
+// Helper function to read cookies
+const getCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null
+  
+  const cookies = document.cookie.split(';')
+  const cookie = cookies.find(cookie => cookie.trim().startsWith(`${name}=`))
+  return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
+}
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables')
+}
+
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
 
 function StreakDisplay({ streakData }: StreakDisplayProps) {
   const [streakDate, streakDays] = streakData
@@ -110,7 +120,6 @@ export default function HomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [catAnimation, setCatAnimation] = useState('😺')
   const [currentQuote, setCurrentQuote] = useState('')
   const router = useRouter()
@@ -135,92 +144,100 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    checkAuthAndFetchProfile()
+    loadUserProfile()
   }, [])
 
-  const checkAuthAndFetchProfile = async () => {
+  const loadUserProfile = async () => {
     try {
-      console.log('Checking authentication and fetching profile...')
-      
-      // First, try cookie-based authentication (our new primary method)
-      const response = await fetch('/api/auth/profile', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include' // Essential for cookie-based auth
-      })
-
-      console.log('Profile API response status:', response.status)
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log('Profile data received:', data)
-        
-        if (data.profile) {
-          setProfile(data.profile)
-          setIsAuthenticated(true)
-        } else {
-          throw new Error('No profile data received')
-        }
-      } else {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error('Profile API Error:', errorData)
-        
-        if (response.status === 401) {
-          console.log('Not authenticated, user needs to login')
-          setIsAuthenticated(false)
-          setError('Please log in to continue')
-        } else if (response.status === 404) {
-          console.log('User profile not found in database')
-          setError('User profile not found. Please contact support.')
-        } else {
-          throw new Error(errorData.error || errorData.details || `HTTP ${response.status}`)
-        }
+      // Check if Supabase is properly initialized
+      if (!supabase) {
+        setError('Database connection not available')
+        setLoading(false)
+        return
       }
+
+      // Get user ID from client-accessible cookie or localStorage
+      let userId = getCookie('client-user-id') || localStorage.getItem('client-user-id') || localStorage.getItem('supabase-user-id')
       
+      if (!userId) {
+        setError('User not authenticated')
+        setLoading(false)
+        return
+      }
+
+      console.log('Fetching user profile for ID:', userId)
+
+      // Fetch user data directly from Supabase
+      const { data: userProfile, error: profileError } = await supabase
+        .from('users')
+        .select(`
+          id,
+          email,
+          coding_questions_attempted,
+          technical_questions_attempted,
+          fundamental_questions_attempted,
+          aptitude_questions_attempted,
+          language_covered,
+          hr_questions_attempted,
+          artificial_intelligence_questions_attempted,
+          blueprint_questions_attempted,
+          tech_topics_covered,
+          current_streak,
+          total_points,
+          created_at,
+          updated_at
+        `)
+        .eq('id', userId)
+        .single()
+
+      if (profileError || !userProfile) {
+        console.error('Failed to fetch user profile:', profileError)
+        if (profileError?.code === 'PGRST116') {
+          setError('User profile not found')
+        } else {
+          setError('Failed to load user profile: ' + (profileError?.message || 'Unknown error'))
+        }
+        setLoading(false)
+        return
+      }
+
+      console.log('User profile loaded successfully:', userProfile)
+      setProfile(userProfile)
+      setLoading(false)
     } catch (err) {
-      console.error('Profile fetch error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load profile')
-      setIsAuthenticated(false)
-    } finally {
+      console.error('Profile load error:', err)
+      setError('Failed to load profile: ' + (err instanceof Error ? err.message : 'Unknown error'))
       setLoading(false)
     }
   }
 
   const handleLogout = async () => {
     try {
-      console.log('Logging out...')
-      
-      const response = await fetch('/api/auth/logout', { 
+      // Call logout API
+      await fetch('/api/auth/logout', { 
         method: 'POST',
-        credentials: 'include' // Important for cookie-based auth
+        credentials: 'include'
       })
-      
-      if (response.ok) {
-        console.log('Logout successful')
-      } else {
-        console.warn('Logout request failed, but proceeding with client cleanup')
-      }
-      
-      // Clear any client-side storage (just in case)
-      if (typeof window !== 'undefined') {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
-      
-      // Redirect to login
-      router.push('/login')
-      
     } catch (err) {
-      console.error('Logout error:', err)
-      // Even if logout fails, clear storage and redirect
-      if (typeof window !== 'undefined') {
-        localStorage.clear()
-        sessionStorage.clear()
-      }
-      router.push('/login')
+      console.error('Logout API error:', err)
     }
+    
+    // Clear local storage
+    localStorage.clear()
+    sessionStorage.clear()
+    
+    // Redirect to login
+    router.push('/login')
+  }
+
+  const calculateTotalQuestions = (profile: UserProfile) => {
+    return profile.coding_questions_attempted +
+           profile.technical_questions_attempted +
+           profile.fundamental_questions_attempted +
+           profile.aptitude_questions_attempted +
+           profile.hr_questions_attempted +
+           profile.artificial_intelligence_questions_attempted +
+           profile.blueprint_questions_attempted
   }
 
   if (loading) {
@@ -237,14 +254,12 @@ export default function HomePage() {
     )
   }
 
-  if (error || !isAuthenticated) {
+  if (error) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center max-w-md">
           <div className="text-6xl mb-6 animate-bounce">😿</div>
-          <p className="font-mono text-red-400 mb-8">
-            {error || "Authentication required"}
-          </p>
+          <p className="font-mono text-red-400 mb-8">{error}</p>
           <div className="space-y-4">
             <button 
               onClick={() => router.push('/login')}
@@ -253,7 +268,7 @@ export default function HomePage() {
               Go to Login
             </button>
             <button 
-              onClick={checkAuthAndFetchProfile}
+              onClick={loadUserProfile}
               className="w-full py-4 border border-gray-200 font-mono hover:border-black hover:bg-gray-50 transition-all duration-300"
             >
               Try Again
@@ -271,7 +286,7 @@ export default function HomePage() {
           <div className="text-6xl mb-6">😾</div>
           <p className="font-mono text-gray-600 mb-6">No profile data available.</p>
           <button 
-            onClick={checkAuthAndFetchProfile}
+            onClick={loadUserProfile}
             className="py-3 px-6 bg-black text-white font-mono hover:bg-gray-800 transition-colors"
           >
             Reload Profile
@@ -280,6 +295,8 @@ export default function HomePage() {
       </div>
     )
   }
+
+  const totalQuestions = calculateTotalQuestions(profile)
 
   return (
     <div className="min-h-screen bg-white text-black font-mono">
@@ -292,10 +309,10 @@ export default function HomePage() {
           </div>
           
           <div className="flex items-center gap-8">
-            <StreakDisplay streakData={profile.progress.current_streak} />
+            <StreakDisplay streakData={profile.current_streak} />
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
-              <p className="text-lg font-light">{profile.total_points || profile.progress.total_points || 0} 🐟</p>
+              <p className="text-lg font-light">{profile.total_points} 🐟</p>
             </div>
             <button 
               onClick={() => router.push('/leaderboard')}
@@ -330,55 +347,88 @@ export default function HomePage() {
             Ready to pounce on some new challenges?
           </p>
           <p className="text-sm text-gray-400 font-light">
-            {profile.total_questions_attempted} questions conquered • {9 - (profile.progress.current_streak[1] % 9)} lives remaining
+            {totalQuestions} questions conquered • {9 - (profile.current_streak[1] % 9)} lives remaining
           </p>
         </div>
 
-        {/* Progress Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-8 px-6">
+        {/* Progress Cards Grid - All 9 Categories in Specified Order */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 px-6">
           <ProgressCard
             title="Coding Challenges"
             emoji="💻"
-            current={profile.categories.coding}
+            current={profile.coding_questions_attempted}
             total={200}
             subtitle="Claw your way through algorithms"
             onClick={() => router.push('/coding')}
           />
           
           <ProgressCard
+            title="Aptitude Tests"
+            emoji="🧮"
+            current={profile.aptitude_questions_attempted}
+            total={50}
+            subtitle="Sharp as a cat's claw logic"
+            onClick={() => router.push('/aptitude')}
+          />
+
+          <ProgressCard
+            title="Languages Covered"
+            emoji="🌐"
+            current={profile.language_covered}
+            total={100}
+            subtitle="Multilingual mastery meow-nificent"
+            onClick={() => router.push('/languages')}
+          />
+          
+          <ProgressCard
             title="Technical Questions"
             emoji="⚙️"
-            current={profile.categories.technical}
+            current={profile.technical_questions_attempted}
             total={50}
             subtitle="Technical prowess that's paw-some"
             onClick={() => router.push('/technical')}
+          />
+
+          <ProgressCard
+            title="HR Questions"
+            emoji="👥"
+            current={profile.hr_questions_attempted}
+            total={50}
+            subtitle="People skills with purr-sonality"
+            onClick={() => router.push('/hr')}
           />
           
           <ProgressCard
             title="Fundamental Questions"
             emoji="📚"
-            current={profile.categories.fundamental}
+            current={profile.fundamental_questions_attempted}
             total={50}
             subtitle="Master the cat-egories of knowledge"
             onClick={() => router.push('/fundamentals')}
           />
-          
-          <ProgressCard
-            title="Aptitude Tests"
-            emoji="🧮"
-            current={profile.categories.aptitude}
-            total={50}
-            subtitle="Sharp as a cat's claw logic"
-            onClick={() => router.push('/aptitude')}
-          />
-        </div>
 
-        {/* Tech Topics Card */}
-        <div className="px-6 mb-8">
+          <ProgressCard
+            title="AI Roadmaps"
+            emoji="🤖"
+            current={profile.artificial_intelligence_questions_attempted}
+            total={50}
+            subtitle="Artificial intelligence roadmaps, real results"
+            onClick={() => router.push('/ai-roadmaps')}
+          />
+
+          <ProgressCard
+            title="Blueprint Roadmaps"
+            emoji="📐"
+            current={profile.blueprint_questions_attempted}
+            total={50}
+            subtitle="Architectural roadmaps that's claw-some"
+            onClick={() => router.push('/blueprint-roadmaps')}
+          />
+
           <ProgressCard
             title="Tech Topics Mastered"
             emoji="🧠"
-            current={profile.progress.tech_topics_covered}
+            current={profile.tech_topics_covered}
             total={25}
             subtitle="Curiosity didn't kill this cat"
             onClick={() => router.push('/topics')}
@@ -392,19 +442,19 @@ export default function HomePage() {
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center max-w-4xl mx-auto">
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.total_questions_attempted}</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{totalQuestions}</div>
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Total Questions</div>
               </div>
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.progress.tech_topics_covered}</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.tech_topics_covered}</div>
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Topics Mastered</div>
               </div>
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.progress.current_streak[1]}</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.current_streak[1]}</div>
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Day Streak</div>
               </div>
               <div className="group">
-                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.total_points || profile.progress.total_points || 0}</div>
+                <div className="text-3xl font-light mb-1 group-hover:scale-110 transition-transform duration-300">{profile.total_points}</div>
                 <div className="text-xs text-gray-500 uppercase tracking-wider">Total Fish</div>
               </div>
             </div>
@@ -418,7 +468,7 @@ export default function HomePage() {
             "{currentQuote}"
           </p>
           <p className="text-sm text-gray-400 font-light">
-            Next milestone: {Math.ceil((profile.total_questions_attempted + 1) / 10) * 10} questions
+            Next milestone: {Math.ceil((totalQuestions + 1) / 10) * 10} questions
           </p>
         </div>
       </main>
