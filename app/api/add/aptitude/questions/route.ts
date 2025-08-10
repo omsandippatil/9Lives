@@ -78,7 +78,7 @@ Use this exact JSON template:
 {
   "topic_name": "${questionData.topic_name}",
   "question": "${questionData.question}",
-  "formula_or_logic": "All formulas in LaTeX: $formula_1$, $formula_2$",
+  "formula_or_logic": "Formulas: $formula_1$, $formula_2$",...,
   "options": ["${correctAnswer}", "wrong_option_1", "wrong_option_2", "wrong_option_3"],
   "explanation": "## Concept Overview\\nBrief intro\\n\\n## Key Formulas\\n$Primary Formula$\\n$Secondary Formula$\\n\\n## Step-by-Step Solution\\n### Step 1: Analysis\\n- What is given\\n- What to find\\n\\n### Step 2: Apply Formula\\n- Use: $formula$\\n- Substitute values\\n\\n### Step 3: Calculate\\n- Show work\\n- Intermediate steps\\n\\n### Step 4: Verify\\n- Check answer\\n\\n## Worked Example\\nSimilar problem with complete solution\\n\\n## Tips & Tricks\\n- **Strategy**: Main approach\\n- **Pitfalls**: Common mistakes\\n- **Shortcuts**: Quick methods\\n\\n## Alternative Methods\\nOther solving approaches",
   "tags": ["topic", "difficulty", "formula_type", "category", "exam"]
