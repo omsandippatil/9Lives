@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import ExplanationPopup from './Popup'
 
 // Initialize Supabase client
@@ -138,202 +142,49 @@ const createConfetti = () => {
   }
 }
 
-// Mathematical formula renderer
-const MathRenderer = ({ content }: { content: string }) => {
-  if (!content) return null
-
-  const parseMath = (text: string): (string | React.ReactNode)[] => {
-    const result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Process fractions
-    const fractionRegex = /\(([^()]*(?:\([^)]*\)[^()]*)*)\)\s*\/\s*\(([^()]*(?:\([^)]*\)[^()]*)*)\)|([a-zA-Z0-9\+\-\*\s]+)\s*\/\s*([a-zA-Z0-9\+\-\*\s]+)/g
-    let lastIndex = 0
-    let match
-
-    while ((match = fractionRegex.exec(remaining)) !== null) {
-      if (match.index > lastIndex) {
-        const beforeText = remaining.slice(lastIndex, match.index)
-        result.push(...parseSimpleMath(beforeText))
-      }
-
-      const numerator = match[1] || match[3] || ''
-      const denominator = match[2] || match[4] || ''
-      
-      result.push(
-        <span key={`fraction-${keyCounter++}`} className="inline-block text-center align-middle mx-1 relative">
-          <span className="block border-b-2 border-gray-700 px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(numerator.trim())}
-          </span>
-          <span className="block px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(denominator.trim())}
-          </span>
-        </span>
+// Custom components for ReactMarkdown
+const MarkdownComponents = {
+  p: ({ children }: any) => (
+    <p className="mb-4 text-sm text-gray-700 leading-relaxed">{children}</p>
+  ),
+  strong: ({ children }: any) => (
+    <strong className="font-semibold text-gray-900">{children}</strong>
+  ),
+  em: ({ children }: any) => (
+    <em className="italic text-gray-800">{children}</em>
+  ),
+  code: ({ children, className }: any) => {
+    // Check if this is an inline code or block code
+    if (className?.includes('language-')) {
+      return (
+        <code className="block bg-gray-100 text-gray-800 p-3 border font-mono text-sm rounded">
+          {children}
+        </code>
       )
-
-      lastIndex = match.index + match[0].length
     }
-
-    if (lastIndex < remaining.length) {
-      result.push(...parseSimpleMath(remaining.slice(lastIndex)))
-    }
-
-    return result
-  }
-
-  const parseSimpleMath = (text: string): (string | React.ReactNode)[] => {
-    if (!text) return []
-    
-    let result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Square roots
-    remaining = remaining.replace(/sqrt\s*\(\s*([^)]+)\s*\)/g, (match, content) => {
-      const id = `SQRT_${keyCounter++}`
-      result.push(
-        <span key={id} className="relative inline-block mx-0.5 text-lg align-middle">
-          √<span className="border-t-2 border-gray-700 pt-0.5 ml-0.5 pl-0.5 pr-0.5 min-w-4 inline-block">
-            {content}
-          </span>
-        </span>
-      )
-      return `__${id}__`
-    })
-
-    // Handle exponents and subscripts
-    remaining = remaining.replace(/\^(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, exp) => {
-      const id = `SUP_${keyCounter++}`
-      const cleanExp = exp.replace(/[\{\}()]/g, '')
-      result.push(<sup key={id} className="text-xs align-super leading-none mx-0.5">{cleanExp}</sup>)
-      return `__${id}__`
-    })
-
-    remaining = remaining.replace(/_(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, sub) => {
-      const id = `SUB_${keyCounter++}`
-      const cleanSub = sub.replace(/[\{\}()]/g, '')
-      result.push(<sub key={id} className="text-xs align-sub leading-none mx-0.5">{cleanSub}</sub>)
-      return `__${id}__`
-    })
-
-    // Greek letters and symbols
-    const symbols = {
-      '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ',
-      '\\epsilon': 'ε', '\\theta': 'θ', '\\lambda': 'λ', '\\mu': 'μ',
-      '\\nu': 'ν', '\\pi': 'π', '\\sigma': 'σ', '\\tau': 'τ',
-      '\\phi': 'φ', '\\omega': 'ω', '\\infty': '∞', '\\partial': '∂',
-      '\\nabla': '∇', '\\pm': '±', '\\times': '×', '\\div': '÷',
-      '\\leq': '≤', '\\geq': '≥', '\\neq': '≠', '\\approx': '≈',
-      '\\in': '∈', '\\subset': '⊂', '\\cup': '∪', '\\cap': '∩',
-      '\\rightarrow': '→', '\\leftarrow': '←', '\\Rightarrow': '⇒'
-    }
-
-    for (const [latex, symbol] of Object.entries(symbols)) {
-      remaining = remaining.replace(new RegExp(latex.replace('\\', '\\\\'), 'g'), symbol)
-    }
-
-    // Split by placeholders and rebuild
-    const parts = remaining.split(/(__[A-Z_0-9]+__)/g)
-    const finalResult: (string | React.ReactNode)[] = []
-
-    parts.forEach(part => {
-      if (part.startsWith('__') && part.endsWith('__')) {
-        const element = result.find(el => 
-          el && typeof el === 'object' && 'key' in el && el.key === part.slice(2, -2)
-        )
-        if (element) {
-          finalResult.push(element)
-        }
-      } else if (part) {
-        finalResult.push(part)
-      }
-    })
-
-    return finalResult.length > 0 ? finalResult : [remaining]
-  }
-
-  return (
-    <span className="font-serif text-base leading-relaxed inline-block align-middle">
-      {parseMath(content)}
-    </span>
-  )
+    return (
+      <code className="inline-block bg-gray-100 text-gray-800 px-2 py-1 border mx-1 font-mono text-sm rounded">
+        {children}
+      </code>
+    )
+  },
+  // Math components will be handled by rehypeKatex
 }
 
-// Markdown renderer
-const MarkdownRenderer = ({ content }: { content: string }) => {
+// Content renderer component
+const ContentRenderer = ({ content }: { content: string }) => {
   if (!content) return null
 
-  const renderInlineContent = (text: string) => {
-    // LaTeX-style inline math
-    const inlineMathRegex = /\$([^$]+)\$/g
-    const inlineMathParts = text.split(inlineMathRegex)
-    
-    return inlineMathParts.map((part, i) => {
-      if (i % 2 === 1) {
-        return (
-          <span 
-            key={`inline-${i}`} 
-            className="inline-block bg-blue-50 text-gray-800 px-2 py-1 border mx-1 font-serif text-base"
-          >
-            <MathRenderer content={part} />
-          </span>
-        )
-      }
-      
-      // Process code blocks
-      const codeRegex = /`([^`]+)`/g
-      const codeParts = part.split(codeRegex)
-      
-      return codeParts.map((codePart, j) => {
-        if (j % 2 === 1) {
-          return (
-            <span 
-              key={`${i}-code-${j}`} 
-              className="inline-block bg-gray-100 text-gray-800 px-3 py-2 border mx-1 font-serif text-base"
-            >
-              <MathRenderer content={codePart} />
-            </span>
-          )
-        }
-        
-        // Process bold and italic
-        const boldRegex = /\*\*(.*?)\*\*/g
-        const boldParts = codePart.split(boldRegex)
-        
-        return boldParts.map((boldPart, k) => {
-          if (k % 2 === 1) {
-            return <strong key={`${i}-${j}-bold-${k}`} className="font-semibold text-gray-900">{boldPart}</strong>
-          }
-          
-          const italicRegex = /\*([^*]+)\*/g
-          const italicParts = boldPart.split(italicRegex)
-          
-          return italicParts.map((italicPart, l) => {
-            if (l % 2 === 1) {
-              return <em key={`${i}-${j}-${k}-italic-${l}`} className="italic text-gray-800">{italicPart}</em>
-            }
-            return italicPart
-          })
-        })
-      })
-    })
-  }
-
-  const lines = content.split('\n')
-  
   return (
-    <>
-      {lines.map((line, index) => (
-        line.trim() ? (
-          <p key={index} className="mb-4 text-sm text-gray-700 leading-relaxed">
-            {renderInlineContent(line.trim())}
-          </p>
-        ) : (
-          <div key={index} className="mb-4" />
-        )
-      ))}
-    </>
+    <div className="prose prose-sm max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={MarkdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }
 
@@ -747,7 +598,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
                 )}
               </div>
               <div className="text-gray-800 text-base leading-relaxed">
-                <MarkdownRenderer content={questionData.question} />
+                <ContentRenderer content={questionData.question} />
               </div>
             </div>
           </div>
@@ -787,7 +638,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
                           {String.fromCharCode(65 + index)}.
                         </span>
                         <div className="flex-1">
-                          <MarkdownRenderer content={option} />
+                          <ContentRenderer content={option} />
                         </div>
                       </div>
                       {showExplanation && index === correctIndex && (
@@ -848,7 +699,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
                   <h3 className="font-mono font-medium text-lg text-orange-800">Hint & Formula</h3>
                 </div>
                 <div className="text-orange-900">
-                  <MarkdownRenderer content={questionData.formula_or_logic} />
+                  <ContentRenderer content={questionData.formula_or_logic} />
                 </div>
               </div>
             </div>
