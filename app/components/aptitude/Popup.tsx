@@ -1,4 +1,10 @@
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import remarkGfm from 'remark-gfm'
+import 'katex/dist/katex.min.css'
 
 interface ExplanationPopupProps {
   isVisible: boolean
@@ -17,202 +23,119 @@ interface ExplanationPopupProps {
   questionId: number
 }
 
-// Mathematical formula renderer
-const MathRenderer = ({ content }: { content: string }) => {
-  if (!content) return null
-
-  const parseMath = (text: string): (string | React.ReactNode)[] => {
-    const result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Process fractions
-    const fractionRegex = /\(([^()]*(?:\([^)]*\)[^()]*)*)\)\s*\/\s*\(([^()]*(?:\([^)]*\)[^()]*)*)\)|([a-zA-Z0-9\+\-\*\s]+)\s*\/\s*([a-zA-Z0-9\+\-\*\s]+)/g
-    let lastIndex = 0
-    let match
-
-    while ((match = fractionRegex.exec(remaining)) !== null) {
-      if (match.index > lastIndex) {
-        const beforeText = remaining.slice(lastIndex, match.index)
-        result.push(...parseSimpleMath(beforeText))
-      }
-
-      const numerator = match[1] || match[3] || ''
-      const denominator = match[2] || match[4] || ''
-      
-      result.push(
-        <span key={`fraction-${keyCounter++}`} className="inline-block text-center align-middle mx-1 relative">
-          <span className="block border-b-2 border-gray-700 px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(numerator.trim())}
-          </span>
-          <span className="block px-1.5 py-0.5 text-sm min-w-5 leading-tight">
-            {parseSimpleMath(denominator.trim())}
-          </span>
-        </span>
+// Custom components for ReactMarkdown in the popup
+const PopupMarkdownComponents = {
+  p: ({ children, ...props }: any) => (
+    <p className="mb-4 text-sm text-gray-700 leading-relaxed" {...props}>{children}</p>
+  ),
+  strong: ({ children, ...props }: any) => (
+    <strong className="font-semibold text-gray-900" {...props}>{children}</strong>
+  ),
+  em: ({ children, ...props }: any) => (
+    <em className="italic text-gray-800" {...props}>{children}</em>
+  ),
+  code: ({ children, className, inline, ...props }: any) => {
+    if (inline) {
+      return (
+        <code className="inline-block bg-gray-50 text-gray-800 px-2 py-1 border mx-1 font-mono text-sm rounded" {...props}>
+          {children}
+        </code>
       )
-
-      lastIndex = match.index + match[0].length
     }
-
-    if (lastIndex < remaining.length) {
-      result.push(...parseSimpleMath(remaining.slice(lastIndex)))
-    }
-
-    return result
-  }
-
-  const parseSimpleMath = (text: string): (string | React.ReactNode)[] => {
-    if (!text) return []
-    
-    let result: (string | React.ReactNode)[] = []
-    let remaining = text
-    let keyCounter = 0
-
-    // Square roots
-    remaining = remaining.replace(/sqrt\s*\(\s*([^)]+)\s*\)/g, (match, content) => {
-      const id = `SQRT_${keyCounter++}`
-      result.push(
-        <span key={id} className="relative inline-block mx-0.5 text-lg align-middle">
-          √<span className="border-t-2 border-gray-700 pt-0.5 ml-0.5 pl-0.5 pr-0.5 min-w-4 inline-block">
-            {content}
-          </span>
-        </span>
+    return (
+      <pre className="bg-gray-50 text-gray-800 p-3 border font-mono text-sm rounded overflow-x-auto mb-4" {...props}>
+        <code>{children}</code>
+      </pre>
+    )
+  },
+  pre: ({ children, ...props }: any) => (
+    <div {...props}>{children}</div>
+  ),
+  h1: ({ children, ...props }: any) => (
+    <h1 className="text-xl font-bold text-gray-900 mb-4 mt-6 first:mt-0" {...props}>{children}</h1>
+  ),
+  h2: ({ children, ...props }: any) => (
+    <h2 className="text-lg font-semibold text-gray-900 mb-3 mt-5 first:mt-0" {...props}>{children}</h2>
+  ),
+  h3: ({ children, ...props }: any) => (
+    <h3 className="text-base font-medium text-gray-900 mb-2 mt-4 first:mt-0" {...props}>{children}</h3>
+  ),
+  h4: ({ children, ...props }: any) => (
+    <h4 className="text-sm font-medium text-gray-900 mb-2 mt-3 first:mt-0" {...props}>{children}</h4>
+  ),
+  ul: ({ children, ...props }: any) => (
+    <ul className="list-disc list-inside mb-4 text-sm text-gray-700 space-y-1" {...props}>{children}</ul>
+  ),
+  ol: ({ children, ...props }: any) => (
+    <ol className="list-decimal list-inside mb-4 text-sm text-gray-700 space-y-1" {...props}>{children}</ol>
+  ),
+  li: ({ children, ...props }: any) => (
+    <li className="mb-1" {...props}>{children}</li>
+  ),
+  blockquote: ({ children, ...props }: any) => (
+    <blockquote className="border-l-4 border-blue-300 pl-4 italic text-gray-600 mb-4 bg-blue-50 py-2" {...props}>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children, ...props }: any) => (
+    <div className="overflow-x-auto mb-4">
+      <table className="min-w-full border-collapse border border-gray-300" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: any) => (
+    <thead className="bg-gray-100" {...props}>{children}</thead>
+  ),
+  th: ({ children, ...props }: any) => (
+    <th className="border border-gray-300 px-3 py-2 font-medium text-left text-sm" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: any) => (
+    <td className="border border-gray-300 px-3 py-2 text-sm" {...props}>{children}</td>
+  ),
+  hr: ({ ...props }: any) => (
+    <hr className="border-t-2 border-gray-200 my-6" {...props} />
+  ),
+  a: ({ children, href, ...props }: any) => (
+    <a 
+      href={href} 
+      className="text-blue-600 hover:text-blue-800 underline" 
+      target="_blank" 
+      rel="noopener noreferrer" 
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+  // Custom component for math blocks
+  div: ({ children, className, ...props }: any) => {
+    if (className?.includes('math-display')) {
+      return (
+        <div className="math-display my-4 text-center bg-gray-50 p-3 border rounded" {...props}>
+          {children}
+        </div>
       )
-      return `__${id}__`
-    })
-
-    // Handle exponents and subscripts
-    remaining = remaining.replace(/\^(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, exp) => {
-      const id = `SUP_${keyCounter++}`
-      const cleanExp = exp.replace(/[\{\}()]/g, '')
-      result.push(<sup key={id} className="text-xs align-super leading-none mx-0.5">{cleanExp}</sup>)
-      return `__${id}__`
-    })
-
-    remaining = remaining.replace(/_(\{[^}]+\}|\([^)]+\)|[a-zA-Z0-9\+\-]+)/g, (match, sub) => {
-      const id = `SUB_${keyCounter++}`
-      const cleanSub = sub.replace(/[\{\}()]/g, '')
-      result.push(<sub key={id} className="text-xs align-sub leading-none mx-0.5">{cleanSub}</sub>)
-      return `__${id}__`
-    })
-
-    // Greek letters and symbols
-    const symbols = {
-      '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ',
-      '\\epsilon': 'ε', '\\theta': 'θ', '\\lambda': 'λ', '\\mu': 'μ',
-      '\\nu': 'ν', '\\pi': 'π', '\\sigma': 'σ', '\\tau': 'τ',
-      '\\phi': 'φ', '\\omega': 'ω', '\\infty': '∞', '\\partial': '∂',
-      '\\nabla': '∇', '\\pm': '±', '\\times': '×', '\\div': '÷',
-      '\\leq': '≤', '\\geq': '≥', '\\neq': '≠', '\\approx': '≈',
-      '\\in': '∈', '\\subset': '⊂', '\\cup': '∪', '\\cap': '∩',
-      '\\rightarrow': '→', '\\leftarrow': '←', '\\Rightarrow': '⇒'
     }
-
-    for (const [latex, symbol] of Object.entries(symbols)) {
-      remaining = remaining.replace(new RegExp(latex.replace('\\', '\\\\'), 'g'), symbol)
-    }
-
-    // Split by placeholders and rebuild
-    const parts = remaining.split(/(__[A-Z_0-9]+__)/g)
-    const finalResult: (string | React.ReactNode)[] = []
-
-    parts.forEach(part => {
-      if (part.startsWith('__') && part.endsWith('__')) {
-        const element = result.find(el => 
-          el && typeof el === 'object' && 'key' in el && el.key === part.slice(2, -2)
-        )
-        if (element) {
-          finalResult.push(element)
-        }
-      } else if (part) {
-        finalResult.push(part)
-      }
-    })
-
-    return finalResult.length > 0 ? finalResult : [remaining]
+    return <div className={className} {...props}>{children}</div>
   }
-
-  return (
-    <span className="font-serif text-base leading-relaxed inline-block align-middle">
-      {parseMath(content)}
-    </span>
-  )
 }
 
-// Markdown renderer
-const MarkdownRenderer = ({ content }: { content: string }) => {
+// Content renderer specifically for the popup
+const PopupContentRenderer = ({ content }: { content: string }) => {
   if (!content) return null
 
-  const renderInlineContent = (text: string) => {
-    // LaTeX-style inline math
-    const inlineMathRegex = /\$([^$]+)\$/g
-    const inlineMathParts = text.split(inlineMathRegex)
-    
-    return inlineMathParts.map((part, i) => {
-      if (i % 2 === 1) {
-        return (
-          <span 
-            key={`inline-${i}`} 
-            className="inline-block bg-gray-50 text-gray-800 px-2 py-1 border mx-1 font-serif text-base"
-          >
-            <MathRenderer content={part} />
-          </span>
-        )
-      }
-      
-      // Process code blocks
-      const codeRegex = /`([^`]+)`/g
-      const codeParts = part.split(codeRegex)
-      
-      return codeParts.map((codePart, j) => {
-        if (j % 2 === 1) {
-          return (
-            <span 
-              key={`${i}-code-${j}`} 
-              className="inline-block bg-gray-100 text-gray-800 px-3 py-2 border mx-1 font-serif text-base"
-            >
-              <MathRenderer content={codePart} />
-            </span>
-          )
-        }
-        
-        // Process bold and italic
-        const boldRegex = /\*\*(.*?)\*\*/g
-        const boldParts = codePart.split(boldRegex)
-        
-        return boldParts.map((boldPart, k) => {
-          if (k % 2 === 1) {
-            return <strong key={`${i}-${j}-bold-${k}`} className="font-semibold text-gray-900">{boldPart}</strong>
-          }
-          
-          const italicRegex = /\*([^*]+)\*/g
-          const italicParts = boldPart.split(italicRegex)
-          
-          return italicParts.map((italicPart, l) => {
-            if (l % 2 === 1) {
-              return <em key={`${i}-${j}-${k}-italic-${l}`} className="italic text-gray-800">{italicPart}</em>
-            }
-            return italicPart
-          })
-        })
-      })
-    })
-  }
-
-  const lines = content.split('\n')
-  
   return (
-    <>
-      {lines.map((line, index) => (
-        line.trim() ? (
-          <p key={index} className="mb-4 text-sm text-gray-700 leading-relaxed">
-            {renderInlineContent(line.trim())}
-          </p>
-        ) : (
-          <div key={index} className="mb-4" />
-        )
-      ))}
-    </>
+    <div className="prose prose-sm max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkMath, remarkGfm]}
+        rehypePlugins={[rehypeKatex]}
+        components={PopupMarkdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }
 
@@ -228,6 +151,36 @@ export default function ExplanationPopup({
   questionId
 }: ExplanationPopupProps) {
   const router = useRouter()
+
+  // Add streak when user gets correct answer
+  useEffect(() => {
+    const addStreak = async () => {
+      if (isVisible && selectedOption === correctIndex && !isTimeUp) {
+        try {
+          const response = await fetch('/api/add/streak', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            // You can add any additional data needed by the API
+            body: JSON.stringify({
+              questionId,
+              isCorrect: true,
+              timestamp: new Date().toISOString()
+            })
+          })
+          
+          if (!response.ok) {
+            console.error('Failed to add streak:', response.statusText)
+          }
+        } catch (error) {
+          console.error('Error calling add streak API:', error)
+        }
+      }
+    }
+
+    addStreak()
+  }, [isVisible, selectedOption, correctIndex, isTimeUp, questionId])
 
   if (!isVisible) return null
 
@@ -257,7 +210,8 @@ export default function ExplanationPopup({
         }
       `}</style>
       
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      {/* Fixed overlay container */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         {/* Dummy Question Layout in Background */}
         <div className="absolute inset-0 opacity-20 pointer-events-none">
           <div className="min-h-screen bg-gray-50 text-black font-mono">
@@ -351,127 +305,141 @@ export default function ExplanationPopup({
             </main>
           </div>
         </div>
-        <div className="bg-white shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden animate-fadeIn relative z-10">
+
+        {/* Popup Modal - Fixed size container */}
+        <div className="bg-white shadow-2xl w-full max-w-6xl h-[85vh] animate-fadeIn relative z-10 rounded-lg overflow-hidden">
           <div className="flex h-full">
-            {/* Left Side - GIF */}
-            <div className="w-1/3 bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center p-8 border-r border-gray-200">
-              {resultGif && !isTimeUp ? (
-                <div className="text-center">
-                  <img 
-                    src={resultGif.src}
-                    alt={selectedOption === correctIndex ? "Celebration" : "Sad reaction"}
-                    className={`${selectedOption === correctIndex ? "w-56 h-72" : "w-48 h-48"} object-contain mb-4 rounded-lg`}
-                    title={`GIF ${resultGif.isCached ? 'loaded from cache' : 'fetched online'}`}
-                  />
+            {/* Left Side - GIF and Result Summary - Fixed width, no scroll */}
+            <div className="w-80 bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col border-r border-gray-200">
+              {/* GIF Section - Centered */}
+              <div className="flex-1 flex items-center justify-center p-6">
+                {resultGif && !isTimeUp ? (
                   <div className="text-center">
-                    {selectedOption === correctIndex ? (
-                      <div>
-                        <span className="text-2xl font-bold text-green-600 block mb-2">🎉 Purrfect! 🎉</span>
-                        <span className="text-lg text-green-700">You nailed it, cat!</span>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="text-xl font-medium text-red-600 block mb-2">Meow worry!</span>
-                        <span className="text-lg text-red-700">Keep clawing at it! 🐾</span>
-                      </div>
-                    )}
+                    <img 
+                      src={resultGif.src}
+                      alt={selectedOption === correctIndex ? "Celebration" : "Sad reaction"}
+                      className={`${selectedOption === correctIndex ? "w-48 h-60" : "w-40 h-40"} object-contain mb-4 rounded-lg mx-auto`}
+                      title={`GIF ${resultGif.isCached ? 'loaded from cache' : 'fetched online'}`}
+                    />
+                    <div className="text-center">
+                      {selectedOption === correctIndex ? (
+                        <div>
+                          <span className="text-xl font-bold text-green-600 block mb-2">🎉 Purrfect! 🎉</span>
+                          <span className="text-base text-green-700">You nailed it, cat!</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-lg font-medium text-red-600 block mb-2">Meow worry!</span>
+                          <span className="text-base text-red-700">Keep clawing at it! 🐾</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ) : isTimeUp ? (
-                <div className="text-center">
-                  <span className="text-8xl mb-4 block">⏰</span>
-                  <span className="text-2xl font-bold text-red-600 block mb-2">Time's Meowt!</span>
-                  <span className="text-lg text-red-700">Cat luck next time!</span>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <span className="text-6xl mb-4 block">🤔</span>
-                  <span className="text-xl text-gray-600">Loading...</span>
-                </div>
-              )}
+                ) : isTimeUp ? (
+                  <div className="text-center">
+                    <span className="text-6xl mb-4 block">⏰</span>
+                    <span className="text-xl font-bold text-red-600 block mb-2">Time's Meowt!</span>
+                    <span className="text-base text-red-700">Cat luck next time!</span>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <span className="text-5xl mb-4 block">🤔</span>
+                    <span className="text-lg text-gray-600">Loading...</span>
+                  </div>
+                )}
+              </div>
               
-              {/* Result Summary in Left Panel */}
-              <div className="mt-8 p-4 bg-white shadow-sm border w-full">
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    {isTimeUp ? (
-                      <span className="font-medium text-red-600">⏰ Time's Meowt!</span>
-                    ) : selectedOption === correctIndex ? (
-                      <span className="font-medium text-green-600">✅ Cat-solutely Correct!</span>
-                    ) : (
-                      <span className="font-medium text-red-600">❌ Not Quite, Kitty</span>
-                    )}
+              {/* Result Summary - Fixed at bottom */}
+              <div className="p-4">
+                <div className="bg-white shadow-sm border rounded-lg p-4">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      {isTimeUp ? (
+                        <span className="font-medium text-red-600 text-sm">⏰ Time's Meowt!</span>
+                      ) : selectedOption === correctIndex ? (
+                        <span className="font-medium text-green-600 text-sm">✅ Cat-solutely Correct!</span>
+                      ) : (
+                        <span className="font-medium text-red-600 text-sm">❌ Not Quite, Kitty</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-700">
+                      {isTimeUp 
+                        ? "No fish when the clock runs meowt!"
+                        : selectedOption === correctIndex
+                          ? "Paws-ome! You caught 5 fish! 🐟"
+                          : "Fur-get about it! Practice makes purrfect."
+                      }
+                    </p>
                   </div>
-                  <p className="text-sm text-gray-700">
-                    {isTimeUp 
-                      ? "No fish when the clock runs meowt!"
-                      : selectedOption === correctIndex
-                        ? "Paws-ome! You caught 5 fish! 🐟"
-                        : "Fur-get about it! Practice makes purrfect."
-                    }
-                  </p>
                 </div>
               </div>
             </div>
 
             {/* Right Side - Explanation & Controls */}
-            <div className="w-2/3 flex flex-col">
-              {/* Header */}
-              <div className="bg-black text-white p-6 flex items-center justify-between">
+            <div className="flex-1 flex flex-col">
+              {/* Header - Fixed */}
+              <div className="bg-black text-white p-4 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">📝</span>
-                  <h3 className="font-mono font-medium text-xl">Meow-planation</h3>
+                  <span className="text-xl">📝</span>
+                  <h3 className="font-mono font-medium text-lg">Meow-planation</h3>
                 </div>
                 <button
                   onClick={onClose}
-                  className="text-white hover:text-gray-300 transition-colors p-1"
+                  className="text-white hover:text-gray-300 transition-colors p-1 rounded"
                   title="Close"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                   </svg>
                 </button>
               </div>
 
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-                <div className="bg-white p-6 shadow-sm border border-gray-200">
-                  <div className="text-gray-800 prose prose-sm max-w-none">
-                    <MarkdownRenderer content={questionData.explanation} />
+              {/* Scrollable Content - This is the only scrollable part */}
+              <div className="flex-1 overflow-y-auto bg-gray-50">
+                <div className="p-6">
+                  <div className="bg-white p-6 shadow-sm border border-gray-200 rounded-lg">
+                    <div className="text-gray-800">
+                      <PopupContentRenderer content={questionData.explanation} />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Footer with Actions */}
-              <div className="bg-white border-t border-gray-200 p-6 flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm text-gray-600">
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 bg-green-500"></span>
-                    Correct: {String.fromCharCode(65 + correctIndex)}. {shuffledOptions[correctIndex].substring(0, 30)}...
-                  </span>
-                  {selectedOption !== null && selectedOption !== correctIndex && (
+              {/* Footer with Actions - Fixed */}
+              <div className="bg-white border-t border-gray-200 p-4 flex-shrink-0">
+                <div className="flex flex-col gap-3">
+                  {/* Answer indicators */}
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
                     <span className="flex items-center gap-2">
-                      <span className="w-3 h-3 bg-red-500"></span>
-                      Your choice: {String.fromCharCode(65 + selectedOption)}
+                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="font-medium">Correct:</span> {String.fromCharCode(65 + correctIndex)}. {shuffledOptions[correctIndex].substring(0, 40)}{shuffledOptions[correctIndex].length > 40 ? '...' : ''}
                     </span>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={onClose}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={() => router.push(`/aptitude/${questionId + 1}`)}
-                    className="px-6 py-2 bg-black text-white hover:bg-gray-800 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm"
-                  >
-                    Next Claw-tion
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                  </button>
+                    {selectedOption !== null && selectedOption !== correctIndex && (
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                        <span className="font-medium">Your choice:</span> {String.fromCharCode(65 + selectedOption)}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={onClose}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300 rounded"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => router.push(`/aptitude/${questionId + 1}`)}
+                      className="px-6 py-2 bg-black text-white hover:bg-gray-800 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm rounded"
+                    >
+                      Next Claw-tion
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

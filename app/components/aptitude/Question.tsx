@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import remarkGfm from 'remark-gfm'
 import 'katex/dist/katex.min.css'
 import ExplanationPopup from './Popup'
 
@@ -144,31 +145,70 @@ const createConfetti = () => {
 
 // Custom components for ReactMarkdown
 const MarkdownComponents = {
-  p: ({ children }: any) => (
-    <p className="mb-4 text-sm text-gray-700 leading-relaxed">{children}</p>
+  p: ({ children, ...props }: any) => (
+    <p className="mb-4 text-sm text-gray-700 leading-relaxed" {...props}>{children}</p>
   ),
-  strong: ({ children }: any) => (
-    <strong className="font-semibold text-gray-900">{children}</strong>
+  strong: ({ children, ...props }: any) => (
+    <strong className="font-semibold text-gray-900" {...props}>{children}</strong>
   ),
-  em: ({ children }: any) => (
-    <em className="italic text-gray-800">{children}</em>
+  em: ({ children, ...props }: any) => (
+    <em className="italic text-gray-800" {...props}>{children}</em>
   ),
-  code: ({ children, className }: any) => {
-    // Check if this is an inline code or block code
-    if (className?.includes('language-')) {
+  code: ({ children, className, inline, ...props }: any) => {
+    if (inline) {
       return (
-        <code className="block bg-gray-100 text-gray-800 p-3 border font-mono text-sm rounded">
+        <code className="inline-block bg-gray-100 text-gray-800 px-2 py-1 border mx-1 font-mono text-sm rounded" {...props}>
           {children}
         </code>
       )
     }
     return (
-      <code className="inline-block bg-gray-100 text-gray-800 px-2 py-1 border mx-1 font-mono text-sm rounded">
+      <code className="block bg-gray-100 text-gray-800 p-3 border font-mono text-sm rounded" {...props}>
         {children}
       </code>
     )
   },
-  // Math components will be handled by rehypeKatex
+  pre: ({ children, ...props }: any) => (
+    <pre className="bg-gray-100 text-gray-800 p-3 border font-mono text-sm rounded overflow-x-auto" {...props}>
+      {children}
+    </pre>
+  ),
+  h1: ({ children, ...props }: any) => (
+    <h1 className="text-xl font-bold text-gray-900 mb-4" {...props}>{children}</h1>
+  ),
+  h2: ({ children, ...props }: any) => (
+    <h2 className="text-lg font-semibold text-gray-900 mb-3" {...props}>{children}</h2>
+  ),
+  h3: ({ children, ...props }: any) => (
+    <h3 className="text-base font-medium text-gray-900 mb-2" {...props}>{children}</h3>
+  ),
+  ul: ({ children, ...props }: any) => (
+    <ul className="list-disc list-inside mb-4 text-sm text-gray-700" {...props}>{children}</ul>
+  ),
+  ol: ({ children, ...props }: any) => (
+    <ol className="list-decimal list-inside mb-4 text-sm text-gray-700" {...props}>{children}</ol>
+  ),
+  li: ({ children, ...props }: any) => (
+    <li className="mb-1" {...props}>{children}</li>
+  ),
+  blockquote: ({ children, ...props }: any) => (
+    <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-4" {...props}>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children, ...props }: any) => (
+    <table className="min-w-full border-collapse border border-gray-300 mb-4" {...props}>
+      {children}
+    </table>
+  ),
+  th: ({ children, ...props }: any) => (
+    <th className="border border-gray-300 px-3 py-2 bg-gray-100 font-medium text-left" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: any) => (
+    <td className="border border-gray-300 px-3 py-2" {...props}>{children}</td>
+  )
 }
 
 // Content renderer component
@@ -178,7 +218,7 @@ const ContentRenderer = ({ content }: { content: string }) => {
   return (
     <div className="prose prose-sm max-w-none">
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[rehypeKatex]}
         components={MarkdownComponents}
       >
