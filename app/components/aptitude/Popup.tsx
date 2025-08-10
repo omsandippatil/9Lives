@@ -1,5 +1,5 @@
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -151,18 +151,71 @@ export default function ExplanationPopup({
   questionId
 }: ExplanationPopupProps) {
   const router = useRouter()
+  const modalRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const streakProcessedRef = useRef(false)
 
-  // Add streak when user gets correct answer
+  // Memoized close handler to prevent recreation
+  const handleClose = useCallback(() => {
+    console.log('Popup close requested')
+    onClose()
+  }, [onClose])
+
+  // Handle escape key
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isVisible) {
+        handleClose()
+      }
+    }
+
+    if (isVisible) {
+      document.addEventListener('keydown', handleEscKey)
+      // Prevent body scroll when popup is open
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey)
+      document.body.style.overflow = 'unset'
+    }
+  }, [isVisible, handleClose])
+
+  // Handle overlay click
+  const handleOverlayClick = useCallback((e: React.MouseEvent) => {
+    // Only close if clicking directly on the overlay, not on the modal content
+    if (e.target === overlayRef.current) {
+      handleClose()
+    }
+  }, [handleClose])
+
+  // Prevent modal content clicks from bubbling to overlay
+  const handleModalClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+  }, [])
+
+  // Handle next question navigation
+  const handleNextQuestion = useCallback(() => {
+    console.log('Navigating to next question:', questionId + 1)
+    handleClose() // Close popup first
+    setTimeout(() => {
+      router.push(`/aptitude/${questionId + 1}`)
+    }, 100) // Small delay to ensure popup closes first
+  }, [questionId, router, handleClose])
+
+  // Add streak when user gets correct answer (only once per popup session)
   useEffect(() => {
     const addStreak = async () => {
-      if (isVisible && selectedOption === correctIndex && !isTimeUp) {
+      if (isVisible && selectedOption === correctIndex && !isTimeUp && !streakProcessedRef.current) {
+        streakProcessedRef.current = true
         try {
           const response = await fetch('/api/add/streak', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            // You can add any additional data needed by the API
             body: JSON.stringify({
               questionId,
               isCorrect: true,
@@ -179,9 +232,15 @@ export default function ExplanationPopup({
       }
     }
 
-    addStreak()
+    if (isVisible) {
+      addStreak()
+    } else {
+      // Reset streak processing flag when popup closes
+      streakProcessedRef.current = false
+    }
   }, [isVisible, selectedOption, correctIndex, isTimeUp, questionId])
 
+  // Don't render if not visible
   if (!isVisible) return null
 
   const getResultGif = () => {
@@ -211,7 +270,14 @@ export default function ExplanationPopup({
       `}</style>
       
       {/* Fixed overlay container */}
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div 
+        ref={overlayRef}
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+        onClick={handleOverlayClick}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="explanation-title"
+      >
         {/* Dummy Question Layout in Background */}
         <div className="absolute inset-0 opacity-20 pointer-events-none">
           <div className="min-h-screen bg-gray-50 text-black font-mono">
@@ -307,7 +373,11 @@ export default function ExplanationPopup({
         </div>
 
         {/* Popup Modal - Fixed size container */}
-        <div className="bg-white shadow-2xl w-full max-w-6xl h-[85vh] animate-fadeIn relative z-10 rounded-lg overflow-hidden">
+        <div 
+          ref={modalRef}
+          className="bg-white shadow-2xl w-full max-w-6xl h-[85vh] animate-fadeIn relative z-10 rounded-lg overflow-hidden"
+          onClick={handleModalClick}
+        >
           <div className="flex h-full">
             {/* Left Side - GIF and Result Summary - Fixed width, no scroll */}
             <div className="w-80 bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col border-r border-gray-200">
@@ -381,12 +451,14 @@ export default function ExplanationPopup({
               <div className="bg-black text-white p-4 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">📝</span>
-                  <h3 className="font-mono font-medium text-lg">Meow-planation</h3>
+                  <h3 id="explanation-title" className="font-mono font-medium text-lg">Meow-planation</h3>
                 </div>
                 <button
-                  onClick={onClose}
-                  className="text-white hover:text-gray-300 transition-colors p-1 rounded"
-                  title="Close"
+                  onClick={handleClose}
+                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  title="Close explanation"
+                  aria-label="Close explanation"
+                  type="button"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -425,14 +497,16 @@ export default function ExplanationPopup({
                   {/* Action buttons */}
                   <div className="flex justify-end gap-3">
                     <button
-                      onClick={onClose}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300 rounded"
+                      onClick={handleClose}
+                      type="button"
+                      className="px-4 py-2 bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors font-mono text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-400"
                     >
                       Close
                     </button>
                     <button
-                      onClick={() => router.push(`/aptitude/${questionId + 1}`)}
-                      className="px-6 py-2 bg-black text-white hover:bg-gray-800 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm rounded"
+                      onClick={handleNextQuestion}
+                      type="button"
+                      className="px-6 py-2 bg-black text-white hover:bg-gray-800 transition-colors font-mono text-sm flex items-center gap-2 shadow-sm rounded focus:outline-none focus:ring-2 focus:ring-gray-400"
                     >
                       Next Claw-tion
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -26,6 +26,71 @@ interface QuestionData {
   tags: string[]
 }
 
+// Cat-themed loading component
+const CatLoadingScreen = ({ message = "loading..." }: { message?: string }) => {
+  const [dots, setDots] = useState('')
+  const [catFrame, setCatFrame] = useState(0)
+  
+  const catFrames = ['🐱', '😺', '😸', '😻']
+  
+  useEffect(() => {
+    const dotsInterval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.')
+    }, 500)
+    
+    const catInterval = setInterval(() => {
+      setCatFrame(prev => (prev + 1) % catFrames.length)
+    }, 800)
+    
+    return () => {
+      clearInterval(dotsInterval)
+      clearInterval(catInterval)
+    }
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-white text-black flex items-center justify-center">
+      <div className="text-center font-mono">
+        <div className="text-6xl mb-6 animate-pulse">
+          {catFrames[catFrame]}
+        </div>
+        <div className="text-xl tracking-wider">
+          <span className="text-gray-700">{'>'}</span> {message}
+          <span className="inline-block w-8 text-left">{dots}</span>
+        </div>
+        <div className="mt-4 text-sm text-gray-500 tracking-widest">
+          [ initializing cat protocols ]
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Cat-themed error component
+const CatErrorScreen = ({ error, onRetry }: { error: string; onRetry: () => void }) => {
+  return (
+    <div className="min-h-screen bg-white text-black flex items-center justify-center">
+      <div className="text-center font-mono">
+        <div className="text-6xl mb-6">
+          🙀
+        </div>
+        <div className="text-xl tracking-wider mb-4">
+          <span className="text-red-600">{'>'}</span> error: cat.exe stopped working
+        </div>
+        <div className="text-sm text-gray-600 mb-6 max-w-md">
+          {error}
+        </div>
+        <button 
+          onClick={onRetry}
+          className="px-6 py-2 border border-black text-black bg-transparent hover:bg-black hover:text-white transition-colors font-mono tracking-wider"
+        >
+          [ retry ]
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AptitudePage() {
   const params = useParams()
   const id = parseInt(params.id as string)
@@ -41,50 +106,50 @@ export default function AptitudePage() {
     return id === 1 || (id > 1 && (id - 1) % 50 === 0)
   }
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
+  const fetchData = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const needsTheory = shouldShowTheory(id)
       
-      try {
-        const needsTheory = shouldShowTheory(id)
+      if (needsTheory) {
+        // Calculate topic_id for theory API
+        const topicId = Math.floor((id - 1) / 50) + 1
         
-        if (needsTheory) {
-          // Calculate topic_id for theory API
-          const topicId = Math.floor((id - 1) / 50) + 1
-          
-          // Fetch theory data
-          const theoryResponse = await fetch(`/api/get/aptitude/theory?topic_id=${topicId}`)
-          if (!theoryResponse.ok) throw new Error('Failed to fetch theory data')
-          const theoryResult = await theoryResponse.json()
-          
-          if (theoryResult.success && theoryResult.data.length > 0) {
-            setTheoryData(theoryResult.data[0])
-            setShowTheory(true)
-          }
+        // Fetch theory data
+        const theoryResponse = await fetch(`/api/get/aptitude/theory?topic_id=${topicId}`)
+        if (!theoryResponse.ok) throw new Error('Failed to fetch theory data')
+        const theoryResult = await theoryResponse.json()
+        
+        if (theoryResult.success && theoryResult.data.length > 0) {
+          setTheoryData(theoryResult.data[0])
+          setShowTheory(true)
         }
-        
-        // Fetch question data
-        const questionResponse = await fetch(`/api/get/aptitude/question?question_id=${id}`)
-        if (!questionResponse.ok) throw new Error('Failed to fetch question data')
-        const questionResult = await questionResponse.json()
-        
-        if (questionResult.success && questionResult.data.length > 0) {
-          setQuestionData(questionResult.data[0])
-          if (!needsTheory) {
-            setShowTheory(false)
-          }
-        } else {
-          throw new Error('Question not found')
-        }
-        
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
-      } finally {
-        setLoading(false)
       }
+      
+      // Fetch question data
+      const questionResponse = await fetch(`/api/get/aptitude/question?question_id=${id}`)
+      if (!questionResponse.ok) throw new Error('Failed to fetch question data')
+      const questionResult = await questionResponse.json()
+      
+      if (questionResult.success && questionResult.data.length > 0) {
+        setQuestionData(questionResult.data[0])
+        if (!needsTheory) {
+          setShowTheory(false)
+        }
+      } else {
+        throw new Error('Question not found')
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     if (id) {
       fetchData()
     }
@@ -95,30 +160,11 @@ export default function AptitudePage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
+    return <CatLoadingScreen message="fetching cat wisdom" />
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-red-600 text-lg">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    )
+    return <CatErrorScreen error={error} onRetry={fetchData} />
   }
 
   return (
@@ -134,8 +180,13 @@ export default function AptitudePage() {
           questionId={id}
         />
       ) : (
-        <div className="min-h-screen flex items-center justify-center">
-          <p className="text-gray-600">No data available</p>
+        <div className="min-h-screen bg-black text-white flex items-center justify-center">
+          <div className="text-center font-mono">
+            <div className="text-4xl mb-4">😿</div>
+            <div className="text-lg tracking-wider">
+              <span className="text-gray-400">{'>'}</span> no cat data found
+            </div>
+          </div>
         </div>
       )}
     </div>

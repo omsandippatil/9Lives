@@ -143,6 +143,51 @@ const createConfetti = () => {
   }
 }
 
+// Function to preprocess mathematical expressions
+const preprocessMathContent = (content: string): string => {
+  if (!content) return content
+
+  // Handle inline math expressions - fix common LaTeX syntax issues
+  let processed = content
+    // Fix double backslashes in LaTeX expressions
+    .replace(/\$\$(.*?)\$\$/g, (match, mathContent) => {
+      // Clean up the math content
+      let cleanMath = mathContent
+        .replace(/\\{2,}/g, '\\') // Replace multiple backslashes with single
+        .replace(/\\text\s*{\s*/g, '\\text{') // Fix text spacing
+        .replace(/\s*}\s*/g, '}') // Clean up closing braces
+        .replace(/div/g, '\\div') // Convert div to proper LaTeX
+        .replace(/sqrt(\d+)/g, '\\sqrt{$1}') // Fix sqrt notation
+        .replace(/\\%/g, '\\%') // Ensure percent signs are escaped
+      
+      return `$$${cleanMath}$$`
+    })
+    // Handle inline math
+    .replace(/\$(.*?)\$/g, (match, mathContent) => {
+      let cleanMath = mathContent
+        .replace(/\\{2,}/g, '\\')
+        .replace(/div/g, '\\div')
+        .replace(/sqrt(\d+)/g, '\\sqrt{$1}')
+      
+      return `$${cleanMath}$`
+    })
+
+  // Handle common mathematical expressions that might not be wrapped in $ signs
+  processed = processed
+    // Wrap mathematical expressions with proper LaTeX
+    .replace(/(\d+)\\?%\s*of\s*(\d+)/g, '$1\\% \\text{ of } $2')
+    // Fix sqrt expressions without proper LaTeX
+    .replace(/sqrt\s*(\d+)/g, '\\sqrt{$1}')
+    // Fix division notation
+    .replace(/(\d+)\s*div\s*(\d+)/g, '$1 \\div $2')
+    // Ensure mathematical operations are properly spaced
+    .replace(/(\d+)\s*\+\s*(\d+)/g, '$1 + $2')
+    .replace(/(\d+)\s*-\s*(\d+)/g, '$1 - $2')
+    .replace(/(\d+)\s*\*\s*(\d+)/g, '$1 \\times $2')
+
+  return processed
+}
+
 // Custom components for ReactMarkdown
 const MarkdownComponents = {
   p: ({ children, ...props }: any) => (
@@ -211,9 +256,12 @@ const MarkdownComponents = {
   )
 }
 
-// Content renderer component
+// Content renderer component with math preprocessing
 const ContentRenderer = ({ content }: { content: string }) => {
   if (!content) return null
+
+  // Preprocess the content to fix mathematical expressions
+  const processedContent = preprocessMathContent(content)
 
   return (
     <div className="prose prose-sm max-w-none">
@@ -222,7 +270,7 @@ const ContentRenderer = ({ content }: { content: string }) => {
         rehypePlugins={[rehypeKatex]}
         components={MarkdownComponents}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   )
@@ -237,6 +285,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
   const [showAnimation, setShowAnimation] = useState(false)
   const [timeLeft, setTimeLeft] = useState(120) // 2 minutes
   const [isTimeUp, setIsTimeUp] = useState(false)
+  const [hasSubmitted, setHasSubmitted] = useState(false)
   const [preloadedGifs, setPreloadedGifs] = useState<{ happy: { src: string, isCached: boolean } | null, sad: { src: string, isCached: boolean } | null }>({ happy: null, sad: null })
   const [lastClickTime, setLastClickTime] = useState<{ [key: number]: number }>({})
 
@@ -257,11 +306,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
     if (!profile || profileLoading) return false
     
     const attemptedQuestions = profile.aptitude_questions_attempted || 0
-    console.log('Question status check:', {
-      questionId,
-      attemptedQuestions,
-      isNew: questionId === attemptedQuestions + 1
-    })
     
     // New question if current questionId is exactly one more than attempted count
     return questionId === attemptedQuestions + 1
@@ -281,16 +325,41 @@ export default function QuestionComponent({ questionData, questionId }: Question
     fetchProfile()
   }, [])
 
-  // Timer effect
+  // Timer effect with better control
   useEffect(() => {
-    if (timeLeft > 0 && !showExplanation) {
-      const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000)
+    // Only run timer if time is left, not showing explanation, time not up, and not submitted
+    if (timeLeft > 0 && !showExplanation && !isTimeUp && !hasSubmitted) {
+      const timer = setTimeout(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            // Time is about to be 0, trigger time up
+            setIsTimeUp(true)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
       return () => clearTimeout(timer)
-    } else if (timeLeft === 0 && !showExplanation) {
-      setIsTimeUp(true)
+    }
+  }, [timeLeft, showExplanation, isTimeUp, hasSubmitted])
+
+  // Separate effect to handle time up submission
+  useEffect(() => {
+    if (isTimeUp && !hasSubmitted && !showExplanation) {
       handleSubmit(true)
     }
-  }, [timeLeft, showExplanation])
+  }, [isTimeUp, hasSubmitted, showExplanation])
+
+  // Reset states when question changes
+  useEffect(() => {
+    setSelectedOption(null)
+    setShowExplanation(false)
+    setShowHint(false)
+    setTimeLeft(120)
+    setIsTimeUp(false)
+    setHasSubmitted(false)
+    setLastClickTime({})
+  }, [questionId])
 
   const fetchProfile = async () => {
     setProfileLoading(true)
@@ -312,7 +381,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
       }
 
       const userId = apiData.profile.id
-      console.log('Got user ID from profile API:', userId)
 
       // Now fetch the full profile data directly from Supabase users table
       const { data: profileData, error: profileError } = await supabase
@@ -327,7 +395,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
       }
 
       if (profileData) {
-        console.log('Fetched complete profile from Supabase:', profileData)
         setProfile(profileData)
       } else {
         console.error('No profile data found in users table')
@@ -342,7 +409,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
   const updateAptitudeProgress = async (): Promise<boolean> => {
     // Only update progress for new questions
     if (!isNewQuestion || !profile) {
-      console.log('Skipping progress update - not a new question or no profile')
       return false
     }
     
@@ -362,8 +428,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
       }
 
       if (data) {
-        console.log('Progress updated from', profile.aptitude_questions_attempted, 'to', data.aptitude_questions_attempted)
-        
         // Update the profile state with new attempted count
         setProfile(prev => prev ? {
           ...prev,
@@ -397,8 +461,6 @@ export default function QuestionComponent({ questionData, questionId }: Question
       }
 
       if (data) {
-        console.log('Points awarded:', points, 'New total:', data.total_points)
-        
         // Update profile with new points total
         setProfile(prev => prev ? { 
           ...prev, 
@@ -420,11 +482,9 @@ export default function QuestionComponent({ questionData, questionId }: Question
   const calculatePoints = (isCorrect: boolean, timeRemaining: number, isTimeUp: boolean): number => {
     // Only award points for correct answers on new questions within time limit
     if (!isCorrect || isTimeUp || !isNewQuestion) {
-      console.log('No points awarded:', { isCorrect, isTimeUp, isNewQuestion })
       return 0
     }
     
-    console.log('Points will be awarded: 5 fish')
     return 5 // 5 fish for correct answer
   }
 
@@ -447,20 +507,26 @@ export default function QuestionComponent({ questionData, questionId }: Question
     setLastClickTime(prev => ({ ...prev, [index]: currentTime }))
   }
 
+  const handleCloseExplanation = () => {
+    setShowExplanation(false)
+  }
+
   const handleSubmit = async (timeUpSubmission = false) => {
-    if (selectedOption === null && !timeUpSubmission) return
+    // Prevent multiple submissions
+    if (hasSubmitted || showExplanation) {
+      return
+    }
+    
+    // Mark as submitted immediately to prevent race conditions
+    setHasSubmitted(true)
+    
+    if (selectedOption === null && !timeUpSubmission) {
+      setHasSubmitted(false) // Reset if invalid submission
+      return
+    }
 
     const isCorrect = selectedOption === correctIndex
     const pointsToAward = calculatePoints(isCorrect, timeLeft, timeUpSubmission)
-    
-    console.log('Submitting answer:', {
-      selectedOption,
-      correctIndex,
-      isCorrect,
-      isNewQuestion,
-      pointsToAward,
-      timeUpSubmission
-    })
     
     // Show confetti for correct answers on new questions
     if (isCorrect && !timeUpSubmission && isNewQuestion) {
@@ -719,6 +785,23 @@ export default function QuestionComponent({ questionData, questionId }: Question
             </button>
           )}
 
+          {/* Show time up message */}
+          {isTimeUp && !showExplanation && (
+            <div className="py-3 px-8 bg-red-100 text-red-800 border-2 border-red-200 font-mono text-base">
+              Time's up! Processing your answer...
+            </div>
+          )}
+
+          {/* Show close explanation button when explanation is visible */}
+          {showExplanation && (
+            <button
+              onClick={handleCloseExplanation}
+              className="py-3 px-8 bg-blue-100 text-blue-800 border-2 border-blue-200 hover:bg-blue-200 font-mono text-base transition-all duration-300"
+            >
+              Close Explanation
+            </button>
+          )}
+
           {questionData.formula_or_logic && (
             <button
               onClick={() => setShowHint(!showHint)}
@@ -745,23 +828,12 @@ export default function QuestionComponent({ questionData, questionId }: Question
             </div>
           </div>
         )}
-
-        {/* Debug Info (remove in production) */}
-        {profile && (
-          <div className="mt-8 p-4 bg-gray-100 border border-gray-300 text-xs text-gray-600">
-            <h4 className="font-bold mb-2">Debug Info:</h4>
-            <p>Question ID: {questionId}</p>
-            <p>Attempted Questions: {profile.aptitude_questions_attempted}</p>
-            <p>Is New Question: {isNewQuestion ? 'Yes' : 'No'}</p>
-            <p>Profile Loading: {profileLoading ? 'Yes' : 'No'}</p>
-          </div>
-        )}
       </main>
 
       {/* Explanation Popup */}
       <ExplanationPopup
         isVisible={showExplanation}
-        onClose={() => setShowExplanation(false)}
+        onClose={handleCloseExplanation}
         questionData={questionData}
         selectedOption={selectedOption}
         correctIndex={correctIndex}
