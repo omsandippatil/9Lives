@@ -49,7 +49,7 @@ function FormulaBlock({ formula, title }: { formula: string; title?: string }) {
       try {
         const katex = (window as any).katex
         if (katex) {
-          // Clean the formula
+          // Clean the formula - remove $$ wrapping and trim whitespace
           let cleanFormula = formula
             .replace(/^\$+|\$+$/g, '') // Remove $ wrapping
             .trim()
@@ -130,7 +130,7 @@ const MarkdownComponents = {
     <strong className="font-semibold text-gray-900">{children}</strong>
   ),
   code: ({ children }: any) => (
-          <code className="bg-gray-100 text-gray-800 px-2 py-1 text-sm font-mono mx-1">
+    <code className="bg-gray-100 text-gray-800 px-2 py-1 text-sm font-mono mx-1">
       {children}
     </code>
   ),
@@ -149,11 +149,46 @@ interface SectionCardProps {
 }
 
 function SectionCard({ title, emoji, content, fullWidth = false }: SectionCardProps) {
+  // Clean content by removing surrounding quotes and trimming
   const cleanContent = content.replace(/^["']|["']$/g, '').trim()
   
-  // Special handling for formulas
+  // Special handling for formulas section
   if (title === "Important Formulas") {
+    // Parse formulas based on the expected format: title followed by formula
     const lines = cleanContent.split('\n').filter(line => line.trim())
+    const formulaBlocks = []
+    
+    let i = 0
+    while (i < lines.length) {
+      const currentLine = lines[i].trim()
+      
+      // Check if this line contains a formula (has $$ or LaTeX syntax)
+      if (currentLine.includes('$$')) {
+        // Extract formula from $$ wrapping
+        formulaBlocks.push({
+          title: i > 0 ? lines[i-1].trim() : null,
+          formula: currentLine
+        })
+      } else if (i + 1 < lines.length && lines[i + 1].trim().includes('$$')) {
+        // Current line is title, next line is formula
+        formulaBlocks.push({
+          title: currentLine,
+          formula: lines[i + 1].trim()
+        })
+        i++ // Skip the formula line in next iteration
+      } else if (currentLine.includes('\\') || 
+                 currentLine.includes('frac') || 
+                 currentLine.includes('sum') || 
+                 currentLine.includes('sqrt') ||
+                 /[a-zA-Z]\s*=.*/.test(currentLine)) {
+        // This line looks like a formula without $$ wrapping
+        formulaBlocks.push({
+          title: i > 0 ? lines[i-1].trim() : null,
+          formula: currentLine
+        })
+      }
+      i++
+    }
     
     return (
       <div className="bg-white border border-gray-200 hover:border-gray-400 transition-all duration-500 ease-out hover:shadow-lg group">
@@ -163,40 +198,21 @@ function SectionCard({ title, emoji, content, fullWidth = false }: SectionCardPr
             <h3 className="font-mono font-medium text-lg group-hover:text-black transition-colors">{title}</h3>
           </div>
           
-          <div className="space-y-4">
-            {lines.map((line, index) => {
-              const trimmedLine = line.trim()
-              
-              // Detect if this is a formula
-              const isFormula = trimmedLine.includes('\\') || 
-                             trimmedLine.includes('$') || 
-                             trimmedLine.includes('frac') || 
-                             trimmedLine.includes('sum') || 
-                             trimmedLine.includes('sqrt') || 
-                             trimmedLine.includes('^') ||
-                             trimmedLine.includes('_') ||
-                             /[a-zA-Z]\s*=\s*/.test(trimmedLine)
-              
-              if (isFormula) {
-                return <FormulaBlock key={index} formula={trimmedLine} />
-              }
-              
-              // Otherwise treat as title/description
-              return (
-                <div key={index} className="text-sm font-medium text-gray-800 mb-2">
-                  <ReactMarkdown components={MarkdownComponents}>
-                    {trimmedLine}
-                  </ReactMarkdown>
-                </div>
-              )
-            })}
+          <div className="space-y-6">
+            {formulaBlocks.map((block, index) => (
+              <FormulaBlock 
+                key={index} 
+                formula={block.formula}
+                title={block.title || undefined}
+              />
+            ))}
           </div>
         </div>
       </div>
     )
   }
   
-  // For terminology, enhance formatting
+  // Special handling for terminology
   let processedContent = cleanContent
   if (title === "Key Terminology") {
     processedContent = cleanContent.split('\n')
@@ -209,6 +225,24 @@ function SectionCard({ title, emoji, content, fullWidth = false }: SectionCardPr
         return line
       })
       .join('\n\n')
+  }
+  
+  // Special handling for bullet point lists (types, tricks, approach, common_mistakes)
+  if (title === "Types of Problems" || title === "Tricks & Tips" || 
+      title === "Problem-Solving Approach" || title === "Common Mistakes") {
+    // Convert "- item" format to proper markdown
+    processedContent = cleanContent.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('- ')) {
+          return trimmed
+        } else if (trimmed && !trimmed.startsWith('-')) {
+          return `- ${trimmed}`
+        }
+        return trimmed
+      })
+      .join('\n')
   }
   
   return (
@@ -244,6 +278,7 @@ export default function TheoryComponent({ theoryData, onNext }: TheoryComponentP
     return () => clearInterval(interval)
   }, [])
 
+  // Clean topic name from any surrounding quotes
   const cleanTopicName = theoryData.topic_name.replace(/^["']|["']$/g, '').trim()
 
   return (
