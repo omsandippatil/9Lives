@@ -56,10 +56,10 @@ function clearCachedUID(email: string): boolean {
 }
 
 // Helper function to get user email from various sources
-function getUserEmail(request: NextRequest): string | null {
+async function getUserEmail(request: NextRequest): Promise<string | null> {
   try {
     // Try to get from cookies first
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const userEmail = cookieStore.get('supabase-user-email')?.value || 
                      cookieStore.get('client-user-email')?.value
     
@@ -161,11 +161,11 @@ export async function POST(request: NextRequest) {
     } = requestBody
 
     // Get user email from various sources
-    const userEmail = providedEmail || getUserEmail(request)
+    const userEmail = providedEmail || await getUserEmail(request)
     console.log('User email for logout:', userEmail ? 'found' : 'not found')
 
     // Get access token for session revocation
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const accessToken = cookieStore.get('supabase-access-token')?.value || 
                        cookieStore.get('client-access-token')?.value
 
@@ -316,25 +316,4 @@ export async function OPTIONS(request: NextRequest) {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   })
-}
-
-// Export helper functions for manual cache management
-export function clearUserCache(email: string): boolean {
-  return clearCachedUID(email)
-}
-
-export function clearAllCache(): number {
-  const clearedCount = uidCache.size
-  uidCache.clear()
-  cacheTimestamps.clear()
-  console.log(`Cleared all cached UIDs: ${clearedCount} entries`)
-  return clearedCount
-}
-
-export function getLogoutCacheStats() {
-  return {
-    size: uidCache.size,
-    entries: Array.from(uidCache.keys()),
-    timestamps: Array.from(cacheTimestamps.entries())
-  }
 }
