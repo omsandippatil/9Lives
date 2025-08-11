@@ -483,17 +483,3 @@ export async function OPTIONS(request: NextRequest) {
     },
   })
 }
-
-// Export helper functions for accessing cached UIDs from other routes
-export function getCachedUserID(email: string): string | null {
-  return getCachedUID(email)
-}
-
-// Export function to get cache stats
-export function getCacheStats() {
-  return {
-    size: uidCache.size,
-    entries: Array.from(uidCache.keys()),
-    timestamps: Array.from(cacheTimestamps.entries())
-  }
-}
