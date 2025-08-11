@@ -1,0 +1,15 @@
+name: Aptitude Questions API every 30 min
+
+on:
+  schedule:
+    # Runs every 30 minutes
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make API Request
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/aptitude/questions?api_key=${{ secrets.API_KEY }}"
