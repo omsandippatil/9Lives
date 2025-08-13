@@ -84,7 +84,7 @@ Use this exact JSON template:
   "tags": ["topic", "difficulty", "formula_type", "category", "exam"]
 }`;
 
-    // Call Groq API
+    // Call Groq API with corrected model name and increased token limit
     const groqResponse = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
@@ -92,21 +92,23 @@ Use this exact JSON template:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'deepseek-r1-distill-llama-70b',
+        model: 'llama-3.1-70b-versatile', // Fixed: Using correct Groq model name
         messages: [
           {
             role: 'user',
             content: groqPrompt
           }
         ],
-        temperature: 0.1,
-        max_tokens: 4000,
+        temperature: 0.1, // Already at 0.1 as requested
+        max_tokens: 8000, // Increased from 4000 to 8000
         response_format: { type: "json_object" },
       }),
     });
 
     if (!groqResponse.ok) {
-      throw new Error(`Groq API error: ${groqResponse.statusText}`);
+      const errorText = await groqResponse.text();
+      console.error('Groq API error response:', errorText);
+      throw new Error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText} - ${errorText}`);
     }
 
     const groqData = await groqResponse.json();
