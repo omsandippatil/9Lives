@@ -92,7 +92,7 @@ Use this exact JSON template:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.1-70b-versatile', // Fixed: Using correct Groq model name
+        model: 'llama-3.3-70b-versatile', // Fixed: Using correct Groq model name
         messages: [
           {
             role: 'user',
