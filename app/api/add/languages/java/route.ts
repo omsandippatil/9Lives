@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Groq API configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_API_KEY = process.env.JAVA_THEORY_GROQ_API_KEY;
+const GROQ_API_KEY = process.env.JAVA_LANG_THEORY_GROQ_API_KEY;
 
 interface JavaTheoryData {
   id: number;
