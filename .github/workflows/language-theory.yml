@@ -1,0 +1,19 @@
+name: Language Theory API every 1 hr
+
+on:
+  schedule:
+    # Runs every 1 hour
+    - cron: "0 * * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Python Language API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/languages/python?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call Java Language API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/languages/java?api_key=${{ secrets.API_KEY }}"
