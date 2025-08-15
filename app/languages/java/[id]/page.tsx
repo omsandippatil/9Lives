@@ -412,7 +412,7 @@ function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime
     <div className="w-full bg-gray-200 h-2 overflow-hidden">
       <div 
         className={`h-full transition-all duration-1000 ease-linear ${
-          isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-orange-400 to-red-500'
+          isComplete ? 'bg-black' : 'bg-black'
         }`}
         style={{ width: `${progress}%` }}
       />
@@ -445,6 +445,60 @@ function LoadingProgressBar() {
   )
 }
 
+// Enhanced Streak Display Component
+function StreakDisplay({ streakData }: { streakData: any }) {
+  // Helper function to get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    return new Date().toISOString().split('T')[0]
+  }
+
+  // Helper function to get yesterday's date in YYYY-MM-DD format
+  const getYesterdayDate = () => {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    return yesterday.toISOString().split('T')[0]
+  }
+
+  // Parse streak data - should be like ["2025-08-15", 3]
+  let streakDate = ''
+  let streakCount = 0
+  let isToday = false
+  let isYesterday = false
+  let shouldShowZero = false
+
+  if (streakData && Array.isArray(streakData) && streakData.length === 2) {
+    streakDate = streakData[0]
+    streakCount = streakData[1] || 0
+    const today = getTodayDate()
+    const yesterday = getYesterdayDate()
+    
+    isToday = streakDate === today
+    isYesterday = streakDate === yesterday
+    
+    // Show zero if the date is before yesterday
+    if (streakDate < yesterday) {
+      shouldShowZero = true
+    }
+  }
+
+  const displayCount = shouldShowZero ? 0 : streakCount
+
+  return (
+    <div className="text-center">
+      <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+      <p className={`text-xl font-normal transition-all duration-300 ${
+        isToday 
+          ? 'text-orange-500 animate-pulse' 
+          : isYesterday 
+            ? 'text-gray-600' 
+            : 'text-gray-400'
+      }`}>
+        {displayCount} 🔥
+      </p>
+    </div>
+  )
+}
+
 export default function JavaTheoryPage() {
   const params = useParams()
   const router = useRouter()
@@ -454,7 +508,7 @@ export default function JavaTheoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
-  const [streak, setStreak] = useState(0)
+  const [streakData, setStreakData] = useState(null)
   const [totalPoints, setTotalPoints] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
   
@@ -524,7 +578,21 @@ export default function JavaTheoryPage() {
         return
       }
 
-      setStreak(userData?.current_streak || 0)
+      // Parse current_streak which should be in JSON format like ["2025-08-15", 3]
+      let parsedStreak = null
+      try {
+        if (userData?.current_streak) {
+          if (typeof userData.current_streak === 'string') {
+            parsedStreak = JSON.parse(userData.current_streak)
+          } else {
+            parsedStreak = userData.current_streak
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing streak data:', e)
+      }
+
+      setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
@@ -763,22 +831,16 @@ export default function JavaTheoryPage() {
       
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        {/* Timer Progress Bar */}
-        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
-        
         {/* Main Header Content */}
         <div className="py-6">
-          <div className="max-w-7xl mx-auto flex justify-between items-center px-6">
+          <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl animate-pulse">🐾</span>
               <h1 className="text-2xl font-light">9lives</h1>
             </div>
             
-            <div className="flex items-center gap-8">
-              <div className="text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-                <p className="text-xl text-black font-normal">{streak} 🔥</p>
-              </div>
+            <div className="flex items-center gap-6">
+              <StreakDisplay streakData={streakData} />
               <div className="text-center">
                 <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
                 <p className="text-xl text-black font-normal">{totalPoints} 🐟</p>
@@ -790,10 +852,13 @@ export default function JavaTheoryPage() {
             </div>
           </div>
         </div>
+        
+        {/* Timer Progress Bar - moved below header */}
+        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Topic Header */}
         <div className="text-center mb-12 bg-white shadow-sm border p-8">
           <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>

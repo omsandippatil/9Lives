@@ -412,10 +412,57 @@ function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime
     <div className="w-full bg-gray-200 h-2 overflow-hidden">
       <div 
         className={`h-full transition-all duration-1000 ease-linear ${
-          isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-blue-400 to-purple-500'
+          isComplete ? 'bg-black' : 'bg-black'
         }`}
         style={{ width: `${progress}%` }}
       />
+    </div>
+  )
+}
+
+// Enhanced Streak Display Component
+function StreakDisplay({ streakData }: { streakData: [string, number] | null }) {
+  if (!streakData) {
+    return (
+      <div className="text-center">
+        <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+        <p className="text-xl text-gray-400 font-normal">0 🔥</p>
+      </div>
+    )
+  }
+
+  const [dateStr, days] = streakData
+  const today = new Date().toISOString().split('T')[0] // Get today's date in YYYY-MM-DD format
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  
+  const streakDate = new Date(dateStr)
+  const todayDate = new Date(today)
+  const diffTime = todayDate.getTime() - streakDate.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  let displayDays = days
+  let colorClass = 'text-orange-500' // Default color for active streak
+  
+  if (dateStr === today) {
+    // Today's streak - show in color
+    colorClass = 'text-orange-500'
+  } else if (dateStr === yesterdayStr) {
+    // Yesterday's streak - show in grayscale but keep the number
+    colorClass = 'text-gray-400'
+  } else if (diffDays > 1) {
+    // More than one day ago - show as zero
+    displayDays = 0
+    colorClass = 'text-gray-400'
+  }
+
+  return (
+    <div className="text-center">
+      <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+      <p className={`text-xl font-normal transition-colors duration-300 ${colorClass}`}>
+        {displayDays} 🔥
+      </p>
     </div>
   )
 }
@@ -454,7 +501,7 @@ export default function SqlTheoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
-  const [streak, setStreak] = useState(0)
+  const [streakData, setStreakData] = useState<[string, number] | null>(null)
   const [totalPoints, setTotalPoints] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
   
@@ -524,7 +571,21 @@ export default function SqlTheoryPage() {
         return
       }
 
-      setStreak(userData?.current_streak || 0)
+      // Parse streak data - expecting JSON like ["2025-08-15", 3]
+      let parsedStreak: [string, number] | null = null
+      if (userData?.current_streak) {
+        try {
+          if (typeof userData.current_streak === 'string') {
+            parsedStreak = JSON.parse(userData.current_streak)
+          } else if (Array.isArray(userData.current_streak)) {
+            parsedStreak = userData.current_streak as [string, number]
+          }
+        } catch (e) {
+          console.error('Error parsing streak data:', e)
+        }
+      }
+
+      setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
@@ -762,23 +823,17 @@ export default function SqlTheoryPage() {
       <FishAnimation show={showFishAnimation} />
       
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        {/* Timer Progress Bar */}
-        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
-        
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">        
         {/* Main Header Content */}
         <div className="py-6">
-          <div className="max-w-7xl mx-auto flex justify-between items-center px-6">
+          <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl animate-pulse">🐾</span>
               <h1 className="text-2xl font-light">9lives</h1>
             </div>
             
             <div className="flex items-center gap-8">
-              <div className="text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-                <p className="text-xl text-black font-normal">{streak} 🔥</p>
-              </div>
+              <StreakDisplay streakData={streakData} />
               <div className="text-center">
                 <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
                 <p className="text-xl text-black font-normal">{totalPoints} 🐟</p>
@@ -790,10 +845,13 @@ export default function SqlTheoryPage() {
             </div>
           </div>
         </div>
+
+        {/* Timer Progress Bar - Moved below header */}
+        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Topic Header */}
         <div className="text-center mb-12 bg-white shadow-sm border p-8">
           <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>

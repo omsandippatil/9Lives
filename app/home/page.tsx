@@ -46,6 +46,25 @@ const getCookie = (name: string): string | null => {
   return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
 }
 
+// Helper function to extract name from email
+const getNameFromEmail = (email: string): string => {
+  // Special case for durvadongre@gmail.com
+  if (email === 'durvadongre@gmail.com') {
+    return 'cutu putu'
+  }
+  
+  // Extract name before @ and remove common domain endings
+  const namepart = email.split('@')[0]
+  
+  // Capitalize first letter of each word (in case of dots or underscores)
+  const formattedName = namepart
+    .split(/[._-]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+  
+  return formattedName
+}
+
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -302,6 +321,7 @@ export default function HomePage() {
 
   const totalQuestions = calculateTotalQuestions(profile)
   const totalLanguagesCovered = profile.java_lang_covered + profile.python_lang_covered + profile.sql_lang_covered
+  const displayName = getNameFromEmail(profile.email)
 
   return (
     <div className="min-h-screen bg-white text-black font-mono">
@@ -346,7 +366,7 @@ export default function HomePage() {
         <div className="text-center py-8">
           <div className="text-6xl mb-4 transition-all duration-500">{catAnimation}</div>
           <h2 className="text-3xl font-light mb-3">
-            Welcome back, cutu putu!
+            Welcome back, {displayName}!
           </h2>
           <p className="text-lg text-gray-600 font-light mb-1">
             Ready to pounce on some new challenges?

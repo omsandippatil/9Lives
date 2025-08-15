@@ -403,7 +403,7 @@ function SnakeAnimation({ show }: { show: boolean }) {
   )
 }
 
-// Timer Progress Bar Component
+// Timer Progress Bar Component - moved to separate component for reuse
 function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime: number }) {
   const progress = ((totalTime - timeLeft) / totalTime) * 100
   const isComplete = timeLeft === 0
@@ -412,7 +412,7 @@ function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime
     <div className="w-full bg-gray-200 h-2 overflow-hidden">
       <div 
         className={`h-full transition-all duration-1000 ease-linear ${
-          isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-orange-400 to-red-500'
+          isComplete ? 'bg-black' : 'bg-black'
         }`}
         style={{ width: `${progress}%` }}
       />
@@ -445,6 +445,49 @@ function LoadingProgressBar() {
   )
 }
 
+// Smart Streak Display Component
+function SmartStreakDisplay({ streakData }: { streakData: [string, number] }) {
+  const [streakDate, streakCount] = streakData
+  
+  // Get today's date in YYYY-MM-DD format
+  const today = new Date().toISOString().split('T')[0]
+  
+  // Get yesterday's date
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().split('T')[0]
+  
+  // Determine display logic
+  let displayCount = streakCount
+  let textColor = 'text-black'
+  let isActive = false
+  
+  if (streakDate === today) {
+    // Today - show in color
+    textColor = 'text-orange-500'
+    isActive = true
+  } else if (streakDate === yesterdayStr) {
+    // Yesterday - show in grayscale
+    textColor = 'text-gray-400'
+  } else {
+    // Before yesterday - show as zero
+    displayCount = 0
+    textColor = 'text-gray-300'
+  }
+  
+  return (
+    <div className="text-center">
+      <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+      <div className="flex items-center justify-center gap-1">
+        <p className={`text-xl font-normal transition-colors duration-300 ${textColor} ${isActive ? 'animate-pulse' : ''}`}>
+          {displayCount}
+        </p>
+        <span className={`transition-all duration-300 ${isActive ? 'animate-bounce' : 'grayscale'}`}>🔥</span>
+      </div>
+    </div>
+  )
+}
+
 export default function PythonTheoryPage() {
   const params = useParams()
   const router = useRouter()
@@ -454,7 +497,7 @@ export default function PythonTheoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
-  const [streak, setStreak] = useState(0)
+  const [streakData, setStreakData] = useState<[string, number]>(['2025-08-15', 0])
   const [fishCount, setFishCount] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
   
@@ -621,7 +664,7 @@ export default function PythonTheoryPage() {
   }
 
   useEffect(() => {
-    // Load streak and fish count from database and check progression validity
+    // Load streak data, fish count and check progression validity
     const fetchUserData = async () => {
       try {
         // Get user ID
@@ -639,10 +682,10 @@ export default function PythonTheoryPage() {
         const isValid = await checkValidProgression(currentTheoryId, userId)
         setIsValidProgression(isValid)
 
-        // Fetch current_streak and total_points from users table
+        // Fetch streak data and other user data from users table
         const { data: userData, error } = await supabase
           .from('users')
-          .select('current_streak, total_points')
+          .select('current_streak_json, total_points')
           .eq('id', userId)
           .single()
 
@@ -652,7 +695,20 @@ export default function PythonTheoryPage() {
         }
 
         if (userData) {
-          setStreak(userData.current_streak || 0)
+          // Parse streak JSON data
+          if (userData.current_streak_json) {
+            try {
+              const parsedStreak = JSON.parse(userData.current_streak_json)
+              if (Array.isArray(parsedStreak) && parsedStreak.length === 2) {
+                setStreakData(parsedStreak as [string, number])
+              }
+            } catch (e) {
+              console.error('Error parsing streak JSON:', e)
+              // Fallback to default
+              setStreakData([new Date().toISOString().split('T')[0], 0])
+            }
+          }
+          
           setFishCount(userData.total_points || 0)
         }
       } catch (error) {
@@ -729,13 +785,15 @@ export default function PythonTheoryPage() {
   const handleNext = () => {
     if (!canProceed) return
     
-    // Increment streak
-    const newStreak = streak + 1
-    setStreak(newStreak)
+    // Update streak data when proceeding
+    const today = new Date().toISOString().split('T')[0]
+    const [currentDate, currentCount] = streakData
     
-    // Note: localStorage not available in Claude.ai artifacts
-    // localStorage.setItem('python_streak', newStreak.toString())
-    // localStorage.setItem('fish_count', newFishCount.toString())
+    // If it's a new day, increment the streak
+    if (currentDate !== today) {
+      const newStreakData: [string, number] = [today, currentCount + 1]
+      setStreakData(newStreakData)
+    }
     
     // Navigate to practice or next section
     router.push('/practice')
@@ -803,23 +861,17 @@ export default function PythonTheoryPage() {
       <SnakeAnimation show={showSnakeAnimation} />
       
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        {/* Timer Progress Bar */}
-        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
-        
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">        
         {/* Main Header Content */}
         <div className="py-6">
-          <div className="max-w-7xl mx-auto flex justify-between items-center px-6">
+          <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl animate-pulse">🐾</span>
               <h1 className="text-2xl font-light">9lives</h1>
             </div>
             
-            <div className="flex items-center gap-8">
-              <div className="text-center">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
-                <p className="text-xl text-black font-normal">{streak} 🔥</p>
-              </div>
+            <div className="flex items-center gap-6">
+              <SmartStreakDisplay streakData={streakData} />
               <div className="text-center">
                 <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
                 <p className="text-xl text-black font-normal">{fishCount} 🐟</p>
@@ -831,10 +883,13 @@ export default function PythonTheoryPage() {
             </div>
           </div>
         </div>
+        
+        {/* Timer Progress Bar - now below header */}
+        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Topic Header */}
         <div className="text-center mb-12 bg-white shadow-sm border p-8">
           <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>
