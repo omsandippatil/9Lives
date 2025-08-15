@@ -1,4 +1,4 @@
-name: Language Theory API every 1 hr
+name: Language Questions API every 1 hr
 
 on:
   schedule:
@@ -17,3 +17,7 @@ jobs:
       - name: Call Java Language API
         run: |
           curl -X GET "https://9-lives.vercel.app/api/add/languages/java?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call SQL Language API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/languages/sql?api_key=${{ secrets.API_KEY }}"
