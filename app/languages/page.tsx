@@ -2,12 +2,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-
 interface UserProfile {
   java_lang_covered: number
   python_lang_covered: number
 }
-
 // Helper function to read cookies
 const getCookie = (name: string): string | null => {
   if (typeof document === 'undefined') return null
@@ -16,42 +14,34 @@ const getCookie = (name: string): string | null => {
   const cookie = cookies.find(cookie => cookie.trim().startsWith(`${name}=`))
   return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
 }
-
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
-
 export default function LanguagesPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
-
   useEffect(() => {
     loadUserProfile()
   }, [])
-
   const loadUserProfile = async () => {
     try {
       if (!supabase) {
         setLoading(false)
         return
       }
-
       const userId = getCookie('client-user-id') || localStorage.getItem('client-user-id') || localStorage.getItem('supabase-user-id')
       
       if (!userId) {
         setLoading(false)
         return
       }
-
       const { data: userProfile } = await supabase
         .from('users')
         .select('java_lang_covered, python_lang_covered')
         .eq('id', userId)
         .single()
-
       if (userProfile) {
         setProfile(userProfile)
       }
@@ -60,7 +50,6 @@ export default function LanguagesPage() {
       setLoading(false)
     }
   }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -71,35 +60,28 @@ export default function LanguagesPage() {
       </div>
     )
   }
-
   const javaProgress = profile?.java_lang_covered || 0
   const pythonProgress = profile?.python_lang_covered || 0
-
   return (
     <div className="min-h-screen bg-white text-black font-mono">
       {/* Header */}
       <header className="border-b border-gray-100 py-4">
         <div className="w-full flex items-center px-2">
           <button 
-            onClick={() => router.back()}
-            className="text-2xl hover:scale-110 transition-transform duration-300"
+            onClick={() => router.push('/home')}
+            className="flex items-center gap-3 text-2xl"
           >
-            ←
+            <span className="animate-pulse">🐾</span>
+            <h1 className="font-light">9Lives</h1>
           </button>
-          <div className="flex items-center gap-3 mx-auto">
-            <span className="text-2xl animate-pulse">🐾</span>
-            <h1 className="text-2xl font-light">Choose Language</h1>
-          </div>
         </div>
       </header>
-
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">😺</div>
           <h2 className="text-xl font-light mb-2">Pick your paw-gramming language</h2>
         </div>
-
         {/* Language Options */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {/* Java */}
@@ -127,7 +109,6 @@ export default function LanguagesPage() {
               <p className="text-base text-gray-500 font-mono group-hover:text-gray-700 transition-colors">Click to start your Java journey</p>
             </div>
           </div>
-
           {/* Python */}
           <div 
             onClick={() => router.push('/languages/python')}
