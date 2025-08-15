@@ -256,12 +256,12 @@ export default function SqlTheoryPage() {
             <div className="mb-6">
               <div className="flex justify-between items-center mb-3">
                 <span className="font-mono text-sm text-gray-400">Purr-ogress</span>
-                <span className="font-mono text-sm text-gray-600">{profile.sql_lang_covered}/100</span>
+                <span className="font-mono text-sm text-gray-600">{profile.sql_lang_covered}/50</span>
               </div>
               <div className="w-full bg-gray-50 h-3 overflow-hidden">
                 <div 
                   className="bg-black h-full transition-all duration-700 ease-out"
-                  style={{ width: `${Math.min((profile.sql_lang_covered / 100) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((profile.sql_lang_covered / 50) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -269,7 +269,7 @@ export default function SqlTheoryPage() {
             {/* Status */}
             <div className="text-center mb-6">
               <p className="font-mono text-base text-gray-600 mb-3">
-                🐾 {profile.sql_lang_covered} topics pounced • {100 - profile.sql_lang_covered} to go
+                🐾 {profile.sql_lang_covered} topics pounced • {50 - profile.sql_lang_covered} to go
               </p>
               <div className="inline-flex items-center gap-3 text-gray-500 group-hover:text-black transition-colors">
                 <span className="font-mono text-base">Ready to pounce</span>

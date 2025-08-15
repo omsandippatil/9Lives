@@ -13,6 +13,7 @@ interface UserProfile {
   aptitude_questions_attempted: number
   java_lang_covered: number
   python_lang_covered: number
+  sql_lang_covered: number
   hr_questions_attempted: number
   artificial_intelligence_questions_attempted: number
   blueprint_questions_attempted: number
@@ -180,6 +181,7 @@ export default function HomePage() {
           aptitude_questions_attempted,
           java_lang_covered,
           python_lang_covered,
+          sql_lang_covered,
           hr_questions_attempted,
           artificial_intelligence_questions_attempted,
           blueprint_questions_attempted,
@@ -299,7 +301,7 @@ export default function HomePage() {
   }
 
   const totalQuestions = calculateTotalQuestions(profile)
-  const totalLanguagesCovered = profile.java_lang_covered + profile.python_lang_covered
+  const totalLanguagesCovered = profile.java_lang_covered + profile.python_lang_covered + profile.sql_lang_covered
 
   return (
     <div className="min-h-screen bg-white text-black font-mono">
@@ -378,8 +380,8 @@ export default function HomePage() {
             title="Languages Covered"
             emoji="🌐"
             current={totalLanguagesCovered}
-            total={100}
-            subtitle="Java & Python mastery meow-nificent"
+            total={150}
+            subtitle="Java, Python & SQL mastery meow-nificent"
             onClick={() => router.push('/languages')}
           />
           

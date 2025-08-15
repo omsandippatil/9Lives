@@ -231,7 +231,7 @@ export default function JavaTheoryPage() {
           <div className="flex items-center gap-4">
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Progress</p>
-              <p className="text-lg font-light">{profile.java_lang_covered}/100</p>
+              <p className="text-lg font-light">{profile.java_lang_covered}/50</p>
             </div>
           </div>
         </div>
@@ -261,7 +261,7 @@ export default function JavaTheoryPage() {
               <div className="w-full bg-gray-50 h-3 overflow-hidden">
                 <div 
                   className="bg-black h-full transition-all duration-700 ease-out"
-                  style={{ width: `${Math.min((profile.java_lang_covered / 100) * 100, 100)}%` }}
+                  style={{ width: `${Math.min((profile.java_lang_covered / 50) * 100, 100)}%` }}
                 />
               </div>
             </div>
@@ -269,7 +269,7 @@ export default function JavaTheoryPage() {
             {/* Status */}
             <div className="text-center mb-6">
               <p className="font-mono text-base text-gray-600 mb-3">
-                🐾 {profile.java_lang_covered} topics pounced • {100 - profile.java_lang_covered} to go
+                🐾 {profile.java_lang_covered} topics pounced • {50 - profile.java_lang_covered} to go
               </p>
               <div className="inline-flex items-center gap-3 text-gray-500 group-hover:text-black transition-colors">
                 <span className="font-mono text-base">Ready to pounce</span>
