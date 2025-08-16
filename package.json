@@ -9,11 +9,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.53.0",
+    "@supabase/supabase-js": "^2.55.0",
     "@types/bcryptjs": "^3.0.0",
     "bcryptjs": "^3.0.2",
     "canvas-confetti": "^1.9.3",
     "cookie": "^1.0.2",
+    "groq-sdk": "^0.30.0",
     "lucide-react": "^0.536.0",
     "next": "15.4.5",
     "pg": "^8.16.3",
