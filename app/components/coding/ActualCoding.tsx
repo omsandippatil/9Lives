@@ -15,7 +15,7 @@ interface UserProfile {
   email: string
   coding_questions_attempted: number
   technical_questions_attempted: number
-  fundamental_questions_attempted: number
+  fundamental_questions_atftempted: number
   tech_topics_covered: number
   current_streak: [string, number] | null // JSONB format: ["2025-08-04", 1]
   total_points: number
@@ -63,6 +63,7 @@ export default function ActualCoding({
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [showSolution, setShowSolution] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const [hasIncrementedProgress, setHasIncrementedProgress] = useState(false); // Track if we've already incremented for this session
   const [submissionResult, setSubmissionResult] = useState<{
     success: boolean;
     message: string;
@@ -74,6 +75,11 @@ export default function ActualCoding({
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  // Reset increment flag when questionId changes
+  useEffect(() => {
+    setHasIncrementedProgress(false);
+  }, [questionId]);
 
   // Timer effect
   useEffect(() => {
@@ -173,6 +179,12 @@ export default function ActualCoding({
       return false;
     }
     
+    // If we've already incremented progress in this session, don't do it again
+    if (hasIncrementedProgress) {
+      console.log('shouldUpdateProgress: Already incremented in this session');
+      return false;
+    }
+    
     const userProgress = profile.coding_questions_attempted || 0;
     const shouldUpdate = questionId === userProgress + 1;
     
@@ -181,11 +193,14 @@ export default function ActualCoding({
       currentQuestionId,
       userProgress,
       shouldUpdate,
+      hasIncrementedProgress,
       calculation: `${questionId} === ${userProgress} + 1`
     });
     
-    // Only update if current question is exactly one more than user's progress
-    // This ensures sequential progression and prevents skipping questions
+    // Only update if:
+    // 1. Current question is exactly one more than user's progress
+    // 2. We haven't already incremented in this session
+    // This ensures sequential progression and prevents multiple increments
     return shouldUpdate;
   };
 
@@ -199,10 +214,11 @@ export default function ActualCoding({
     
     const shouldUpdate = shouldUpdateProgress();
     if (!shouldUpdate) {
-      console.log('Progress update skipped - question not in sequence:', { 
+      console.log('Progress update skipped - conditions not met:', { 
         questionId,
         userProgress: profile.coding_questions_attempted || 0,
-        requiredQuestionId: (profile.coding_questions_attempted || 0) + 1
+        requiredQuestionId: (profile.coding_questions_attempted || 0) + 1,
+        hasIncrementedProgress
       });
       return false;
     }
@@ -228,6 +244,9 @@ export default function ActualCoding({
           console.log('Progress update response:', data);
           
           if (data.success) {
+            // Set the flag to prevent further increments in this session
+            setHasIncrementedProgress(true);
+            
             // Update local profile state
             setProfile(prev => prev ? {
               ...prev,

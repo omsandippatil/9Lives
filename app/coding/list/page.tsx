@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 
 interface Question {
   sr_no: number;
@@ -36,7 +37,9 @@ interface ApiResponse {
 }
 
 interface UserProfile {
+  id: string;
   email: string;
+  coding_questions_attempted: number;
   current_streak: [string, number]; // ["2025-08-03", 3]
   total_points: number;
   progress: {
@@ -44,6 +47,25 @@ interface UserProfile {
     total_points: number;
   };
 }
+
+// Helper function to read cookies
+const getCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null
+  
+  const cookies = document.cookie.split(';')
+  const cookie = cookies.find(cookie => cookie.trim().startsWith(`${name}=`))
+  return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
+}
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables')
+}
+
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
 
 export default function QuestionsList() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -53,12 +75,63 @@ export default function QuestionsList() {
   const [meta, setMeta] = useState<ApiResponse['meta'] | null>(null);
   const [currentStartId, setCurrentStartId] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [userCodingProgress, setUserCodingProgress] = useState<number>(0);
   const router = useRouter();
 
   useEffect(() => {
-    fetchProfile();
-    fetchQuestions();
+    fetchUserCodingProgress();
   }, []);
+
+  useEffect(() => {
+    if (userCodingProgress >= 0) {
+      fetchProfile();
+      // Use coding_questions_attempted + 1 as the starting question ID, or 1 if no progress
+      const startingQuestionId = userCodingProgress > 0 ? userCodingProgress + 1 : 1;
+      fetchQuestions(startingQuestionId);
+    }
+  }, [userCodingProgress]);
+
+  const fetchUserCodingProgress = async () => {
+    try {
+      // Check if Supabase is properly initialized
+      if (!supabase) {
+        console.error('Database connection not available')
+        setUserCodingProgress(1);
+        return
+      }
+
+      // Get user ID from client-accessible cookie or localStorage
+      let userId = getCookie('client-user-id') || localStorage.getItem('client-user-id') || localStorage.getItem('supabase-user-id')
+      
+      if (!userId) {
+        console.error('User not authenticated')
+        setUserCodingProgress(1);
+        return
+      }
+
+      console.log('Fetching coding progress for user ID:', userId)
+
+      // Fetch user's coding_questions_attempted directly from Supabase
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('coding_questions_attempted')
+        .eq('id', userId)
+        .single()
+
+      if (userError || !userData) {
+        console.error('Failed to fetch user coding progress:', userError)
+        setUserCodingProgress(1); // Default to 1 if error
+        return
+      }
+
+      console.log('User coding progress loaded:', userData.coding_questions_attempted)
+      setUserCodingProgress(userData.coding_questions_attempted || 0);
+
+    } catch (err) {
+      console.error('Error fetching coding progress:', err)
+      setUserCodingProgress(1); // Default to 1 if error
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -85,6 +158,8 @@ export default function QuestionsList() {
     try {
       setLoading(true);
       setError(null);
+      
+      console.log('Fetching questions starting from ID:', startId);
       
       // Fetch 10 questions starting from the specified ID
       const response = await fetch(`/api/get/coding?type=all&question_id=${startId}`);
@@ -171,6 +246,12 @@ export default function QuestionsList() {
     }
   };
 
+  const handleJumpToCurrentProgress = () => {
+    // Jump to the user's current progress + 1 (next question to attempt)
+    const nextQuestionId = userCodingProgress > 0 ? userCodingProgress + 1 : 1;
+    fetchQuestions(nextQuestionId);
+  };
+
   // Helper function to get streak display info
   const getStreakDisplay = () => {
     if (!profile?.progress?.current_streak) {
@@ -197,17 +278,22 @@ export default function QuestionsList() {
   );
 
   const getQuestionIcon = (question: Question) => {
-    if (question.is_current) return '😸'; // grinning cat (current question)
-    return '😺'; // happy cat (all questions are accessible)
+    if (question.sr_no <= userCodingProgress) return '✅'; // completed questions
+    if (question.sr_no === userCodingProgress + 1) return '😸'; // current/next question
+    return '😺'; // future questions (all accessible)
   };
 
   const getQuestionStatus = (question: Question) => {
-    if (question.is_current) return 'Current purr-blem';
+    if (question.sr_no <= userCodingProgress) return 'Completed with purrfection!';
+    if (question.sr_no === userCodingProgress + 1) return 'Current purr-blem to tackle';
     return 'Ready to pounce';
   };
 
   const getQuestionStyles = (question: Question) => {
-    if (question.is_current) {
+    if (question.sr_no <= userCodingProgress) {
+      return 'border-green-300 bg-green-50 hover:border-green-500 cursor-pointer';
+    }
+    if (question.sr_no === userCodingProgress + 1) {
       return 'border-blue-300 bg-blue-50 hover:border-blue-500 cursor-pointer';
     }
     return 'border-gray-200 hover:border-black cursor-pointer';
@@ -265,6 +351,10 @@ export default function QuestionsList() {
                   <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
                   <p className="text-lg font-light">{profile.progress.total_points} 🐟</p>
                 </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">Progress</p>
+                  <p className="text-lg font-light">{userCodingProgress}/200 💻</p>
+                </div>
                 <button 
                   onClick={() => router.push('/leaderboard')}
                   className="text-center hover:scale-105 transition-transform duration-300 cursor-pointer"
@@ -311,7 +401,7 @@ export default function QuestionsList() {
               <>
                 Questions {meta.range.actual_start}-{meta.range.actual_end} of {meta.total_questions}
                 <span className="ml-2 text-blue-600">
-                  (All questions are accessible! 🎉)
+                  ({userCodingProgress} completed! 🎉)
                 </span>
               </>
             )}
@@ -336,6 +426,13 @@ export default function QuestionsList() {
               className="px-4 py-2 border font-light text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-black border-gray-200 hover:border-black disabled:hover:border-gray-200"
             >
               ← Previous
+            </button>
+
+            <button
+              onClick={handleJumpToCurrentProgress}
+              className="px-4 py-2 border border-blue-200 bg-blue-50 hover:border-blue-500 font-light text-sm transition-all duration-300 text-blue-700"
+            >
+              🎯 Jump to Current ({userCodingProgress + 1})
             </button>
             
             <button
@@ -374,12 +471,13 @@ export default function QuestionsList() {
           </div>
         </div>
 
-        {/* Page Info */}
+        {/* Progress Info */}
         {meta && (
           <div className="mb-8 p-4 bg-gray-50 border border-gray-200">
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-600 font-light">
-                <span className="font-medium">Cat's Library Status:</span> All {meta.total_questions} questions are now freely accessible! 🐱‍📚
+                <span className="font-medium">Your Progress:</span> {userCodingProgress} questions completed out of {meta.total_questions}! 
+                <span className="text-green-600 ml-2">🎯 Next: Question #{userCodingProgress + 1}</span>
               </div>
               <div className="text-sm text-gray-600 font-light">
                 Page {getCurrentPageNumber()} of {getTotalPages()} 
@@ -387,7 +485,7 @@ export default function QuestionsList() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-500 italic">
-              *The wise cat has unlocked all knowledge for you* ✨
+              *The wise cat shows your progress: ✅ Completed, 😸 Current, 😺 Available* ✨
             </div>
           </div>
         )}
@@ -425,7 +523,9 @@ export default function QuestionsList() {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <span className={`text-xs px-3 py-1 font-light uppercase tracking-wider ${
-                          question.is_current 
+                          question.sr_no <= userCodingProgress
+                            ? 'bg-green-600 text-white' 
+                            : question.sr_no === userCodingProgress + 1
                             ? 'bg-blue-600 text-white' 
                             : 'bg-black text-white'
                         }`}>
@@ -433,20 +533,24 @@ export default function QuestionsList() {
                         </span>
                         <span className="text-lg">{getQuestionIcon(question)}</span>
                         <span className={`text-xs font-light ${
-                          question.is_current 
+                          question.sr_no <= userCodingProgress
+                            ? 'text-green-600'
+                            : question.sr_no === userCodingProgress + 1
                             ? 'text-blue-600'
                             : 'text-gray-600'
                         }`}>
                           {getQuestionStatus(question)}
                         </span>
-                        {question.is_current && (
+                        {question.sr_no === userCodingProgress + 1 && (
                           <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 font-light border border-blue-200">
-                            CURRENT HUNT 🎯
+                            NEXT CHALLENGE 🎯
                           </span>
                         )}
-                        <span className="text-xs bg-green-100 text-green-600 px-2 py-1 font-light border border-green-200">
-                          UNLOCKED 🔓
-                        </span>
+                        {question.sr_no <= userCodingProgress && (
+                          <span className="text-xs bg-green-100 text-green-600 px-2 py-1 font-light border border-green-200">
+                            COMPLETED ✅
+                          </span>
+                        )}
                       </div>
                       
                       <div className="flex items-center gap-2">
@@ -466,7 +570,9 @@ export default function QuestionsList() {
                     
                     <div className="flex items-center justify-between text-xs text-gray-400 font-light">
                       <span>
-                        Click to pounce on this purr-blem! →
+                        {question.sr_no <= userCodingProgress 
+                          ? "Already conquered! Click to review →" 
+                          : "Click to pounce on this purr-blem! →"}
                       </span>
                       <span>Added: {new Date(question.created_at).toLocaleDateString()}</span>
                     </div>
@@ -482,7 +588,7 @@ export default function QuestionsList() {
           <div className="flex flex-col sm:flex-row justify-between items-center mt-8 pt-8 border-t border-gray-100 gap-4">
             <div className="text-sm text-gray-600 font-light text-center sm:text-left">
               Showing questions {meta.range.actual_start} - {meta.range.actual_end} of {meta.total_questions}
-              <span className="italic text-gray-400 ml-2">*all questions unlocked* 😸</span>
+              <span className="italic text-green-600 ml-2">*{userCodingProgress} completed so far* 🎉</span>
             </div>
             
             <div className="flex gap-2 flex-wrap justify-center">
@@ -531,7 +637,9 @@ export default function QuestionsList() {
           <p className="text-sm text-gray-400 font-light italic">
             "A cat has nine lives. For three he plays, for three he strays, and for the last three he stays." - English Proverb
           </p>
-          <p className="text-xs text-gray-300 font-light mt-2">*All knowledge is now freely available to you, fellow cat!* 🐾</p>
+          <p className="text-xs text-gray-300 font-light mt-2">
+            *You've completed {userCodingProgress} out of {meta?.total_questions || 200} questions! Keep going, fellow cat!* 🐾
+          </p>
         </div>
       </main>
     </div>

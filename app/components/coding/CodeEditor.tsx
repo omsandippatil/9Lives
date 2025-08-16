@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import CodeEditor from './Code';
 
 interface TestCase {
@@ -130,6 +131,9 @@ export default function CodingInterface({
   const [allTestsPassed, setAllTestsPassed] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [apiUpdateStatus, setApiUpdateStatus] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+  const [isNavigating, setIsNavigating] = useState(false);
+  
+  const router = useRouter();
 
   // Check if this question has already been completed
   const isQuestionAlreadyCompleted = () => {
@@ -334,6 +338,16 @@ export default function CodingInterface({
     }
   };
 
+  const handleNext = () => {
+    if (!hasSubmitted || isNavigating) return;
+    
+    setIsNavigating(true);
+    const nextQuestionId = questionId + 1;
+    
+    // Navigate to the next question
+    router.push(`/coding/${nextQuestionId}`);
+  };
+
   const getResultsTabTitle = () => {
     if (!executionResult) return 'Results';
     const passedCount = executionResult.results.filter(r => r.passed).length;
@@ -394,6 +408,23 @@ export default function CodingInterface({
     return 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400';
   };
 
+  const getNextButtonText = () => {
+    if (isNavigating) {
+      return 'Loading...';
+    }
+    return 'Next Question →';
+  };
+
+  const getNextButtonClass = () => {
+    if (!hasSubmitted) {
+      return 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed';
+    }
+    if (isNavigating) {
+      return 'bg-blue-500 text-white border border-blue-500';
+    }
+    return 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600 shadow-sm';
+  };
+
   return (
     <div className="w-1/2 flex flex-col h-full">
       {/* Header */}
@@ -430,6 +461,13 @@ export default function CodingInterface({
             className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${getSubmitButtonClass()}`}
           >
             {getSubmitButtonText()}
+          </button>
+          <button
+            onClick={handleNext}
+            disabled={!hasSubmitted || isNavigating}
+            className={`px-4 py-2 transition-all duration-300 font-mono text-sm disabled:cursor-not-allowed ${getNextButtonClass()}`}
+          >
+            {getNextButtonText()}
           </button>
         </div>
       </div>
@@ -676,6 +714,23 @@ export default function CodingInterface({
                       </div>
                     </div>
                   ))}
+                  
+                  {/* Next Question Prompt */}
+                  {hasSubmitted && (
+                    <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200 text-center">
+                      <div className="text-lg mb-2">🎉</div>
+                      <div className="font-mono font-medium text-blue-800 mb-2">
+                        Great job! Ready for the next challenge?
+                      </div>
+                      <button
+                        onClick={handleNext}
+                        disabled={isNavigating}
+                        className={`px-6 py-2 transition-all duration-300 font-mono text-sm ${getNextButtonClass()}`}
+                      >
+                        {getNextButtonText()}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center p-6 text-gray-500">

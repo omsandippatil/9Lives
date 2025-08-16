@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import 'katex/dist/katex.min.css'
 import ExplanationPopup from './Popup'
+// import { useRouter } from 'next/router' // Commented out to avoid router mounting issues
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -32,6 +33,7 @@ interface QuestionData {
 interface QuestionComponentProps {
   questionData: QuestionData
   questionId: number
+  onNext?: (nextQuestionId: number) => void // Optional callback for navigation
 }
 
 interface UserProfile {
@@ -276,7 +278,8 @@ const ContentRenderer = ({ content }: { content: string }) => {
   )
 }
 
-export default function QuestionComponent({ questionData, questionId }: QuestionComponentProps) {
+export default function QuestionComponent({ questionData, questionId, onNext }: QuestionComponentProps) {
+  // const router = useRouter() // Commented out to avoid router mounting issues
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
   const [showHint, setShowHint] = useState(false)
@@ -325,14 +328,14 @@ export default function QuestionComponent({ questionData, questionId }: Question
     fetchProfile()
   }, [])
 
-  // Timer effect with better control
+  // Timer effect - stop after submission
   useEffect(() => {
-    // Only run timer if time is left, not showing explanation, time not up, and not submitted
-    if (timeLeft > 0 && !showExplanation && !isTimeUp && !hasSubmitted) {
+    // Only run timer if time is left, not submitted, and not showing explanation
+    if (timeLeft > 0 && !hasSubmitted && !showExplanation) {
       const timer = setTimeout(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            // Time is about to be 0, trigger time up
+            // Time is up but don't force submit - just mark time up
             setIsTimeUp(true)
             return 0
           }
@@ -341,14 +344,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [timeLeft, showExplanation, isTimeUp, hasSubmitted])
-
-  // Separate effect to handle time up submission
-  useEffect(() => {
-    if (isTimeUp && !hasSubmitted && !showExplanation) {
-      handleSubmit(true)
-    }
-  }, [isTimeUp, hasSubmitted, showExplanation])
+  }, [timeLeft, hasSubmitted, showExplanation])
 
   // Reset states when question changes
   useEffect(() => {
@@ -480,12 +476,17 @@ export default function QuestionComponent({ questionData, questionId }: Question
   }
 
   const calculatePoints = (isCorrect: boolean, timeRemaining: number, isTimeUp: boolean): number => {
-    // Only award points for correct answers on new questions within time limit
-    if (!isCorrect || isTimeUp || !isNewQuestion) {
+    // Award points for correct answers on new questions
+    // Full points if answered within time, reduced points if time up
+    if (!isCorrect || !isNewQuestion) {
       return 0
     }
     
-    return 5 // 5 fish for correct answer
+    if (isTimeUp) {
+      return 2 // Reduced points for correct answer after time up
+    }
+    
+    return 5 // Full points for correct answer within time
   }
 
   const handleOptionClick = (index: number) => {
@@ -511,25 +512,24 @@ export default function QuestionComponent({ questionData, questionId }: Question
     setShowExplanation(false)
   }
 
-  const handleSubmit = async (timeUpSubmission = false) => {
+  const handleSubmit = async () => {
     // Prevent multiple submissions
     if (hasSubmitted || showExplanation) {
       return
     }
     
-    // Mark as submitted immediately to prevent race conditions
-    setHasSubmitted(true)
-    
-    if (selectedOption === null && !timeUpSubmission) {
-      setHasSubmitted(false) // Reset if invalid submission
+    if (selectedOption === null) {
       return
     }
+    
+    // Mark as submitted immediately to prevent race conditions
+    setHasSubmitted(true)
 
     const isCorrect = selectedOption === correctIndex
-    const pointsToAward = calculatePoints(isCorrect, timeLeft, timeUpSubmission)
+    const pointsToAward = calculatePoints(isCorrect, timeLeft, isTimeUp)
     
     // Show confetti for correct answers on new questions
-    if (isCorrect && !timeUpSubmission && isNewQuestion) {
+    if (isCorrect && isNewQuestion) {
       createConfetti()
     }
     
@@ -543,6 +543,37 @@ export default function QuestionComponent({ questionData, questionId }: Question
     
     // Show explanation
     setShowExplanation(true)
+  }
+
+  const handleNext = () => {
+    // Navigate to next question using callback or fallback methods
+    const nextQuestionId = questionId + 1
+    
+    if (onNext) {
+      // Use provided callback for navigation
+      onNext(nextQuestionId)
+    } else {
+      // Fallback: try different navigation methods
+      if (typeof window !== 'undefined') {
+        // Method 1: Try Next.js router if available
+        try {
+          const { useRouter } = require('next/router')
+          const router = useRouter()
+          router.push(`/aptitude/${nextQuestionId}`)
+          return
+        } catch (error) {
+          console.log('Next.js router not available, using fallback navigation')
+        }
+        
+        // Method 2: Use window.location as fallback
+        try {
+          window.location.href = `/aptitude/${nextQuestionId}`
+        } catch (error) {
+          console.error('Navigation failed:', error)
+          alert(`Please navigate to question ${nextQuestionId} manually`)
+        }
+      }
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -582,7 +613,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
     if (questionId <= attempted) {
       return {
         type: 'already_attempted',
-        message: `Question ${questionId} already completed - no points available`
+        message: `Question ${questionId} already completed - ${isTimeUp ? '2 fish' : 'no points'} available for correct answer`
       }
     } else if (questionId > attempted + 1) {
       return {
@@ -592,7 +623,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
     } else {
       return {
         type: 'new_question',
-        message: `New question ${questionId} - 5 fish available for correct answer!`
+        message: `New question ${questionId} - ${isTimeUp ? '2 fish for correct answer (time up)' : '5 fish available for correct answer!'}`
       }
     }
   }
@@ -612,8 +643,15 @@ export default function QuestionComponent({ questionData, questionId }: Question
           <div className="flex items-center gap-8">
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wider">Timer</p>
-              <p className={`text-sm font-light ${timeLeft < 30 ? 'text-red-600 animate-pulse' : timeLeft < 60 ? 'text-orange-500' : ''}`}>
-                {formatTime(timeLeft)} ⏰
+              <p className={`text-sm font-light ${
+                hasSubmitted ? 'text-gray-400' : 
+                isTimeUp ? 'text-red-600' : 
+                timeLeft < 30 ? 'text-red-600 animate-pulse' : 
+                timeLeft < 60 ? 'text-orange-500' : ''
+              }`}>
+                {hasSubmitted ? 'Completed ✓' : 
+                 isTimeUp ? 'Time Up! ⏰' : 
+                 `${formatTime(timeLeft)} ⏰`}
               </p>
             </div>
             <div className="text-center">
@@ -626,7 +664,9 @@ export default function QuestionComponent({ questionData, questionId }: Question
                     {profile?.total_points || 0} 🐟
                     {showAnimation && (
                       <span className="inline-block ml-2">
-                        <span className="animate-bounce text-lg text-green-600">+5</span>
+                        <span className="animate-bounce text-lg text-green-600">
+                          +{isTimeUp ? '2' : '5'}
+                        </span>
                         <span className="inline-block animate-bounce ml-1" style={{animationDelay: '0.2s'}}>🐟</span>
                       </span>
                     )}
@@ -674,7 +714,9 @@ export default function QuestionComponent({ questionData, questionId }: Question
       {questionStatus && (
         <div className={`px-4 py-2 text-center text-sm ${
           questionStatus.type === 'new_question' 
-            ? 'bg-green-100 text-green-800 border-b border-green-200' 
+            ? isTimeUp 
+              ? 'bg-orange-100 text-orange-800 border-b border-orange-200'
+              : 'bg-green-100 text-green-800 border-b border-green-200' 
             : questionStatus.type === 'already_attempted'
             ? 'bg-yellow-100 text-yellow-800 border-b border-yellow-200'
             : 'bg-red-100 text-red-800 border-b border-red-200'
@@ -702,6 +744,11 @@ export default function QuestionComponent({ questionData, questionId }: Question
                     COMPLETED
                   </span>
                 )}
+                {isTimeUp && (
+                  <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
+                    TIME UP
+                  </span>
+                )}
               </div>
               <div className="text-gray-800 text-base leading-relaxed">
                 <ContentRenderer content={questionData.question} />
@@ -717,7 +764,11 @@ export default function QuestionComponent({ questionData, questionId }: Question
               <div className="flex items-center gap-3 mb-6">
                 <span className="text-2xl">🎯</span>
                 <h3 className="font-mono font-medium text-lg">Choose Your Answer</h3>
-                <span className="text-xs text-gray-500 ml-2">(Double-click to auto-submit)</span>
+                {!showExplanation && (
+                  <span className="text-xs text-gray-500 ml-2">
+                    {isTimeUp ? '(Can still answer - reduced points)' : '(Double-click to auto-submit)'}
+                  </span>
+                )}
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -771,7 +822,7 @@ export default function QuestionComponent({ questionData, questionId }: Question
 
         {/* Action Buttons */}
         <div className="flex justify-center gap-4 mb-8">
-          {!showExplanation && !isTimeUp && (
+          {!showExplanation && !hasSubmitted && (
             <button
               onClick={() => handleSubmit()}
               disabled={selectedOption === null}
@@ -781,25 +832,36 @@ export default function QuestionComponent({ questionData, questionId }: Question
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-300'
               }`}
             >
-              {selectedOption !== null ? 'Submit Answer' : 'Select an option first'}
+              {selectedOption !== null 
+                ? isTimeUp 
+                  ? 'Submit Answer (2 fish for correct)' 
+                  : 'Submit Answer' 
+                : 'Select an option first'
+              }
             </button>
           )}
 
-          {/* Show time up message */}
-          {isTimeUp && !showExplanation && (
-            <div className="py-3 px-8 bg-red-100 text-red-800 border-2 border-red-200 font-mono text-base">
-              Time's up! Processing your answer...
+          {/* Show next button after submission (whether explanation is visible or not) */}
+          {hasSubmitted && (
+            <div className="flex gap-4">
+              {showExplanation && (
+                <button
+                  onClick={handleCloseExplanation}
+                  className="py-3 px-8 bg-blue-100 text-blue-800 border-2 border-blue-200 hover:bg-blue-200 font-mono text-base transition-all duration-300"
+                >
+                  Close Explanation
+                </button>
+              )}
+              <button
+                onClick={handleNext}
+                className="py-3 px-8 bg-gray-900 text-white border-2 border-gray-700 hover:bg-gray-800 hover:border-gray-600 font-mono text-base transition-all duration-300 flex items-center gap-2"
+              >
+                Next Question
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                </svg>
+              </button>
             </div>
-          )}
-
-          {/* Show close explanation button when explanation is visible */}
-          {showExplanation && (
-            <button
-              onClick={handleCloseExplanation}
-              className="py-3 px-8 bg-blue-100 text-blue-800 border-2 border-blue-200 hover:bg-blue-200 font-mono text-base transition-all duration-300"
-            >
-              Close Explanation
-            </button>
           )}
 
           {questionData.formula_or_logic && (
