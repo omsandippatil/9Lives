@@ -15,13 +15,37 @@ interface UserProfile {
   python_lang_covered: number
   sql_lang_covered: number
   hr_questions_attempted: number
-  artificial_intelligence_questions_attempted: number
-  blueprint_questions_attempted: number
+  artificial_intelligence_topics_covered: number
+  system_design_covered: number
   tech_topics_covered: number
   current_streak: [string, number] // [date, days] format
   total_points: number
   created_at: string
   updated_at: string
+}
+
+interface TodayProgress {
+  uid: string
+  coding_questions_attempted: number
+  technical_questions_attempted: number
+  fundamental_questions_attempted: number
+  tech_topics_covered: number
+  aptitude_questions_attempted: number
+  hr_questions_attempted: number
+  artificial_intelligence_topics_covered: number
+  system_design_covered: number
+  java_lang_covered: number
+  python_lang_covered: number
+  sql_lang_covered: number
+}
+
+interface TodoItem {
+  id: string
+  title: string
+  emoji: string
+  target: number
+  completed: number
+  isCompleted: boolean
 }
 
 interface ProgressCardProps {
@@ -65,6 +89,13 @@ const getNameFromEmail = (email: string): string => {
   return formattedName
 }
 
+// Helper function to check if date is yesterday
+const isYesterday = (date: string): boolean => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  return date === yesterday.toISOString().split('T')[0]
+}
+
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -83,13 +114,12 @@ function StreakDisplay({ streakData }: StreakDisplayProps) {
   let textColor = 'text-gray-400'
   let emojiStyle = 'opacity-50 grayscale'
   
-  // Only show active colors if streak date is today
   if (streakDate === today) {
+    // Show active colors if streak date is today
     textColor = 'text-orange-500'
     emojiStyle = 'opacity-100'
   } else {
-    // For any date that's not today (including yesterday), show gray
-    displayDays = 0
+    // For yesterday and any date before, show in grayscale
     textColor = 'text-gray-400'
     emojiStyle = 'opacity-50 grayscale'
   }
@@ -136,9 +166,216 @@ function ProgressCard({ title, emoji, current, total, subtitle, onClick }: Progr
     </div>
   )
 }
+
+function OverallProgressBar({ profile }: { profile: UserProfile }) {
+  const totalPossible = 200 + 50 + 150 + 50 + 50 + 50 + 75 + 60 + 50 // Updated totals
+  
+  const totalCompleted = 
+    profile.coding_questions_attempted +
+    Math.floor(profile.aptitude_questions_attempted / 50) +
+    (profile.java_lang_covered + profile.python_lang_covered + profile.sql_lang_covered) +
+    Math.floor(profile.technical_questions_attempted / 50) +
+    profile.hr_questions_attempted +
+    Math.floor(profile.fundamental_questions_attempted / 50) +
+    profile.artificial_intelligence_topics_covered +
+    profile.system_design_covered +
+    profile.tech_topics_covered
+  
+  const percentage = (totalCompleted / totalPossible) * 100
+  
+  return (
+    <div className="w-full bg-gray-50 border-t border-b border-gray-200 py-8 px-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-6">
+          <h3 className="text-xl font-light mb-2">Overall Progress</h3>
+          <p className="text-sm text-gray-600 font-mono">
+            {totalCompleted} / {totalPossible} completed ({Math.round(percentage)}%)
+          </p>
+        </div>
+        
+        <div className="w-full bg-white border border-gray-200 h-4 overflow-hidden shadow-inner">
+          <div 
+            className="h-full bg-gradient-to-r from-gray-800 to-black transition-all duration-1000 ease-out relative"
+            style={{ width: `${Math.min(percentage, 100)}%` }}
+          >
+            <div className="absolute inset-0 bg-white opacity-20 animate-pulse"></div>
+          </div>
+        </div>
+        
+        <div className="flex justify-between text-xs text-gray-500 font-mono mt-3">
+          <span>🐱 Kitten</span>
+          <span>🐈 House Cat</span>
+          <span>🦁 Big Cat</span>
+          <span>🐅 Cat Whisperer</span>
+        </div>
+        
+        <div className="text-center mt-4">
+          <p className="text-xs text-gray-400 font-mono">
+            {percentage < 25 && "Still finding your paws... but every cat starts somewhere! 🐾"}
+            {percentage >= 25 && percentage < 50 && "Purr-fectly progressing! You're getting the hang of this! 😸"}
+            {percentage >= 50 && percentage < 75 && "Meow-nificent! You're prowling through challenges like a pro! 🐱‍💻"}
+            {percentage >= 75 && percentage < 95 && "Cat-astrophically good! Almost ready to rule the coding kingdom! 👑"}
+            {percentage >= 95 && "Paw-some mastery achieved! You're the cat's pajamas! 🏆"}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, todayProgress: TodayProgress | null }) {
+  const todoItems: TodoItem[] = [
+    {
+      id: 'coding',
+      title: 'Coding Challenges',
+      emoji: '💻',
+      target: 5,
+      completed: todayProgress?.coding_questions_attempted || 0,
+      isCompleted: (todayProgress?.coding_questions_attempted || 0) >= 5
+    },
+    {
+      id: 'aptitude',
+      title: 'Aptitude Questions',
+      emoji: '🧮',
+      target: 50,
+      completed: todayProgress?.aptitude_questions_attempted || 0,
+      isCompleted: (todayProgress?.aptitude_questions_attempted || 0) >= 50
+    },
+    {
+      id: 'java',
+      title: 'Java Practice',
+      emoji: '☕',
+      target: 1,
+      completed: todayProgress?.java_lang_covered || 0,
+      isCompleted: (todayProgress?.java_lang_covered || 0) >= 1
+    },
+    {
+      id: 'python',
+      title: 'Python Practice',
+      emoji: '🐍',
+      target: 1,
+      completed: todayProgress?.python_lang_covered || 0,
+      isCompleted: (todayProgress?.python_lang_covered || 0) >= 1
+    },
+    {
+      id: 'sql',
+      title: 'SQL Practice',
+      emoji: '🗃️',
+      target: 1,
+      completed: todayProgress?.sql_lang_covered || 0,
+      isCompleted: (todayProgress?.sql_lang_covered || 0) >= 1
+    },
+    {
+      id: 'hr',
+      title: 'HR Question',
+      emoji: '👥',
+      target: 1,
+      completed: todayProgress?.hr_questions_attempted || 0,
+      isCompleted: (todayProgress?.hr_questions_attempted || 0) >= 1
+    },
+    {
+      id: 'ai',
+      title: 'AI/ML Topic',
+      emoji: '🤖',
+      target: 1,
+      completed: todayProgress?.artificial_intelligence_topics_covered || 0,
+      isCompleted: (todayProgress?.artificial_intelligence_topics_covered || 0) >= 1
+    },
+    {
+      id: 'system_design',
+      title: 'System Design',
+      emoji: '📐',
+      target: 1,
+      completed: todayProgress?.system_design_covered || 0,
+      isCompleted: (todayProgress?.system_design_covered || 0) >= 1
+    },
+    {
+      id: 'technical',
+      title: 'Technical Questions',
+      emoji: '⚙️',
+      target: 50,
+      completed: todayProgress?.technical_questions_attempted || 0,
+      isCompleted: (todayProgress?.technical_questions_attempted || 0) >= 50
+    },
+    {
+      id: 'fundamental',
+      title: 'Fundamental Questions',
+      emoji: '📚',
+      target: 50,
+      completed: todayProgress?.fundamental_questions_attempted || 0,
+      isCompleted: (todayProgress?.fundamental_questions_attempted || 0) >= 50
+    }
+  ]
+
+  const completedCount = todoItems.filter(item => item.isCompleted).length
+  const totalCount = todoItems.length
+
+  return (
+    <div className="bg-gray-50 border-t border-b border-gray-200 py-8 px-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-6">
+          <h3 className="text-xl font-light mb-2">Today's Paw-some Goals 🐱‍🎯</h3>
+          <p className="text-sm text-gray-600 font-mono">
+            {completedCount}/{totalCount} completed • Keep those paws busy!
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {todoItems.map((item) => (
+            <div
+              key={item.id}
+              className={`p-4 bg-white border transition-all duration-300 hover:shadow-md ${
+                item.isCompleted 
+                  ? 'border-green-200 bg-green-50' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="text-center">
+                <div className={`text-2xl mb-2 ${item.isCompleted ? 'animate-bounce' : ''}`}>
+                  {item.isCompleted ? '✅' : item.emoji}
+                </div>
+                <h4 className={`font-mono text-sm mb-1 ${
+                  item.isCompleted ? 'text-green-700 line-through' : 'text-gray-800'
+                }`}>
+                  {item.title}
+                </h4>
+                <p className={`text-xs font-mono ${
+                  item.isCompleted ? 'text-green-600' : 'text-gray-500'
+                }`}>
+                  {item.completed}/{item.target}
+                  {item.isCompleted && ' ✨'}
+                </p>
+                
+                {/* Progress mini-bar */}
+                <div className="w-full bg-gray-100 h-1 mt-2 overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-500 ${
+                      item.isCompleted ? 'bg-green-500' : 'bg-gray-400'
+                    }`}
+                    style={{ width: `${Math.min((item.completed / item.target) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mt-6">
+          <p className="text-xs text-gray-400 font-mono">
+            {completedCount === totalCount 
+              ? "Purr-fection achieved! All goals completed! 🏆" 
+              : `${totalCount - completedCount} more to go... You can do it, tiger! 🐅`
+            }
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
  
 export default function HomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [todayProgress, setTodayProgress] = useState<TodayProgress | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
@@ -202,8 +439,8 @@ export default function HomePage() {
           python_lang_covered,
           sql_lang_covered,
           hr_questions_attempted,
-          artificial_intelligence_questions_attempted,
-          blueprint_questions_attempted,
+          artificial_intelligence_topics_covered,
+          system_design_covered,
           tech_topics_covered,
           current_streak,
           total_points,
@@ -224,8 +461,36 @@ export default function HomePage() {
         return
       }
 
+      // Fetch today's progress from the 'today' table
+      const { data: todayData, error: todayError } = await supabase
+        .from('today')
+        .select(`
+          uid,
+          coding_questions_attempted,
+          technical_questions_attempted,
+          fundamental_questions_attempted,
+          tech_topics_covered,
+          aptitude_questions_attempted,
+          hr_questions_attempted,
+          artificial_intelligence_topics_covered,
+          system_design_covered,
+          java_lang_covered,
+          python_lang_covered,
+          sql_lang_covered
+        `)
+        .eq('uid', userId)
+        .maybeSingle()
+
+      // If no today record exists, that's okay - we'll show all zeros
+      if (todayError && todayError.code !== 'PGRST116') {
+        console.error('Error fetching today progress:', todayError)
+      }
+
       console.log('User profile loaded successfully:', userProfile)
+      console.log('Today progress loaded:', todayData)
+      
       setProfile(userProfile)
+      setTodayProgress(todayData)
       setLoading(false)
     } catch (err) {
       console.error('Profile load error:', err)
@@ -259,8 +524,8 @@ export default function HomePage() {
            Math.floor(profile.fundamental_questions_attempted / 50) +
            Math.floor(profile.aptitude_questions_attempted / 50) +
            profile.hr_questions_attempted +
-           profile.artificial_intelligence_questions_attempted +
-           profile.blueprint_questions_attempted
+           profile.artificial_intelligence_topics_covered +
+           profile.system_design_covered
   }
 
   if (loading) {
@@ -433,21 +698,21 @@ export default function HomePage() {
           />
 
           <ProgressCard
-            title="AI Roadmaps"
+            title="AI & ML Topics"
             emoji="🤖"
-            current={profile.artificial_intelligence_questions_attempted}
-            total={50}
-            subtitle="Artificial intelligence roadmaps, real results"
-            onClick={() => router.push('/ai-roadmaps')}
+            current={profile.artificial_intelligence_topics_covered}
+            total={75}
+            subtitle="Artificial intelligence topics, real results"
+            onClick={() => router.push('/ai-topics')}
           />
 
           <ProgressCard
-            title="Blueprint Roadmaps"
+            title="System Design"
             emoji="📐"
-            current={profile.blueprint_questions_attempted}
-            total={50}
-            subtitle="Architectural roadmaps that's claw-some"
-            onClick={() => router.push('/blueprint-roadmaps')}
+            current={profile.system_design_covered}
+            total={60}
+            subtitle="Architectural design that's claw-some"
+            onClick={() => router.push('/system-design')}
           />
 
           <ProgressCard
@@ -459,6 +724,12 @@ export default function HomePage() {
             onClick={() => router.push('/topics')}
           />
         </div>
+
+        {/* Daily Todo List */}
+        <DailyTodoList profile={profile} todayProgress={todayProgress} />
+
+        {/* Overall Progress Bar */}
+        <OverallProgressBar profile={profile} />
 
         {/* Stats Overview */}
         <div className="px-6 mb-8">
