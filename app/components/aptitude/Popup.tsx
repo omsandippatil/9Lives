@@ -154,6 +154,7 @@ export default function ExplanationPopup({
   const modalRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const streakProcessedRef = useRef(false)
+  const questionAttemptedRef = useRef(false)
 
   // Memoized close handler to prevent recreation
   const handleClose = useCallback(() => {
@@ -204,6 +205,38 @@ export default function ExplanationPopup({
       router.push(`/aptitude/${questionId + 1}`)
     }, 100) // Small delay to ensure popup closes first
   }, [questionId, router, handleClose])
+
+  // Update today's aptitude questions attempted count when popup is shown
+  useEffect(() => {
+    const updateQuestionAttempted = async () => {
+      if (isVisible && !questionAttemptedRef.current) {
+        questionAttemptedRef.current = true
+        try {
+          const response = await fetch('/api/update/today?inc=aptitude_questions_attempted', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (!response.ok) {
+            console.error('Failed to update aptitude questions attempted:', response.statusText)
+          } else {
+            console.log('Successfully updated aptitude questions attempted count')
+          }
+        } catch (error) {
+          console.error('Error calling update today API:', error)
+        }
+      }
+    }
+
+    if (isVisible) {
+      updateQuestionAttempted()
+    } else {
+      // Reset question attempted flag when popup closes
+      questionAttemptedRef.current = false
+    }
+  }, [isVisible])
 
   // Add streak when user gets correct answer (only once per popup session)
   useEffect(() => {

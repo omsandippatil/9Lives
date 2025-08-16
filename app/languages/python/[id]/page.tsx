@@ -445,9 +445,9 @@ function LoadingProgressBar() {
   )
 }
 
-// Smart Streak Display Component
+// Fixed Smart Streak Display Component
 function SmartStreakDisplay({ streakData }: { streakData: [string, number] }) {
-  const [streakDate, streakCount] = streakData
+  const [lastUpdateDate, streakCount] = streakData
   
   // Get today's date in YYYY-MM-DD format
   const today = new Date().toISOString().split('T')[0]
@@ -457,20 +457,20 @@ function SmartStreakDisplay({ streakData }: { streakData: [string, number] }) {
   yesterday.setDate(yesterday.getDate() - 1)
   const yesterdayStr = yesterday.toISOString().split('T')[0]
   
-  // Determine display logic
+  // Determine display logic based on last update date
   let displayCount = streakCount
   let textColor = 'text-black'
   let isActive = false
   
-  if (streakDate === today) {
-    // Today - show in color
+  if (lastUpdateDate === today) {
+    // Updated today - show in color
     textColor = 'text-orange-500'
     isActive = true
-  } else if (streakDate === yesterdayStr) {
-    // Yesterday - show in grayscale
+  } else if (lastUpdateDate === yesterdayStr) {
+    // Updated yesterday - show current count in grayscale (streak still valid)
     textColor = 'text-gray-400'
-  } else {
-    // Before yesterday - show as zero
+  } else if (lastUpdateDate < yesterdayStr) {
+    // Updated before yesterday - streak is broken, show as zero
     displayCount = 0
     textColor = 'text-gray-300'
   }
@@ -482,10 +482,64 @@ function SmartStreakDisplay({ streakData }: { streakData: [string, number] }) {
         <p className={`text-xl font-normal transition-colors duration-300 ${textColor} ${isActive ? 'animate-pulse' : ''}`}>
           {displayCount}
         </p>
-        <span className={`transition-all duration-300 ${isActive ? 'animate-bounce' : 'grayscale'}`}>🔥</span>
+        <span className={`transition-all duration-300 ${isActive ? 'animate-bounce' : displayCount === 0 ? 'grayscale opacity-30' : 'grayscale'}`}>🔥</span>
       </div>
     </div>
   )
+}
+
+// Helper function to safely parse JSONB streak data
+function parseStreakData(streakValue: any): [string, number] {
+  // Handle different possible formats
+  if (Array.isArray(streakValue)) {
+    // Already parsed array
+    if (streakValue.length === 2 && typeof streakValue[0] === 'string' && typeof streakValue[1] === 'number') {
+      return [streakValue[0], streakValue[1]]
+    }
+  } else if (typeof streakValue === 'string') {
+    try {
+      // Parse JSON string
+      const parsed = JSON.parse(streakValue)
+      if (Array.isArray(parsed) && parsed.length === 2 && typeof parsed[0] === 'string' && typeof parsed[1] === 'number') {
+        return [parsed[0], parsed[1]]
+      }
+    } catch (e) {
+      console.error('Error parsing streak JSON string:', e)
+    }
+  } else if (streakValue && typeof streakValue === 'object') {
+    // Handle object format (though not expected)
+    if (streakValue[0] && streakValue[1] !== undefined) {
+      return [String(streakValue[0]), Number(streakValue[1]) || 0]
+    }
+  }
+  
+  // Fallback to default
+  const today = new Date().toISOString().split('T')[0]
+  return [today, 0]
+}
+
+// Helper function to update streak data properly
+async function updateStreakInDatabase(userId: string, newStreakData: [string, number]) {
+  try {
+    // Update the streak data in the database
+    const { error } = await supabase
+      .from('users')
+      .update({ 
+        current_streak: JSON.stringify(newStreakData)
+      })
+      .eq('id', userId)
+
+    if (error) {
+      console.error('Failed to update streak data:', error)
+      return false
+    }
+    
+    console.log('Successfully updated streak data:', newStreakData)
+    return true
+  } catch (error) {
+    console.error('Error updating streak data:', error)
+    return false
+  }
 }
 
 export default function PythonTheoryPage() {
@@ -497,9 +551,10 @@ export default function PythonTheoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
-  const [streakData, setStreakData] = useState<[string, number]>(['2025-08-15', 0])
+  const [streakData, setStreakData] = useState<[string, number]>(['2025-08-16', 0])
   const [fishCount, setFishCount] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
   
   // Timer state
   const [timeLeft, setTimeLeft] = useState(180) // 3 minutes in seconds
@@ -531,9 +586,9 @@ export default function PythonTheoryPage() {
       
       return () => clearTimeout(timer)
     } else if (timeLeft === 0 && !hasAttempted) {
-      // Timer finished, award point and allow navigation
+      // Timer finished, call API and allow navigation
       setCanProceed(true)
-      addPointsToUser()
+      updatePythonLangCovered()
       setShowSnakeAnimation(true)
       
       // Hide snake animation after 4 seconds
@@ -581,82 +636,44 @@ export default function PythonTheoryPage() {
     }
   }
 
-  const addPointsToUser = async () => {
+  const updatePythonLangCovered = async () => {
     if (!hasAttempted && isValidProgression) {
       try {
-        // Get user ID
-        let userId = getCookie('client-user-id') || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
-        
-        if (!userId) {
-          console.error('User not authenticated')
-          setFishCount(prev => prev + 1) // Still increment locally
-          setHasAttempted(true)
-          return
-        }
+        console.log('Calling API to update python_lang_covered')
 
-        console.log('Updating python_lang_covered for user ID:', userId)
-
-        // First get current python_lang_covered value
-        const { data: userData, error: fetchError } = await supabase
-          .from('users')
-          .select('python_lang_covered')
-          .eq('id', userId)
-          .single()
-
-        if (fetchError) {
-          console.error('Failed to fetch user data:', fetchError)
-          throw fetchError
-        }
-
-        const currentCount = userData?.python_lang_covered || 0
-        
-        // Only increment if this is the next expected theory
-        const currentTheoryId = parseInt(params.id as string)
-        if (currentTheoryId === currentCount + 1 || (currentTheoryId === 1 && currentCount === 0)) {
-          // Update python_lang_covered in users table
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({ 
-              python_lang_covered: currentCount + 1
-            })
-            .eq('id', userId)
-
-          if (updateError) {
-            console.error('Failed to update python_lang_covered:', updateError)
-          } else {
-            console.log('Successfully updated python_lang_covered from', currentCount, 'to', currentCount + 1)
-          }
-        } else {
-          console.log('Skipping increment - not sequential progression. Current:', currentCount, 'Theory ID:', currentTheoryId)
-        }
-
-        // Also call the original API for points
-        const response = await fetch('/api/add/points', {
+        // Call the new API endpoint
+        const response = await fetch('/api/update/today?inc=python_lang_covered', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ points: 1 }),
           credentials: 'include'
         });
         
         if (response.ok) {
-          setFishCount(prev => prev + 1)
+          const result = await response.json()
+          console.log('Successfully updated python_lang_covered:', result)
+          
+          // Update local fish count if points were also awarded
+          if (result.total_points !== undefined) {
+            setFishCount(result.total_points)
+          }
         } else {
-          // Still increment locally for demo purposes
+          const errorData = await response.json()
+          console.error('Failed to update python_lang_covered:', errorData)
+          
+          // Still increment fish count locally for demo purposes
           setFishCount(prev => prev + 1)
         }
       } catch (error) {
-        console.error('Failed to update user progress:', error)
-        // Still increment locally for demo purposes
+        console.error('Error calling update API:', error)
+        // Still increment fish count locally for demo purposes
         setFishCount(prev => prev + 1)
       } finally {
         setHasAttempted(true)
       }
     } else if (!isValidProgression) {
-      console.log('Not incrementing python_lang_covered - invalid progression')
+      console.log('Not calling API - invalid progression')
       // Still award regular points but don't increment progress
       setFishCount(prev => prev + 1)
       setHasAttempted(true)
@@ -664,29 +681,31 @@ export default function PythonTheoryPage() {
   }
 
   useEffect(() => {
-    // Load streak data, fish count and check progression validity
+    // Load user data and check progression validity
     const fetchUserData = async () => {
       try {
         // Get user ID
-        let userId = getCookie('client-user-id') || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
+        let fetchedUserId = getCookie('client-user-id') || 
+                           (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
+                           (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
         
-        if (!userId) {
+        if (!fetchedUserId) {
           console.error('User not authenticated')
           return
         }
 
+        setUserId(fetchedUserId)
+
         // Check if this is a valid progression
         const currentTheoryId = parseInt(params.id as string)
-        const isValid = await checkValidProgression(currentTheoryId, userId)
+        const isValid = await checkValidProgression(currentTheoryId, fetchedUserId)
         setIsValidProgression(isValid)
 
-        // Fetch streak data and other user data from users table
+        // Fetch user data from users table
         const { data: userData, error } = await supabase
           .from('users')
-          .select('current_streak_json, total_points')
-          .eq('id', userId)
+          .select('current_streak, total_points')
+          .eq('id', fetchedUserId)
           .single()
 
         if (error) {
@@ -695,18 +714,11 @@ export default function PythonTheoryPage() {
         }
 
         if (userData) {
-          // Parse streak JSON data
-          if (userData.current_streak_json) {
-            try {
-              const parsedStreak = JSON.parse(userData.current_streak_json)
-              if (Array.isArray(parsedStreak) && parsedStreak.length === 2) {
-                setStreakData(parsedStreak as [string, number])
-              }
-            } catch (e) {
-              console.error('Error parsing streak JSON:', e)
-              // Fallback to default
-              setStreakData([new Date().toISOString().split('T')[0], 0])
-            }
+          // Parse streak data properly
+          if (userData.current_streak) {
+            const parsedStreak = parseStreakData(userData.current_streak)
+            setStreakData(parsedStreak)
+            console.log('Parsed streak data:', parsedStreak)
           }
           
           setFishCount(userData.total_points || 0)
@@ -782,21 +794,49 @@ export default function PythonTheoryPage() {
     setShowAllSections(!showAllSections)
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!canProceed) return
     
-    // Update streak data when proceeding
-    const today = new Date().toISOString().split('T')[0]
-    const [currentDate, currentCount] = streakData
-    
-    // If it's a new day, increment the streak
-    if (currentDate !== today) {
-      const newStreakData: [string, number] = [today, currentCount + 1]
-      setStreakData(newStreakData)
+    // Update streak data when proceeding if user is valid
+    if (userId && isValidProgression) {
+      const today = new Date().toISOString().split('T')[0]
+      const [lastUpdateDate, currentCount] = streakData
+      
+      let newStreakData: [string, number]
+      
+      // Calculate new streak based on last update date
+      if (lastUpdateDate === today) {
+        // Already updated today, don't change anything
+        newStreakData = streakData
+      } else {
+        // Get yesterday's date
+        const yesterday = new Date()
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayStr = yesterday.toISOString().split('T')[0]
+        
+        if (lastUpdateDate === yesterdayStr) {
+          // Last update was yesterday, increment streak
+          newStreakData = [today, currentCount + 1]
+        } else if (lastUpdateDate < yesterdayStr) {
+          // Last update was before yesterday, reset streak to 1
+          newStreakData = [today, 1]
+        } else {
+          // This shouldn't happen (future date), but handle gracefully
+          newStreakData = [today, 1]
+        }
+        
+        // Update streak in database and local state
+        const updateSuccess = await updateStreakInDatabase(userId, newStreakData)
+        if (updateSuccess) {
+          setStreakData(newStreakData)
+        }
+      }
     }
     
-    // Navigate to practice or next section
-    router.push('/practice')
+    // Navigate to next theory page (current ID + 1)
+    const currentId = parseInt(params.id as string)
+    const nextId = currentId + 1
+    router.push(`/languages/python/${nextId}`)
   }
 
   // Format timer display
@@ -962,7 +1002,7 @@ export default function PythonTheoryPage() {
         <div className="text-center py-8 border-t border-gray-200 bg-white shadow-sm">
           <div className="animate-pulse text-3xl mb-4">🐍‍💻</div>
           <p className="text-lg text-gray-600 font-light mb-6">
-            {canProceed ? 'Ready to put theory into practice?' : 'Keep reading to unlock the next section!'}
+            {canProceed ? 'Ready for the next Python concept?' : 'Keep reading to unlock the next section!'}
           </p>
           <div className="flex justify-center gap-6">
             <button
@@ -980,13 +1020,13 @@ export default function PythonTheoryPage() {
                   : 'bg-gray-400 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {canProceed ? 'Next: Practice Questions →' : `Wait ${formatTime(timeLeft)} to continue`}
+              {canProceed ? 'Next: Continue Learning →' : `Wait ${formatTime(timeLeft)} to continue`}
             </button>
           </div>
           {canProceed && (
             <div className="mt-4">
               <p className="text-sm text-blue-600 font-light">
-                🎉 Great job! You've earned a point for completing this section.
+                🎉 Great job! You've completed this theory section.
               </p>
               {isValidProgression && (
                 <p className="text-sm text-green-600 font-light mt-1">

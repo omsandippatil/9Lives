@@ -534,12 +534,43 @@ export default function SqlTheoryPage() {
       
       return () => clearTimeout(timer)
     } else if (timeLeft === 0 && !hasAttempted) {
-      // Timer finished, award point and allow navigation
+      // Timer finished, call the API and allow navigation
       setCanProceed(true)
-      addPointsToUser()
-      // Fish animation will be triggered inside addPointsToUser() function
+      updateTodayProgress()
     }
   }, [timeLeft, hasAttempted])
+
+  const updateTodayProgress = async () => {
+    if (hasAttempted) return
+
+    try {
+      // Call the new API endpoint
+      const response = await fetch('/api/update/today?inc=sql_lang_covered', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        console.log('Successfully updated SQL language coverage')
+        // Refresh user data to get updated streak and points
+        await fetchUserData()
+        // Show fish animation when progress is made
+        setShowFishAnimation(true)
+        setTimeout(() => {
+          setShowFishAnimation(false)
+        }, 4000)
+      } else {
+        console.error('Failed to update SQL language coverage:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Error updating SQL language coverage:', error)
+    } finally {
+      setHasAttempted(true)
+    }
+  }
 
   const getCookie = (name: string) => {
     if (typeof document === 'undefined') return null
@@ -589,102 +620,6 @@ export default function SqlTheoryPage() {
       setTotalPoints(userData?.total_points || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
-    }
-  }
-
-  const addPointsToUser = async () => {
-    if (!hasAttempted) {
-      try {
-        // Get user ID
-        let userId = getCookie('client-user-id') || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
-        
-        if (!userId) {
-          console.error('User not authenticated')
-          setTotalPoints(prev => prev + 1) // Still increment locally
-          setHasAttempted(true)
-          return
-        }
-
-        const currentTheoryId = parseInt(params.id as string)
-        console.log('Checking sequential access for SQL theory ID:', currentTheoryId)
-
-        // Get current sql_covered value
-        const { data: userData, error: fetchError } = await supabase
-          .from('users')
-          .select('sql_lang_covered')
-          .eq('id', userId)
-          .single()
-
-        if (fetchError) {
-          console.error('Failed to fetch user data:', fetchError)
-          throw fetchError
-        }
-
-        const currentProgress = userData?.sql_lang_covered || 0
-        console.log('Current SQL progress:', currentProgress, 'Theory ID:', currentTheoryId)
-
-        // Check if this is the next theory in sequence
-        // Only increment if current theory ID is exactly the next one expected
-        const expectedNextId = currentProgress + 1
-        
-        if (currentTheoryId === expectedNextId) {
-          console.log('Sequential access confirmed. Updating SQL progress.')
-          
-          // Update sql_covered in users table
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({ 
-              sql_lang_covered: currentTheoryId
-            })
-            .eq('id', userId)
-
-          if (updateError) {
-            console.error('Failed to update sql_lang_covered:', updateError)
-          } else {
-            console.log('Successfully updated sql_lang_covered to:', currentTheoryId)
-          }
-
-          // Also call the original API for points
-          const response = await fetch('/api/add/points', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ points: 1 }),
-            credentials: 'include'
-          });
-          
-          if (response.ok) {
-            setTotalPoints(prev => prev + 1)
-            // Refresh user data to get updated streak and points
-            fetchUserData()
-            // Show fish animation when points are earned
-            setShowFishAnimation(true)
-            setTimeout(() => {
-              setShowFishAnimation(false)
-            }, 4000)
-          } else {
-            // Still increment locally for demo purposes
-            setTotalPoints(prev => prev + 1)
-          }
-        } else if (currentTheoryId <= currentProgress) {
-          console.log('SQL theory already completed. No progress update needed.')
-          // User is revisiting a completed theory - no progress update
-        } else {
-          console.log('Non-sequential access detected. SQL progress not updated.')
-          console.log(`Expected theory ID: ${expectedNextId}, but accessed: ${currentTheoryId}`)
-          // User is trying to skip ahead - don't update progress but still allow completion for demo
-          setTotalPoints(prev => prev + 1)
-        }
-      } catch (error) {
-        console.error('Failed to update user SQL progress:', error)
-        // Still increment locally for demo purposes
-        setTotalPoints(prev => prev + 1)
-      } finally {
-        setHasAttempted(true)
-      }
     }
   }
 
@@ -757,8 +692,10 @@ export default function SqlTheoryPage() {
   const handleNext = () => {
     if (!canProceed) return
     
-    // Navigate to practice or next section
-    router.push('/practice')
+    // Navigate to next SQL theory page (increment the current ID)
+    const currentId = parseInt(params.id as string)
+    const nextId = currentId + 1
+    router.push(`/languages/sql/${nextId}`)
   }
 
   // Format timer display
@@ -911,7 +848,7 @@ export default function SqlTheoryPage() {
         <div className="text-center py-8 border-t border-gray-200 bg-white shadow-sm">
           <div className="animate-pulse text-3xl mb-4">🐱‍💻</div>
           <p className="text-lg text-gray-600 font-light mb-6">
-            {canProceed ? 'Ready to practice your SQL queries?' : 'Keep reading to unlock the next section!'}
+            {canProceed ? 'Ready for the next SQL concept?' : 'Keep reading to unlock the next section!'}
           </p>
           <div className="flex justify-center gap-6">
             <button
@@ -929,12 +866,12 @@ export default function SqlTheoryPage() {
                   : 'bg-gray-400 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {canProceed ? 'Next: SQL Practice →' : `Wait ${formatTime(timeLeft)} to continue`}
+              {canProceed ? 'Next SQL Theory →' : `Wait ${formatTime(timeLeft)} to continue`}
             </button>
           </div>
           {canProceed && (
             <p className="text-sm text-blue-600 mt-2 font-light">
-              🎉 Great job! You've earned a point for completing this SQL section.
+              🎉 Great job! You've completed this SQL theory section.
             </p>
           )}
         </div>

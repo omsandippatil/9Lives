@@ -140,18 +140,31 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
     loadGif();
   }, []);
 
-  // Update streak and trigger animations
+  // Update streak and coding questions attempted count
   useEffect(() => {
-    const updateStreak = async () => {
+    const updateStats = async () => {
       try {
-        const response = await fetch('/api/add/streak', {
+        // Update streak
+        const streakResponse = await fetch('/api/add/streak', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
         });
-        const streakData: StreakResponse = await response.json();
+        const streakData: StreakResponse = await streakResponse.json();
         setStreak(streakData);
+
+        // Update coding questions attempted count
+        const updateTodayResponse = await fetch(`/api/update/today?inc=coding_questions_attempted`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!updateTodayResponse.ok) {
+          console.warn('Failed to update coding questions attempted count');
+        }
 
         // If streak was incremented, start the sequence
         if (streakData.action === 'incremented' && streakData.previous_streak !== undefined) {
@@ -184,11 +197,11 @@ export default function ResultPopup({ result, onClose }: ResultPopupProps) {
           }, 500);
         }
       } catch (error) {
-        console.error('Failed to update streak:', error);
+        console.error('Failed to update stats:', error);
       }
     };
 
-    updateStreak();
+    updateStats();
   }, []);
 
   const getEmojiStyle = () => {

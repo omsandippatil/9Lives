@@ -1,5 +1,4 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
@@ -653,6 +652,25 @@ export default function JavaTheoryPage() {
             console.log('Successfully updated java_lang_covered to:', currentTheoryId)
           }
 
+          // Call the new API endpoint to update today's java_lang_covered
+          try {
+            const todayUpdateResponse = await fetch('/api/update/today?inc=java_lang_covered', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include'
+            });
+            
+            if (todayUpdateResponse.ok) {
+              console.log('Successfully updated today\'s java_lang_covered count')
+            } else {
+              console.error('Failed to update today\'s java_lang_covered count:', todayUpdateResponse.statusText)
+            }
+          } catch (error) {
+            console.error('Error calling today update API:', error)
+          }
+
           // Also call the original API for points
           const response = await fetch('/api/add/points', {
             method: 'POST',
@@ -764,8 +782,10 @@ export default function JavaTheoryPage() {
   const handleNext = () => {
     if (!canProceed) return
     
-    // Navigate to practice or next section
-    router.push('/practice')
+    // Navigate to next theory section (current id + 1)
+    const currentId = parseInt(params.id as string)
+    const nextId = currentId + 1
+    router.push(`/languages/java/${nextId}`)
   }
 
   // Format timer display
