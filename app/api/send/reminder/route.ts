@@ -1,172 +1,125 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Environment variables (make sure to set these)
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Environment variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const API_KEY = process.env.API_KEY!;
 const TELEGRAM_GROUP_CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID!;
 
-// Initialize client
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-interface TopicData {
-  techq_topics: string;
-  fundaq_topics: string;
-  tech_topic: string;
-  system_design: string;
-  dayNumber: number;
-}
-
-// Calculate day number from August 18, 2026
-function getDayNumber(): number {
-  const startDate = new Date('2026-08-18');
-  const currentDate = new Date();
-  const diffTime = currentDate.getTime() - startDate.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return Math.max(1, diffDays);
-}
-
-// Calculate question numbers for technical and fundamental (50 questions each)
-function getQuestionNumber(dayNumber: number): number {
-  return ((dayNumber - 1) * 50) + 1;
-}
-
-// Fetch topics from database
-async function fetchTopics(dayNumber: number): Promise<TopicData> {
-  try {
-    const [techqData, fundaqData, techTopicsData, systemDesignData] = await Promise.all([
-      supabase.from('techq_topics').select('id, topic_name').eq('id', dayNumber).single(),
-      supabase.from('fundaq_topics').select('id, topic_name').eq('id', dayNumber).single(),
-      supabase.from('tech_topics').select('id, name').eq('id', dayNumber).single(),
-      supabase.from('system_design').select('id, name').eq('id', dayNumber).single()
-    ]);
-
-    if (techqData.error) throw new Error(`Error fetching techq_topics: ${techqData.error.message}`);
-    if (fundaqData.error) throw new Error(`Error fetching fundaq_topics: ${fundaqData.error.message}`);
-    if (techTopicsData.error) throw new Error(`Error fetching tech_topics: ${techTopicsData.error.message}`);
-    if (systemDesignData.error) throw new Error(`Error fetching system_design: ${systemDesignData.error.message}`);
-
-    return {
-      techq_topics: techqData.data.topic_name,
-      fundaq_topics: fundaqData.data.topic_name,
-      tech_topic: techTopicsData.data.name,
-      system_design: systemDesignData.data.name,
-      dayNumber
-    };
-  } catch (error) {
-    throw new Error(`Database fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
 // Bank of Momma Cat motivational messages
 function getMommaCatMessage(): string {
   const mommaCatMessages = [
-    "🐾 Alright kittens, I'm going out to hunt. When I get back, I better see some progress or we're having a serious chat.",
+    "You came home early today. Don't think I didn't notice. Now march over to that computer and study before I make you marry that smelly dog next door. 😾",
     
-    "😾 You've been scrolling for an hour. Stop. Just... stop. Get to work before I get cranky.",
+    "I see you lounging around like you own the place. Your interview is in two weeks and you're acting like it's nap time. No fish for you today if you don't open those coding books RIGHT NOW. 🐾",
     
-    "🐱 *sits directly in front of your screen* Pay attention to me... I mean, pay attention to your studies!",
+    "Listen here, fuzzy brain. I didn't raise you to be a lazy house cat. Get to work on those algorithms or I'm replacing your tuna with dog food for a week. 😼",
     
-    "🐾 I raised you better than this. Don't make me disappointed. You know that face I make? Yeah, that one.",
+    "Your cousin Whiskers just landed a job at Microsoft. WHISKERS. The one who couldn't figure out how to use a mouse. What's your excuse, genius? 🙄",
     
-    "😼 My tail is doing that twitchy thing. You know what that means. Time to focus, little one.",
+    "Don't make me come over there and sit on your keyboard. You know I will. And I know exactly where you don't want me to step. 😈",
     
-    "🐱 Your cousin Whiskers just landed a tech job. WHISKERS. Let that sink in for a moment.",
+    "I've been watching you scroll TikTok for 3 hours. Three. Hours. Keep this up and I'm arranging your marriage to that annoying Chihuahua from apartment 3B. 💍🐕",
     
-    "🐾 *gentle head bump* I believe in you, but believing doesn't finish the work. Get moving.",
+    "You think you're slick hiding behind that screen? I can see you procrastinating from across the room. No treats until you finish that coding challenge. 🚫🍪",
     
-    "😾 I've been patient. Very patient. But my patience has limits, and we're approaching them.",
+    "Your interview is coming up faster than I chase my tail when no one's watching. Get serious or get ready for a lifetime of disappointment and dry kibble. ⏰",
     
-    "🐱 Stop batting at that cursor like it's a toy mouse and actually click on something useful.",
+    "I didn't spend all those nights teaching you to code just so you could waste time playing video games. Move it or I'm hiding all your favorite snacks. 🎮❌",
     
-    "🐾 I didn't teach you to hunt just so you could give up at the first sign of difficulty. Keep trying.",
+    "The neighbor's goldfish learned Python. A GOLDFISH. With a three-second memory. Are you going to let a fish show you up? 🐠💻",
     
-    "😸 You're making that face like when you used to hate bath time. But this is good for you too.",
+    "Stop giving me those pathetic eyes. They don't work anymore. You want sympathy? Show me a completed LeetCode problem first. 🥺❌",
     
-    "🐱 The neighbor's dog learned Python. A DOG. I'm not saying anything else about that.",
+    "I'm sharpening my claws and eyeing your favorite chair. You know what that means. Get studying before I redecorate your furniture. 🪑💥",
     
-    "🐾 *knocks pen off desk* Oops. Now pick it up and use it to take notes while you study.",
+    "You've been 'taking a break' for 6 hours. That's not a break, that's retirement. And you're too young to retire, so GET MOVING. ⏳",
     
-    "😼 I can see you from the kitchen. Yes, I know you're procrastinating. Get back to it.",
+    "I saw you close that coding tutorial the second you heard the doorbell. Sneaky little furball. No belly rubs until you finish what you started. 🚪👀",
     
-    "🐱 Remember when you were little and I'd drag you back to the nest? Don't make me do that again.",
+    "Your technical interview is next week and you're acting like it's optional. Keep this up and I'm setting you up on a blind date with that yappy Pomeranian. 💔🐕",
     
-    "🐾 You've got that glazed look in your eyes. Stretch, get some water, then back to learning.",
+    "I didn't teach you to hunt just so you could give up when the prey gets tough. These coding problems are your mice - catch them. 🐭💻",
     
-    "😾 I'm sharpening my claws on the scratching post. Very loudly. Take the hint.",
+    "You think you're stressed now? Wait until you're unemployed and I'm the only one paying for your food. Suddenly motivated? Good. 💸",
     
-    "🐱 *purrs softly while staring intensely* This is supportive purring. With consequences if ignored.",
+    "I've seen you stay up all night binge-watching shows. Channel that dedication into your career before I channel my claws into your gaming setup. 📺💀",
     
-    "🐾 Your deadline is coming up fast. Faster than when I chase you around the house at 3am.",
+    "The hiring manager called. Just kidding. But they will, and when they do, you better be ready or I'm telling everyone about that embarrassing thing you did as a kitten. 📞😏",
     
-    "😸 I love you dearly, but I love successful kittens even more. Be successful.",
+    "Stop acting like studying is optional. It's not. Neither is my patience, and you're testing both right now. ⚠️",
     
-    "🐱 Stop giving me those big eyes. They worked when you were tiny, but not anymore. Study.",
+    "You know that face I make when you try to give me a bath? That's the face interviewers will make if you don't prepare properly. 🛁😠",
     
-    "🐾 *yawns* I was going to nap, but someone needs supervision apparently.",
+    "I'm getting that twitchy feeling in my whiskers. You know what that means - trouble's coming if you don't shape up immediately. 👁️",
     
-    "😼 The sun moved from my favorite spot because you've been sitting there so long. Time's up.",
+    "Your future depends on what you do today, not on how comfortable that couch looks. Move your fuzzy behind before I move it for you. 🛋️➡️",
     
-    "🐱 You're being as stubborn as when you refused to use the litter box. This will end the same way.",
+    "I've been patient. Very patient. But my patience has limits, and so does the food in your bowl if you don't start working. 🍽️⏰",
     
-    "🐾 *gentle paw tap on keyboard* Less social media, more GitHub. You know I'm right.",
+    "Companies are hiring NOW. While you're napping, others are grinding. Don't make me drag you to success by your scruff. 😴💼",
     
-    "😾 I'm getting that feeling like when you're about to knock something expensive off a shelf. Fix this.",
+    "You want to impress me? Show me a GitHub commit. You want to disappoint me? Keep doing whatever this lazy nonsense is. 💻✅",
     
-    "🐱 Mama's tired of giving the same lecture. You know what you need to do.",
+    "I'm calling that nice dog trainer tomorrow if you don't start acting like the intelligent cat I raised. The choice is yours. 🐕‍🦺📞",
     
-    "🐾 *settles down nearby with judgmental eyes* I'll just wait here until you're done. However long it takes.",
+    "Your resume looks emptier than your food bowl after I forget to feed you. Fill both or face the consequences. 📄🍽️",
     
-    "😸 You used to be so eager to learn new things. What happened? Find that kitten again.",
+    "I see you eyeing that nap spot by the window. Don't even think about it. Sunbathing is for cats who've earned their treats. ☀️🚫",
     
-    "🐱 I've seen you debug for hours when you're motivated. Channel that energy now.",
+    "Remember when you were little and afraid of the vacuum? That's nothing compared to how scary unemployment will be. Get studying. 🔌😱",
     
-    "🐾 *slow blink* That's cat for 'I love you but please get your act together.'"
+    "Your coding skills are rustier than my old scratching post. Polish them up before I polish my disappointed parent speech. 🪵💻",
+    
+    "I'm not asking, I'm telling. Close Netflix, open your IDE, and show me what my excellent parenting produced. 📺➡️💻",
+    
+    "You think you're grown now? Prove it by landing a job instead of landing on the couch every day. 🛋️💼",
+    
+    "I've been keeping track. You've started 47 tutorials and finished 3. Those are rookie numbers. Pump them up or pump gas for a living. 📊⛽",
+    
+    "Your interview prep schedule is more scattered than litter after a toddler's been in the box. Get organized or get disappointed. 📅💥",
+    
+    "I didn't meow my way through raising you just to watch you fail now. Success is not optional in this house. 🏠✅",
+    
+    "You know what's worse than stepping on a LEGO barefoot? Explaining to me why you bombed that technical interview. 🧱😤",
+    
+    "I'm considering adopting that motivated German Shepherd down the hall. At least he knows what hard work looks like. 🐕💪",
+    
+    "Your potential is bigger than your procrastination, but barely. Tip the scales before I tip your food bowl into the trash. ⚖️🗑️",
+    
+    "You've got two choices: study now or explain to your future broke self why you didn't. I know which one hurts less. 💸😢",
+    
+    "I'm getting old and I want grandkittens who can afford their own fancy feast. Make it happen or make yourself scarce. 👵🐱",
+    
+    "The couch will be there after you get hired. Your opportunities won't. Priorities, kitten. 🛋️⏰",
+    
+    "You're testing my love, and trust me, my disappointment is stronger than my affection right now. Fix this. 💔😾",
+    
+    "I've seen corpses with more motivation than you're showing. Prove you're alive and get to work. ⚰️💀",
+    
+    "Your excuses are weaker than decaf coffee and twice as disappointing. Give me results or give me silence. ☕😴",
+    
+    "I'm about to do something we'll both regret if you don't close that social media app and open your textbook. 📱📚",
+    
+    "Your career isn't going to build itself while you're building castles in Minecraft. Choose your reality wisely. 🏰💼",
+    
+    "I raised a hunter, not a house pet. Start acting like the predator I know you can be and catch that dream job. 🐾🎯",
+    
+    "You want to make mama proud? Stop making mama worry about your future and start making moves toward success. 💕➡️🏆",
+    
+    "Time's ticking faster than my tail when I'm annoyed. And trust me, you don't want to see how annoyed I can get. ⏰😡",
+    
+    "Your comfort zone is about to become very uncomfortable if you don't step out of it and into your career. 🛋️➡️💼"
   ];
 
   return mommaCatMessages[Math.floor(Math.random() * mommaCatMessages.length)];
 }
 
 // Send motivational message to Telegram group
-async function sendMommaCatReminder(
-  topics: TopicData,
-  links: { text: string; url: string }[]
-): Promise<{ success: boolean; messageId?: number; error?: string }> {
+async function sendMommaCatReminder(): Promise<{ success: boolean; messageId?: number; error?: string }> {
   try {
     const mommaCatMessage = getMommaCatMessage();
     
-    const message = `${mommaCatMessage}
-
-📚 <b>Day ${topics.dayNumber} - Don't make Momma wait!</b>
-
-Today's must-do list (or else...):
-• ${topics.techq_topics}
-• ${topics.fundaq_topics}
-• ${topics.tech_topic}
-• ${topics.system_design}
-
-Get to work, my little kittens! 🐾`;
-
-    // Create inline keyboard with direct links
-    const inlineKeyboard = [
-      [
-        { text: `🔧 Technical Challenge`, url: links[0].url }
-      ],
-      [
-        { text: `📚 Fundamentals`, url: links[1].url }
-      ],
-      [
-        { text: `💡 Tech Deep Dive`, url: links[2].url }
-      ],
-      [
-        { text: `🏗️ System Design`, url: links[3].url }
-      ],
-      [
-        { text: `😾 I'm Done, Momma!`, callback_data: 'study_complete' }
-      ]
-    ];
+    const message = `${mommaCatMessage}`;
 
     console.log('Sending Momma Cat reminder to Telegram group:', TELEGRAM_GROUP_CHAT_ID);
     
@@ -178,10 +131,7 @@ Get to work, my little kittens! 🐾`;
       body: JSON.stringify({
         chat_id: TELEGRAM_GROUP_CHAT_ID,
         text: message,
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: inlineKeyboard
-        }
+        parse_mode: 'HTML'
       })
     });
 
@@ -199,60 +149,16 @@ Get to work, my little kittens! 🐾`;
   }
 }
 
-// Get total user count for statistics
-async function getUserCount(): Promise<number> {
-  try {
-    const { count, error } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) throw new Error(`Error counting users: ${error.message}`);
-    return count || 0;
-  } catch (error) {
-    console.warn('Could not fetch user count:', error);
-    return 0;
-  }
-}
-
 // Main function to handle the momma cat reminder flow
 async function handleMommaCatReminder() {
-  console.log('Starting Momma Cat reminder API...');
+  console.log('Momma Cat is checking on her kittens...');
   
-  // Calculate day number
-  const dayNumber = getDayNumber();
-  console.log(`Day ${dayNumber} - Momma Cat is checking on her kittens!`);
-
-  // Fetch topics
-  console.log('Fetching topics from database...');
-  const topics = await fetchTopics(dayNumber);
-
-  // Create links
-  const questionNumber = getQuestionNumber(dayNumber);
-  const links = [
-    { text: 'Technical', url: `https://9-lives.vercel.app/technical/${questionNumber}` },
-    { text: 'Fundamental', url: `https://9-lives.vercel.app/fundamental/${questionNumber}` },
-    { text: 'Tech Topics', url: `https://9-lives.vercel.app/tech-topics/${dayNumber}` },
-    { text: 'System Design', url: `https://9-lives.vercel.app/system-design/${dayNumber}` }
-  ];
-
   // Send reminder message
   console.log('Sending Momma Cat reminder to Telegram group...');
-  const messageResult = await sendMommaCatReminder(topics, links);
-
-  // Get user count for statistics
-  const userCount = await getUserCount();
+  const messageResult = await sendMommaCatReminder();
 
   return {
-    dayNumber,
-    topics: {
-      technical: topics.techq_topics,
-      fundamental: topics.fundaq_topics,
-      techTopics: topics.tech_topic,
-      systemDesign: topics.system_design
-    },
-    links: links.map(link => link.url),
     messageResult,
-    userCount,
     reminderType: 'momma_cat_motivation'
   };
 }
@@ -280,20 +186,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'Momma Cat has spoken! Reminder sent successfully.',
-        ...result,
         telegramResult: {
           sent: true,
           messageId: result.messageResult.messageId,
-          groupChatId: TELEGRAM_GROUP_CHAT_ID,
-          userCount: result.userCount
+          groupChatId: TELEGRAM_GROUP_CHAT_ID
         }
       });
     } else {
       return NextResponse.json({
         success: false,
         error: 'Momma Cat could not send her reminder',
-        telegramError: result.messageResult.error,
-        ...result
+        telegramError: result.messageResult.error
       }, { status: 500 });
     }
 
@@ -330,12 +233,10 @@ export async function GET(request: NextRequest) {
         success: true,
         method: 'GET',
         message: 'Momma Cat reminder sent via GET request!',
-        ...result,
         telegramResult: {
           sent: true,
           messageId: result.messageResult.messageId,
-          groupChatId: TELEGRAM_GROUP_CHAT_ID,
-          userCount: result.userCount
+          groupChatId: TELEGRAM_GROUP_CHAT_ID
         }
       });
     } else {
@@ -343,8 +244,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: 'Momma Cat could not send her reminder',
         telegramError: result.messageResult.error,
-        method: 'GET',
-        ...result
+        method: 'GET'
       }, { status: 500 });
     }
 

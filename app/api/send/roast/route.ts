@@ -92,6 +92,62 @@ const DAILY_GOALS: DailyGoals = {
   fundamental: 50
 };
 
+// Enhanced cat response templates
+const CAT_THREATS = [
+  "I'll marry you to a smelly street dog",
+  "No fish for you this week",
+  "You'll sleep outside with the rats",
+  "I'll tell all the neighbor cats how lazy you are",
+  "No sunny windowsill spot for you",
+  "You'll get the stale kibble while others feast",
+  "I'll make you clean the litter box with your paws",
+  "The neighbor's cat is getting better jobs than you will",
+  "You'll end up working at a call center forever",
+  "I'll donate your favorite blanket to charity",
+  "No belly rubs until you improve",
+  "You'll marry someone who hates cats",
+  "I'll hide all the catnip from you",
+  "Even the street cats are more disciplined",
+  "You'll never catch a decent mouse at this rate"
+];
+
+const CAT_INSULTS = [
+  "lazier than a sleeping sloth",
+  "more useless than a broken scratching post",
+  "slower than a turtle in molasses",
+  "dumber than a goldfish",
+  "less motivated than a dead mouse",
+  "more disappointing than empty food bowl",
+  "weaker than wet tissue paper",
+  "more pathetic than a declawed cat",
+  "less sharp than a butter knife",
+  "more scattered than spilled litter"
+];
+
+const CAT_PRAISE = [
+  "You made mama's heart purr with pride",
+  "Finally acting like my proper kitten",
+  "You deserve the premium tuna today",
+  "Good kitty gets the warmest sunspot",
+  "You've earned extra head scratches",
+  "Mama is genuinely impressed",
+  "You're becoming a proper hunter",
+  "This is exactly what I expect from my babies",
+  "You get the comfy bed tonight",
+  "Even the neighbor cats would be jealous"
+];
+
+const CAT_COMPARISONS = [
+  "Look how much better [name] is doing",
+  "[name] is clearly the smarter kitten today",
+  "Why can't you be more like [name]",
+  "[name] makes me proud while you disappoint",
+  "Even [name] is laughing at your performance",
+  "[name] gets treats while you get shame",
+  "I'm telling [name] what a failure you are",
+  "[name] is obviously my favorite today"
+];
+
 // Cat GIFs for different emotions
 const CAT_GIFS = {
   angry: [
@@ -141,6 +197,11 @@ function getDayNumber(): number {
 function getRandomGif(category: keyof typeof CAT_GIFS): string {
   const gifs = CAT_GIFS[category];
   return gifs[Math.floor(Math.random() * gifs.length)];
+}
+
+// Get random element from array
+function getRandomElement<T>(array: T[]): T {
+  return array[Math.floor(Math.random() * array.length)];
 }
 
 // Check streak status - handle various formats from database
@@ -301,39 +362,6 @@ async function fetchCatActivities(): Promise<CatActivity[]> {
   }
 }
 
-// Cat responses for different scenarios
-const CAT_RESPONSES = {
-  praise: [
-    "Purr-fect work today! You've made mama cat proud 🐱",
-    "Finally! A kitten who knows how to hunt properly",
-    "Good kitty! You deserve extra treats tonight",
-    "That's how my kittens should perform - well done!",
-    "Impressive! You're learning to be a proper cat",
-    "Mama is pleased - you've earned your sunny spot today"
-  ],
-  mild_scold: [
-    "You could do better, little one. Don't get lazy on me",
-    "Good effort, but I expect consistency from my kittens",
-    "Not bad, but there's always room for improvement",
-    "You're getting there, but don't slow down now",
-    "Decent work - just don't let it go to your whiskers"
-  ],
-  disappointment: [
-    "This kitten needs more discipline and focus",
-    "Such a lazy furball today! Where's your motivation?",
-    "I expected better from you - time to step up",
-    "You're capable of more than this mediocre effort",
-    "This won't do - mama cat is not pleased"
-  ],
-  anger: [
-    "Absolutely unacceptable! What kind of kitten are you?",
-    "This lazy behavior needs to stop immediately!",
-    "You're embarrassing yourself and disappointing mama",
-    "No treats until you show me proper effort!",
-    "Time for some serious kitten training - this is shameful"
-  ]
-};
-
 // Generate balanced cat mama message
 async function generateBalancedCatMomMessage(catActivities: CatActivity[], topics: TopicData, recentMessages: string[]): Promise<string[]> {
   const now = new Date();
@@ -419,47 +447,53 @@ async function generateBalancedCatMomMessage(catActivities: CatActivity[], topic
   const omMissedDetails = omCat.missedGoals.map(g => `${g.name}: ${g.completed}/${g.target}`).join(', ');
   const durvaMissedDetails = durvaCat.missedGoals.map(g => `${g.name}: ${g.completed}/${g.target}`).join(', ');
 
-  const prompt = `You are angry toxic but firm cat mama checking on your two kittens. You're tocic and  protective and want them to succeed, but you also hold them accountable. Om and Durva are NOT siblings - they're both your kittens but separate individuals. Mention there names atleast ones.
-Add insults randomly like comparing with neighbours or not getting job or will marry you to a smelly dog make own insults and threat but keep them very brutual, sad and angry. keep it short messages dont use same examples and dont use every example be creative. Shot at them and nake it dramatic
-TODAY: ${dayOfWeek}, Day ${topics.dayNumber}
-STUDY TOPICS: ${topics.techq_topics} | ${topics.fundaq_topics} | ${topics.tech_topic} | ${topics.system_design}
+  // Create enhanced arrays with random elements
+  const selectedThreats = [
+    getRandomElement(CAT_THREATS),
+    getRandomElement(CAT_THREATS),
+    getRandomElement(CAT_THREATS)
+  ];
+  
+  const selectedInsults = [
+    getRandomElement(CAT_INSULTS),
+    getRandomElement(CAT_INSULTS)
+  ];
+  
+  const selectedPraise = [
+    getRandomElement(CAT_PRAISE),
+    getRandomElement(CAT_PRAISE)
+  ];
+  
+  const selectedComparison = getRandomElement(CAT_COMPARISONS);
 
-${contextSection}
+  const prompt = `You are a toxic, dramatic cat mama checking on Om and Durva. Be brutal but loving.
 
-OM'S PERFORMANCE: ${omCat.completedGoals}/${omCat.totalGoals} goals (${Math.round(omCat.completionRate)}%)
-FAILED AT: ${omMissedDetails || 'Nothing - completed everything!'}
-STREAK: ${omCat.streakCurrent ? `${omCat.streakDays} days active` : `Streak broken, ${omCat.daysBehind} days behind`}
+PERFORMANCE DATA:
+Om: ${omCat.completedGoals}/${omCat.totalGoals} goals (${Math.round(omCat.completionRate)}%) | Failed: ${omMissedDetails || 'Nothing'}
+Durva: ${durvaCat.completedGoals}/${durvaCat.totalGoals} goals (${Math.round(durvaCat.completionRate)}%) | Failed: ${durvaMissedDetails || 'Nothing'}
 
-DURVA'S PERFORMANCE: ${durvaCat.completedGoals}/${durvaCat.totalGoals} goals (${Math.round(durvaCat.completionRate)}%)
-FAILED AT: ${durvaMissedDetails || 'Nothing - completed everything!'}
-STREAK: ${durvaCat.streakCurrent ? `${durvaCat.streakDays} days active` : `Streak broken, ${durvaCat.daysBehind} days behind`}
+Use these as INSPIRATION (don't copy exactly):
+Threats: ${selectedThreats.join(' | ')}
+Insults: ${selectedInsults.join(' | ')}
+Praise: ${selectedPraise.join(' | ')}
+Compare: ${selectedComparison}
 
-RESPONSE TYPE: ${responseType}
+RULES:
+- Short messages (1-2 sentences each)
+- Compare them directly
+- Be dramatic and creative
+- Mention specific missed goals
+- Mix threats with tough love
+- 5-6 total messages
 
-CRITICAL RULES - FOLLOW STRICTLY:
-1.  NEVER REPEAT NAMES  - Mention "Om" and "Durva" ONLY ONCE each in the entire response set
-2.  BE BALANCED  - Good performance deserves genuine praise, poor performance gets firm correction
-3.  NO REPETITIVE STRUCTURE  - Each message should have different tone and approach
-4.  TREAT THEM AS INDIVIDUALS  - They are both your kittens but compare their individual efforts
-5.  BE A CARING MAMA  - Firm but loving, like a mother cat teaching her young
-6.  VARY YOUR LANGUAGE  - Don't use the same phrases or sentence structures
-7.  KEEP IT NATURAL  - Sound like a real cat mama, not a script
-
-Response Guidelines by Performance:
--  Excellent (90%+) : Genuine pride and praise, maybe gentle encouragement to maintain
--  Good (75-89%) : Pleased but encouraging for consistency  
--  Average (50-74%) : Loving but firm guidance, expectation for improvement
--  Poor (25-49%) : Disappointed but supportive correction, clear expectations
--  Very Poor (<25%) : Firm correction but still caring, motivation to do better
-
-Create 5-7 SHORT, VARIED messages that feel natural and caring but appropriately firm. Each message should have a different tone and structure. Return as JSON array of strings.`;
+Return as JSON array of strings.`;
 
   try {
     const completion = await groq.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
       model: "llama-3.3-70b-versatile",
-      temperature: 0.8,
-      max_tokens: 800,
+      temperature: 0.9,
+      max_tokens: 600,
       top_p: 0.9
     });
 
@@ -523,20 +557,27 @@ Create 5-7 SHORT, VARIED messages that feel natural and caring but appropriately
   } catch (error) {
     console.error('Error generating cat mom message:', error);
     
-    // Fallback messages based on performance
+    // Enhanced fallback messages with random elements
     const fallbackMessages = [];
+    const threat = getRandomElement(CAT_THREATS);
+    const insult = getRandomElement(CAT_INSULTS);
+    const praise = getRandomElement(CAT_PRAISE);
+    
     if (omCat.isPerfect && durvaCat.isPerfect) {
-      fallbackMessages.push("Both my kittens did exceptionally well today! Mama is very proud 🐱");
-      fallbackMessages.push("This is exactly what I expect from my well-trained kittens");
+      fallbackMessages.push(`Both my kittens are finally acting right! ${praise}`);
+      fallbackMessages.push("This is exactly what mama expects - keep it up!");
     } else if (omCat.isPerfect) {
-      fallbackMessages.push("Om completed everything perfectly - well done!");
-      fallbackMessages.push("Durva, you need to follow this example tomorrow");
+      fallbackMessages.push(`Om is clearly the smarter kitten today - ${praise}`);
+      fallbackMessages.push(`Durva, you're ${insult} compared to Om - ${threat}`);
+      fallbackMessages.push(`Om completed everything while Durva failed at: ${durvaMissedDetails}`);
     } else if (durvaCat.isPerfect) {
-      fallbackMessages.push("Durva showed excellent dedication today!");
-      fallbackMessages.push("Om, I expect the same level of commitment from you");
+      fallbackMessages.push(`Durva makes me proud while Om disappoints me completely`);
+      fallbackMessages.push(`Om, you're ${insult} - ${threat}`);
+      fallbackMessages.push(`Look at what you missed: ${omMissedDetails}`);
     } else {
-      fallbackMessages.push("Both kittens need to focus better tomorrow");
-      fallbackMessages.push("This performance needs improvement - mama expects more");
+      fallbackMessages.push(`Both my kittens are ${insult} today - absolutely shameful!`);
+      fallbackMessages.push(`Om missed: ${omMissedDetails}. Durva missed: ${durvaMissedDetails}`);
+      fallbackMessages.push(`${threat} - both of you need serious improvement!`);
     }
     
     fallbackMessages.push(getRandomGif(gifCategory));
