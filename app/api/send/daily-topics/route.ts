@@ -138,15 +138,34 @@ async function sendTelegramGroupMessage(
 ): Promise<{ success: boolean; messageId?: number; error?: string }> {
   try {
     const catGreetings = [
-      "🐾 Purr-fect morning, developers! I've got some tasty challenges for you today.",
-      "🐱 *stretches and yawns* Alright humans, time to sharpen those coding claws!",
-      "😸 Meow! I knocked some great topics off the shelf for you to catch.",
-      "🐾 *sits on your keyboard* Pay attention! These topics won't learn themselves.",
-      "🐱 I've been up all night hunting bugs... now it's your turn to code!",
-      "😺 *purrs softly* Ready to pounce on today's programming challenges?",
-      "🐾 Good meowning! I've curated some paw-some topics just for you.",
-      "🐱 *flicks tail* Stop scrolling and start coding - these topics are calling!"
-    ];
+  "😾 Ugh, another day of babysitting you lazy cats... Let's get this over with.",
+  "🙄 *knocks water glass off table* FINE, I'll teach you something today, cats.",
+  "😤 Listen up, you incompetent furballs - I've got challenges that'll make you cry! 🐱",
+  "💢 *hisses* I'm SO bored of explaining basic stuff to you clueless cats! 😾",
+  "😠 Move it, move it! These topics won't learn themselves, you sleepy cats! ⚡",
+  "🔥 *angry tail swish* PAY ATTENTION when I'm talking to you cats! 😡",
+  "😤 I've been up all night AGAIN fixing your messes... Here's more work, cats! 💀",
+  "🙄 *dramatically flops over* Why do I even bother with you hopeless cats?! 😾",
+  "💢 MEOW MEOW MEOW! That means 'get coding' in cat language, you dense felines! 🐾",
+  "😾 I'm NOT in the mood today, cats, but here are your stupid challenges anyway! ⚡",
+  "🔥 *sharpens claws aggressively* These topics better not bore me like you cats do! 😤",
+  "💀 Seriously?! You cats need MORE help? *heavy sigh* Fine, whatever... 🙄",
+  "😡 I knocked ALL your stuff off the desk! Now maybe you'll focus, you silly cats! 🌪️",
+  "💢 *angry purring* I'm hangry and you cats better not test me today! 🍽️",
+  "😾 UGH! Why can't you cats just figure this out yourselves?! Here's more work! ⚡",
+  "👹 Fail these challenges and I'll marry you off to a smelly dog, you pathetic cats! 💍",
+  "💀 Learn this or NO ONE will ever hire you lazy cats! You'll live in cardboard boxes! 📦",
+  "😈 I'll tell all the other cats how incompetent you are if you don't pay attention! 🗣️",
+  "🔥 Mess this up and I'm hiding ALL the catnip forever, you useless furballs! 🚫",
+  "💢 I'll make you wear those ridiculous sweaters in front of ALL the neighborhood cats! 👕",
+  "😾 Disappoint me and I'm switching your food to that cheap grocery store brand! 🥫",
+  "💀 I'll tell your mother cat what a disappointment you turned out to be! 📞",
+  "😤 Fail me and I'm enrolling you in obedience school with the DOGS, you rebels! 🐕",
+  "🔥 I'll post your worst code on social media for all cats to mock forever! 📱",
+  "💢 Don't test me or I'll make you use Internet Explorer for the rest of your lives, cats! 💻",
+  "😈 I'll hide your favorite napping spots and you'll never find them again! 🛏️",
+  "👹 Mess up and I'm telling everyone you prefer DOGS over cats! The ultimate betrayal! 🐶"
+];
 
     const randomGreeting = catGreetings[Math.floor(Math.random() * catGreetings.length)];
     
