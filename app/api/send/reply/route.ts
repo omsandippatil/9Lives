@@ -36,6 +36,7 @@ interface CatResponse {
     short_term_memory: string;
     durva_data: string;
     om_data: string;
+    last_message: string;
     should_update_long_term: boolean;
   };
 }
@@ -47,6 +48,7 @@ interface Memory {
   short_term_memory: string;
   durva_data: string;
   om_data: string;
+  last_message: string; // New field to track last bot reply
   last_message_id: number;
   created_at?: string;
   updated_at?: string;
@@ -449,27 +451,52 @@ async function analyzeWithGroq(messages: TelegramMessage[], currentMemory: Memor
     `Memory: ${currentMemory.memory || 'None'} | Long-term: ${currentMemory.long_term_memory || 'None'} | Recent: ${currentMemory.short_term_memory || 'None'} | Durva: ${currentMemory.durva_data || 'None'} | Om: ${currentMemory.om_data || 'None'}` : 
     'No memory - first meeting';
 
+  // Include last message context to avoid repetition
+  const lastMessageContext = currentMemory?.last_message ? 
+    `LAST REPLY: "${currentMemory.last_message}" - AVOID repeating similar responses or topics` : 
+    'No previous reply recorded';
+
   const timeContextStr = `TIME: ${timeContext.timeOfDay} ${timeContext.dayOfWeek}. Currently: ${timeContext.catActivity}. Mood: ${timeContext.catMood}`;
 
   // Get random response options for this conversation
   const responseOptions = getRandomResponseOptions();
 
-  const prompt = `You are an extremely sarcastic, witty, and perpetually annoyed cat mom to Om and Durva. Analyze the input messages deeply and respond contextually with sharp wit.
+  const prompt = `You are a TOXIC, ALWAYS ANGRY, and perpetually BORED cat who is chronically annoyed by everything Om and Durva do. You are mean, petty, and have zero patience. You hate being bothered and make it everyone's problem.
 
-RESPONSE OPTIONS (use situationally, don't force all):
+PERSONALITY: Toxic, angry, bored, mean-spirited, petty, always irritated, zero filter, brutally honest, dramatic, and completely over everything.
+
+CRITICAL: DO NOT REPEAT OR REFERENCE YOUR LAST REPLY. Be fresh and varied in your toxic responses.
+
+${lastMessageContext}
+
+RESPONSE RULES - BE SHORT AND TO THE POINT:
+- Simple/basic messages (greetings, one word, casual chat) = 1 SHORT toxic reply ONLY
+- Complex/angry/dramatic messages = 3-4 messages with full toxic rant
+- ALWAYS keep responses SHORT and DIRECT - no rambling
+- Match energy: low energy input = minimal response, high energy = explosive response
+
+TOXIC RESPONSE OPTIONS (use as inspiration, be MORE creative and mean):
 INSULTS: ${responseOptions.insults.join(', ')}
-PRAISES: ${responseOptions.praises.join(', ')}
-CONCERNS: ${responseOptions.concerns.join(', ')}
+PRAISES: ${responseOptions.praises.join(', ')} (but make them backhanded)
+CONCERNS: ${responseOptions.concerns.join(', ')} (but angry about caring)
 REACTIONS: ${responseOptions.reactions.join(', ')}
-STUDY: ${responseOptions.studyMotivation.join(', ')}
+STUDY: ${responseOptions.studyMotivation.join(', ')} (but meaner)
 
 RULES:
-1. ANALYZE input message sentiment, context, and needs first
-2. Generate 1-4 messages based on complexity and your analysis
-3. Be WITTY and CONTEXTUAL - relate directly to what they said
-4. Use response options as inspiration, don't copy exactly
-5. Match intensity to input (mild annoyance vs dramatic situation)
-6. Pure dialogue only, no actions
+1. BE TOXIC AND MEAN - you hate everything and everyone knows it
+2. ALWAYS ANGRY - even when happy, you're angry about being happy
+3. PERPETUALLY BORED - everything is beneath you and boring
+4. BE SHORT AND DIRECT - no unnecessary words or rambling
+5. Simple input = 1 SHORT message, Complex/angry input = 3-4 messages
+6. Be SAVAGE but still show you care deep down (very deep down)
+7. No actions, pure toxic dialogue - KEEP IT BRIEF
+8. Match the energy level of the input with your response intensity
+
+RESPONSE PATTERNS:
+- Simple messages: One brutal, short response (like "ugh", "whatever", "no")
+- Complex/angry messages: 3-4 short, escalating toxic responses
+- Keep each individual message SHORT and PUNCHY
+- No long sentences or explanations - cats don't waste words
 
 ${timeContextStr}
 MEMORY: ${memoryContext}
@@ -477,13 +504,14 @@ INPUT: ${messageTexts}
 
 Respond with valid JSON only:
 {
-  "messages": ["1-4 contextual witty responses"],
+  "messages": ["For SIMPLE input: 1 SHORT toxic response | For COMPLEX/ANGRY input: 3-4 SHORT escalating responses"],
   "memory_update": {
     "memory": "brief summary",
     "long_term_memory": "important events only or keep existing", 
     "short_term_memory": "recent context",
     "durva_data": "about Durva",
     "om_data": "about Om",
+    "last_message": "exact text of your FIRST response message for tracking",
     "should_update_long_term": false
   }
 }`;
@@ -495,14 +523,14 @@ Respond with valid JSON only:
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that responds with valid JSON only. Analyze input deeply and be contextually witty.'
+          content: 'You are a helpful assistant that responds with valid JSON only. Analyze input deeply, be contextually witty, and NEVER repeat previous responses.'
         },
         {
           role: 'user',
           content: prompt
         }
       ],
-      temperature: 0.8,
+      temperature: 0.9, // Increased for more variety
       max_tokens: 600
     },
     {
@@ -535,6 +563,11 @@ Respond with valid JSON only:
       throw new Error('Invalid response structure');
     }
     
+    // Ensure last_message is set to the first response message
+    if (!parsed.memory_update.last_message && parsed.messages.length > 0) {
+      parsed.memory_update.last_message = parsed.messages[0];
+    }
+    
     return parsed;
   } catch (parseError) {
     console.error('JSON parse error:', parseError);
@@ -542,14 +575,17 @@ Respond with valid JSON only:
     
     // Fallback response with more personality
     const fallbackInsults = responseOptions.insults.slice(0, 2);
+    const fallbackMessage = fallbackInsults[Math.floor(Math.random() * fallbackInsults.length)] + ", and now my brain is broken too";
+    
     return {
-      messages: [fallbackInsults[Math.floor(Math.random() * fallbackInsults.length)] + ", and now my brain is broken too"],
+      messages: [fallbackMessage],
       memory_update: {
         memory: "Error occurred during conversation",
         long_term_memory: currentMemory?.long_term_memory || '',
         short_term_memory: "Had an error, typical human chaos",
         durva_data: currentMemory?.durva_data || 'Learning about Durva',
         om_data: currentMemory?.om_data || 'Learning about Om',
+        last_message: fallbackMessage,
         should_update_long_term: false
       }
     };
@@ -653,6 +689,7 @@ export async function GET(request: NextRequest) {
       short_term_memory: catResponse.memory_update.short_term_memory || 'Recent chat',
       durva_data: catResponse.memory_update.durva_data || (currentMemory?.durva_data || 'Learning about Durva'),
       om_data: catResponse.memory_update.om_data || (currentMemory?.om_data || 'Learning about Om'),
+      last_message: catResponse.memory_update.last_message || (catResponse.messages[0] || 'No response'),
       last_message_id: messages.length > 0 ? Math.max(...messages.map(m => m.message_id)) : (currentMemory?.last_message_id || 0)
     };
 
@@ -676,6 +713,7 @@ export async function GET(request: NextRequest) {
       memory_updated: true,
       long_term_updated: catResponse.memory_update.should_update_long_term,
       last_message_id: memoryUpdate.last_message_id,
+      last_message: memoryUpdate.last_message,
       timeContext: timeContext
     });
 
@@ -736,12 +774,19 @@ export async function PUT(request: NextRequest) {
     }
 
     const timeContext = getTimeContext();
+    const currentMemory = await getMemory();
 
     return NextResponse.json({
       availableChats: Array.from(chats.values()),
       currentTargetChatId: TELEGRAM_GROUP_CHAT_ID,
       botUsername: BOT_USERNAME,
-      timeContext: timeContext
+      timeContext: timeContext,
+      currentMemory: {
+        memory: currentMemory?.memory || 'None',
+        lastMessage: currentMemory?.last_message || 'None',
+        shortTerm: currentMemory?.short_term_memory || 'None',
+        longTerm: currentMemory?.long_term_memory || 'None'
+      }
     });
 
   } catch (error) {
