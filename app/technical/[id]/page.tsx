@@ -1,0 +1,1027 @@
+'use client'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+interface TechnicalQuestionData {
+  id: number
+  question: string
+  answer: string
+  difficulty_level?: string
+  category?: string
+  technology_stack?: string
+}
+
+const CodeBlock = ({ children, language = 'javascript' }: { children: string, language?: string }) => {
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(children)
+  }
+
+  return (
+    <div className="relative mb-6 group">
+      <div className="bg-gray-900 text-white p-4 overflow-x-auto text-sm font-mono border border-gray-700">
+        <pre className="whitespace-pre-wrap">{children}</pre>
+      </div>
+      <div className="absolute top-2 right-2 flex gap-2">
+        <span className="bg-blue-600 text-white px-2 py-1 text-xs font-mono">
+          {language.toUpperCase()}
+        </span>
+        <button
+          onClick={copyToClipboard}
+          className="bg-gray-700 text-gray-300 px-2 py-1 text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-600"
+          title="Copy code"
+        >
+          📋
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const MarkdownComponents = {
+  h1: ({ children }: any) => (
+    <h1 className="text-3xl font-bold mb-6 mt-8 text-gray-900 border-b-2 border-purple-500 pb-3">
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: any) => (
+    <h2 className="text-2xl font-semibold mb-4 mt-8 text-gray-800 border-l-4 border-purple-400 pl-4">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: any) => (
+    <h3 className="text-xl font-medium mb-3 mt-6 text-gray-700">
+      {children}
+    </h3>
+  ),
+  h4: ({ children }: any) => (
+    <h4 className="text-lg font-medium mb-3 mt-5 text-gray-700">
+      {children}
+    </h4>
+  ),
+  h5: ({ children }: any) => (
+    <h5 className="text-base font-semibold mb-2 mt-4 text-gray-800">
+      {children}
+    </h5>
+  ),
+  h6: ({ children }: any) => (
+    <h6 className="text-base font-medium mb-2 mt-3 text-gray-700">
+      {children}
+    </h6>
+  ),
+  p: ({ children }: any) => {
+    const childrenStr = String(children)
+    if (childrenStr.includes('**Question') || childrenStr.includes('**Answer') || childrenStr.includes('**Problem') || childrenStr.includes('**Solution')) {
+      return (
+        <div className="mb-4 text-gray-700 leading-relaxed text-base whitespace-pre-line">
+          {children}
+        </div>
+      )
+    }
+    return (
+      <p className="mb-4 text-gray-700 leading-relaxed text-base">
+        {children}
+      </p>
+    )
+  },
+  ul: ({ children }: any) => (
+    <ul className="mb-4 space-y-1 pl-6 list-disc text-gray-700">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }: any) => (
+    <ol className="mb-4 space-y-1 pl-6 list-decimal text-gray-700">
+      {children}
+    </ol>
+  ),
+  li: ({ children }: any) => (
+    <li className="text-base text-gray-700 leading-relaxed mb-1">
+      {children}
+    </li>
+  ),
+  em: ({ children }: any) => (
+    <em className="italic text-gray-800 font-medium">{children}</em>
+  ),
+  strong: ({ children }: any) => {
+    const content = String(children)
+    if (content.includes('Question:') || content.includes('Answer:') || content.includes('Problem:') || content.includes('Solution:')) {
+      return (
+        <div className="font-semibold text-gray-900 mb-2 mt-4 block">
+          {content.replace(':', ':\n')}
+        </div>
+      )
+    }
+    if (content.startsWith('Question') || content.startsWith('Answer') || content.startsWith('Problem') || content.startsWith('Solution')) {
+      return (
+        <div className="font-semibold text-gray-900 mb-2 mt-4 block">
+          {children}
+        </div>
+      )
+    }
+    return (
+      <strong className="font-semibold text-gray-900">{children}</strong>
+    )
+  },
+  code: ({ children, className, inline }: any) => {
+    if (!inline && (className || String(children).includes('\n') || String(children).length > 50)) {
+      return (
+        <code className="block bg-gray-900 text-white p-4 text-sm font-mono whitespace-pre-wrap overflow-x-auto border border-gray-700">
+          {children}
+        </code>
+      )
+    }
+    return (
+      <code className="bg-gray-100 text-gray-800 px-2 py-1 text-sm font-mono">
+        {children}
+      </code>
+    )
+  },
+  pre: ({ children }: any) => (
+    <div className="relative mb-6">
+      <div className="bg-gray-900 text-white p-4 overflow-x-auto text-sm font-mono border border-gray-700">
+        {children}
+      </div>
+      <div className="absolute top-2 right-2">
+        <span className="bg-blue-600 text-white px-2 py-1 text-xs font-mono">
+          CODE
+        </span>
+      </div>
+    </div>
+  ),
+  blockquote: ({ children }: any) => (
+    <blockquote className="border-l-4 border-purple-400 bg-purple-50 pl-4 py-3 mb-4 italic text-gray-700">
+      {children}
+    </blockquote>
+  ),
+  hr: () => (
+    <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
+  ),
+  table: ({ children }: any) => (
+    <div className="mb-6 overflow-x-auto border border-gray-200 shadow-sm">
+      <table className="min-w-full divide-y divide-gray-200 bg-white">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: any) => (
+    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+      {children}
+    </thead>
+  ),
+  tbody: ({ children }: any) => (
+    <tbody className="bg-white divide-y divide-gray-200">
+      {children}
+    </tbody>
+  ),
+  tr: ({ children }: any) => (
+    <tr className="hover:bg-gray-50 transition-colors duration-150">
+      {children}
+    </tr>
+  ),
+  th: ({ children }: any) => (
+    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
+      {children}
+    </th>
+  ),
+  td: ({ children }: any) => (
+    <td className="px-4 py-3 text-sm text-gray-700 border-b border-gray-100 align-top">
+      <div className="whitespace-pre-wrap break-words">
+        {children}
+      </div>
+    </td>
+  ),
+  br: () => <br className="mb-2" />
+}
+
+interface ParsedSection {
+  id: string
+  title: string
+  emoji: string
+  content: string
+  hasCodeBlocks: boolean
+  hasComplexity: boolean
+}
+
+function processAnswerContent(answer: string): string {
+  let processed = answer.replace(/\$#\s*([a-z]*)\s*\n?([\s\S]*?)\n?\s*#\$/g, (match, language, code) => {
+    const lang = language.trim() || 'javascript'
+    const cleanCode = code.trim()
+    return `\`\`\`${lang}\n${cleanCode}\n\`\`\``
+  })
+
+  processed = processed.replace(/\$O\(([^)]+)\)\$/g, 'O($1)')
+  processed = processed.replace(/\$\Omega\(([^)]+)\)\$/g, 'Ω($1)')
+  processed = processed.replace(/\$\Theta\(([^)]+)\)\$/g, 'Θ($1)')
+
+  return processed
+}
+
+function parseAnswerContent(answer: string): ParsedSection[] {
+  const sections: ParsedSection[] = []
+  
+  const processedAnswer = processAnswerContent(answer)
+  
+  // Split by markdown headings (### for h3 level)
+  const parts = processedAnswer.split(/^### /gm).filter(part => part.trim())
+  
+  parts.forEach((part, index) => {
+    const lines = part.trim().split('\n')
+    const titleLine = lines[0]
+    
+    // Extract emoji and title from the heading
+    const emojiMatch = titleLine.match(/^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡]+)\s*(.+)/)
+    let emoji = '💡'
+    let title = titleLine
+    
+    if (emojiMatch) {
+      emoji = emojiMatch[1]
+      title = emojiMatch[2]
+    }
+    
+    // Clean up title
+    title = title.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '').trim()
+    
+    const content = lines.slice(1).join('\n').trim()
+    
+    if (content) {
+      const hasCodeBlocks = content.includes('```') || content.includes('$#')
+      const hasComplexity = content.includes('O(') || content.includes('Ω(') || content.includes('Θ(')
+      
+      sections.push({
+        id: `section-${index}`,
+        title,
+        emoji,
+        content,
+        hasCodeBlocks,
+        hasComplexity
+      })
+    }
+  })
+  
+  return sections
+}
+
+interface SectionCardProps {
+  section: ParsedSection
+  isExpanded: boolean
+  onToggle: () => void
+}
+
+function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
+  return (
+    <div className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+      <div 
+        className="p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+        onClick={onToggle}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl transition-transform duration-300 hover:scale-110">
+              {section.emoji}
+            </span>
+            <h3 className="font-mono font-medium text-lg text-gray-800 hover:text-black transition-colors">
+              {section.title}
+            </h3>
+          </div>
+          <div className="flex items-center gap-3">
+            {section.hasCodeBlocks && (
+              <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 font-mono">
+                💻 Code
+              </span>
+            )}
+            {section.hasComplexity && (
+              <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 font-mono">
+                📊 Math
+              </span>
+            )}
+            <div className={`text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+              ▼
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {isExpanded && (
+        <div className="px-6 pb-6 border-t border-gray-100">
+          <div className="pt-4">
+            <ReactMarkdown 
+              components={MarkdownComponents}
+              remarkPlugins={[remarkGfm]}
+            >
+              {section.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime: number }) {
+  const progress = ((totalTime - timeLeft) / totalTime) * 100
+  const isComplete = timeLeft === 0
+  
+  return (
+    <div className="w-full bg-gray-200 h-2 overflow-hidden">
+      <div 
+        className={`h-full transition-all duration-1000 ease-linear ${
+          isComplete ? 'bg-black' : 'bg-black'
+        }`}
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+  )
+}
+
+function LoadingProgressBar() {
+  const [progress, setProgress] = useState(0)
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) return 100
+        return prev + Math.random() * 15 + 5
+      })
+    }, 200)
+    
+    return () => clearInterval(timer)
+  }, [])
+  
+  return (
+    <div className="w-64 bg-gray-200 h-2 overflow-hidden">
+      <div 
+        className="h-full bg-black transition-all duration-300 ease-out"
+        style={{ width: `${Math.min(progress, 100)}%` }}
+      />
+    </div>
+  )
+}
+
+function StreakDisplay({ streakData }: { streakData: any }) {
+  const getTodayDate = () => {
+    return new Date().toISOString().split('T')[0]
+  }
+
+  const getYesterdayDate = () => {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    return yesterday.toISOString().split('T')[0]
+  }
+
+  let streakDate = ''
+  let streakCount = 0
+  let isToday = false
+  let isYesterday = false
+  let shouldShowZero = false
+
+  if (streakData && Array.isArray(streakData) && streakData.length === 2) {
+    streakDate = streakData[0]
+    streakCount = streakData[1] || 0
+    const today = getTodayDate()
+    const yesterday = getYesterdayDate()
+    
+    isToday = streakDate === today
+    isYesterday = streakDate === yesterday
+    
+    if (streakDate < yesterday) {
+      shouldShowZero = true
+    }
+  }
+
+  const displayCount = shouldShowZero ? 0 : streakCount
+
+  return (
+    <div className="text-center">
+      <p className="text-xs text-gray-400 uppercase tracking-wider">Streak</p>
+      <p className={`text-xl font-normal transition-all duration-300 ${
+        isToday 
+          ? 'text-orange-500 animate-pulse' 
+          : isYesterday 
+            ? 'text-gray-600' 
+            : 'text-gray-400'
+      }`}>
+        {displayCount} 🔥
+      </p>
+    </div>
+  )
+}
+
+function DifficultyBadge({ difficulty }: { difficulty?: string }) {
+  if (!difficulty) return null
+  
+  const colors = {
+    'easy': 'bg-green-100 text-green-700 border-green-300',
+    'medium': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    'hard': 'bg-red-100 text-red-700 border-red-300'
+  }
+  
+  const color = colors[difficulty.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-700 border-gray-300'
+  
+  return (
+    <span className={`px-3 py-1 text-xs font-mono border ${color} uppercase tracking-wider`}>
+      {difficulty}
+    </span>
+  )
+}
+
+// Fish Animation Component
+function FishAnimation() {
+  const [fishes, setFishes] = useState<Array<{
+    id: number
+    emoji: string
+    x: number
+    y: number
+    baseY: number
+    speed: number
+    direction: number
+    wobblePhase: number
+    size: number
+    opacity: number
+  }>>([])
+
+  const fishEmojis = ['🐟', '🐠', '🐡', '🦈', '🐙', '🦀', '🎣', '🐟', '🐠', '🐡', '🦈']
+
+  useEffect(() => {
+    // Create initial fishes with more variety
+    const initialFishes = Array.from({ length: 12 }, (_, i) => ({
+      id: i,
+      emoji: fishEmojis[i % fishEmojis.length],
+      x: Math.random() > 0.5 ? -150 - (i * 200) : window.innerWidth + 150 + (i * 200), // Start from both sides
+      y: Math.random() * 70 + 15, // Random vertical position (15% to 85%)
+      baseY: Math.random() * 70 + 15, // Base Y position for wobbling
+      speed: Math.random() * 3 + 1.5, // Speed between 1.5-4.5
+      direction: Math.random() > 0.5 ? 1 : -1, // 1 for left-to-right, -1 for right-to-left
+      wobblePhase: Math.random() * Math.PI * 2, // Random starting phase for wobbling
+      size: Math.random() * 1.5 + 1, // Size multiplier between 1-2.5
+      opacity: Math.random() * 0.4 + 0.6 // Opacity between 0.6-1.0
+    }))
+
+    // Ensure direction matches initial position
+    initialFishes.forEach(fish => {
+      if (fish.x < 0) {
+        fish.direction = 1 // Moving right
+      } else {
+        fish.direction = -1 // Moving left
+      }
+    })
+
+    setFishes(initialFishes)
+
+    const animationInterval = setInterval(() => {
+      setFishes(prevFishes => 
+        prevFishes.map(fish => {
+          let newX = fish.x + (fish.speed * fish.direction)
+          
+          // Update wobble phase for natural swimming motion
+          const newWobblePhase = fish.wobblePhase + 0.15
+          
+          // Calculate wobbling Y position (fish swimming motion)
+          const wobbleAmount = Math.sin(newWobblePhase) * 8 // Wobble up and down by 8px
+          const newY = fish.baseY + wobbleAmount
+          
+          // Reset position when fish moves off screen with some randomization
+          if (fish.direction === 1 && newX > window.innerWidth + 150) {
+            newX = -150 - Math.random() * 300
+            return {
+              ...fish,
+              x: newX,
+              y: newY,
+              baseY: Math.random() * 70 + 15, // New random Y position
+              wobblePhase: newWobblePhase,
+              speed: Math.random() * 3 + 1.5, // New random speed
+              size: Math.random() * 1.5 + 1,
+              opacity: Math.random() * 0.4 + 0.6
+            }
+          } else if (fish.direction === -1 && newX < -150) {
+            newX = window.innerWidth + 150 + Math.random() * 300
+            return {
+              ...fish,
+              x: newX,
+              y: newY,
+              baseY: Math.random() * 70 + 15, // New random Y position
+              wobblePhase: newWobblePhase,
+              speed: Math.random() * 3 + 1.5, // New random speed
+              size: Math.random() * 1.5 + 1,
+              opacity: Math.random() * 0.4 + 0.6
+            }
+          }
+
+          return {
+            ...fish,
+            x: newX,
+            y: newY,
+            wobblePhase: newWobblePhase
+          }
+        })
+      )
+    }, 50)
+
+    return () => clearInterval(animationInterval)
+  }, [])
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-30 overflow-hidden">
+      {fishes.map(fish => (
+        <div
+          key={fish.id}
+          className="absolute transition-all duration-100 ease-linear"
+          style={{
+            left: `${fish.x}px`,
+            top: `${fish.y}%`,
+            transform: `scaleX(${fish.direction === -1 ? -1 : 1}) scale(${fish.size})`,
+            opacity: fish.opacity,
+            fontSize: '24px',
+            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
+            animation: 'fishGlow 3s ease-in-out infinite alternate'
+          }}
+        >
+          <span className="inline-block animate-pulse">
+            {fish.emoji}
+          </span>
+        </div>
+      ))}
+      
+      {/* Add some floating bubbles for effect */}
+      <div className="absolute inset-0">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div
+            key={`bubble-${i}`}
+            className="absolute rounded-full bg-blue-100 opacity-30"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              width: `${Math.random() * 8 + 4}px`,
+              height: `${Math.random() * 8 + 4}px`,
+              animation: `bubble ${3 + Math.random() * 4}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 2}s`
+            }}
+          />
+        ))}
+      </div>
+      
+      <style jsx>{`
+        @keyframes fishGlow {
+          0% { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) brightness(1); }
+          100% { filter: drop-shadow(0 4px 8px rgba(59,130,246,0.2)) brightness(1.1); }
+        }
+        
+        @keyframes bubble {
+          0%, 100% { transform: translateY(0px) scale(1); opacity: 0.3; }
+          50% { transform: translateY(-20px) scale(1.1); opacity: 0.1; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+export default function TechnicalQuestionsPage() {
+  const params = useParams()
+  const router = useRouter()
+  const [questionData, setQuestionData] = useState<TechnicalQuestionData | null>(null)
+  const [parsedSections, setParsedSections] = useState<ParsedSection[]>([])
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [catAnimation, setCatAnimation] = useState('😺')
+  const [streakData, setStreakData] = useState(null)
+  const [totalPoints, setTotalPoints] = useState(0)
+  const [showAllSections, setShowAllSections] = useState(false)
+  const [technicalQuestions, setTechnicalQuestions] = useState(0)
+  
+  const [timeLeft, setTimeLeft] = useState(90) // Increased time for technical questions
+  const [canProceed, setCanProceed] = useState(false)
+  const [hasAttempted, setHasAttempted] = useState(false)
+  const [apiCalled, setApiCalled] = useState(false) // Track if API has been called
+  const [showFishAnimation, setShowFishAnimation] = useState(false)
+  const totalTime = 90
+
+  useEffect(() => {
+    const cats = ['😺', '😸', '😹', '😻', '😽', '🙀', '😿', '😾', '🐱']
+    let index = 0
+    
+    const interval = setInterval(() => {
+      index = (index + 1) % cats.length
+      setCatAnimation(cats[index])
+    }, 2500)
+    
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const timer = setTimeout(() => {
+        setTimeLeft(timeLeft - 1)
+      }, 1000)
+      
+      return () => clearTimeout(timer)
+    } else if (timeLeft === 0 && !hasAttempted) {
+      setCanProceed(true)
+      setShowFishAnimation(true)
+      updateUserProgress()
+      
+      // Hide fish animation after 8 seconds
+      setTimeout(() => {
+        setShowFishAnimation(false)
+      }, 8000)
+    }
+  }, [timeLeft, hasAttempted])
+
+  const getCookie = (name: string) => {
+    if (typeof document === 'undefined') return null
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) return parts.pop()?.split(';').shift()
+    return null
+  }
+
+  const fetchUserData = async () => {
+    try {
+      let userId = getCookie('client-user-id') || 
+                  (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
+                  (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
+      
+      if (!userId) {
+        console.log('No user ID found')
+        return
+      }
+
+      const { data: userData, error: fetchError } = await supabase
+        .from('users')
+        .select('current_streak, total_points, technical_question')
+        .eq('id', userId)
+        .single()
+
+      if (fetchError) {
+        console.error('Failed to fetch user data:', fetchError)
+        return
+      }
+
+      let parsedStreak = null
+      try {
+        if (userData?.current_streak) {
+          if (typeof userData.current_streak === 'string') {
+            parsedStreak = JSON.parse(userData.current_streak)
+          } else {
+            parsedStreak = userData.current_streak
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing streak data:', e)
+      }
+
+      setStreakData(parsedStreak)
+      setTotalPoints(userData?.total_points || 0)
+      setTechnicalQuestions(userData?.technical_question || 0)
+    } catch (error) {
+      console.error('Error fetching user data:', error)
+    }
+  }
+
+  const callUpdateTodayAPI = async () => {
+    if (apiCalled) return // Prevent duplicate calls
+    
+    try {
+      setApiCalled(true)
+      console.log('Calling /api/update/today API...')
+      
+      const response = await fetch('/api/update/today?inc=technical_questions_attempted', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`API call failed with status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('API call successful:', data)
+    } catch (error) {
+      console.error('Failed to call /api/update/today:', error)
+      setApiCalled(false) // Reset on error to allow retry
+    }
+  }
+
+  const updateUserProgress = async () => {
+    if (hasAttempted) return // Prevent duplicate updates
+    
+    try {
+      setHasAttempted(true)
+      
+      const currentQuestionId = parseInt(params.id as string)
+      
+      // Always call the update today API when timer completes
+      await callUpdateTodayAPI()
+      
+      // Update user progress if this is the next question in sequence
+      if (currentQuestionId === technicalQuestions + 1) {
+        let userId = getCookie('client-user-id') || 
+                    (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
+                    (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
+        
+        if (userId) {
+          console.log('Updating user progress for question:', currentQuestionId)
+          
+          const { error } = await supabase
+            .from('users')
+            .update({ 
+              technical_question: currentQuestionId,
+              total_points: totalPoints + 2 // Technical questions give 2 points
+            })
+            .eq('id', userId)
+
+          if (error) {
+            console.error('Failed to update user progress in database:', error)
+          } else {
+            console.log('User progress updated successfully')
+            setTechnicalQuestions(currentQuestionId)
+            setTotalPoints(prev => prev + 2)
+          }
+        } else {
+          console.warn('No user ID found for updating progress')
+        }
+      }
+
+      // Refresh user data
+      await fetchUserData()
+    } catch (error) {
+      console.error('Failed to update user progress:', error)
+      setHasAttempted(false) // Reset on error to allow retry
+    }
+  }
+
+  useEffect(() => {
+    fetchUserData()
+  }, [])
+
+  useEffect(() => {
+    const fetchQuestionData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('technical_questions')
+          .select('*')
+          .eq('id', params.id)
+          .single()
+
+        if (error) {
+          throw error
+        }
+
+        setQuestionData(data)
+        
+        if (data.answer) {
+          const sections = parseAnswerContent(data.answer)
+          setParsedSections(sections)
+          
+          // Auto-expand the first section (Interview Answer) and any overview sections
+          const autoExpandSections = new Set<string>()
+          sections.forEach((section, index) => {
+            if (index === 0 || 
+                section.title.toLowerCase().includes('interview answer') ||
+                section.title.toLowerCase().includes('immediate interview') ||
+                section.title.toLowerCase().includes('overview') || 
+                section.title.toLowerCase().includes('summary')) {
+              autoExpandSections.add(section.id)
+            }
+          })
+          setExpandedSections(autoExpandSections)
+        }
+      } catch (err) {
+        console.error('Error fetching question data:', err)
+        setError('Failed to load question content. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (params.id) {
+      fetchQuestionData()
+    }
+  }, [params.id])
+
+  const toggleSection = (sectionId: string) => {
+    const newExpanded = new Set(expandedSections)
+    if (newExpanded.has(sectionId)) {
+      newExpanded.delete(sectionId)
+    } else {
+      newExpanded.add(sectionId)
+    }
+    setExpandedSections(newExpanded)
+  }
+
+  const toggleAllSections = () => {
+    if (showAllSections) {
+      setExpandedSections(new Set())
+    } else {
+      setExpandedSections(new Set(parsedSections.map(s => s.id)))
+    }
+    setShowAllSections(!showAllSections)
+  }
+
+  const handleNext = () => {
+    if (!canProceed) return
+    
+    const currentId = parseInt(params.id as string)
+    const nextId = currentId + 1
+    router.push(`/technical/${nextId}`)
+  }
+
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
+  const sectionStats = {
+    total: parsedSections.length,
+    withCode: parsedSections.filter(s => s.hasCodeBlocks).length,
+    withComplexity: parsedSections.filter(s => s.hasComplexity).length,
+    expanded: expandedSections.size
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-6 animate-bounce">🐱</div>
+          <p className="text-gray-600 font-mono text-lg mb-6">Loading technical question...</p>
+          <LoadingProgressBar />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8 bg-white shadow-lg border">
+          <div className="text-6xl mb-6">😿</div>
+          <h2 className="text-2xl font-mono text-gray-800 mb-4">Oops! Something went wrong</h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-8 py-3 bg-black text-white font-mono hover:bg-gray-800 transition-colors shadow-md hover:shadow-lg"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!questionData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-6">🙀</div>
+          <p className="text-gray-600 font-mono text-lg">Question not found</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 text-black font-mono relative">
+      {showFishAnimation && <FishAnimation />}
+      
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+        <div className="py-6">
+          <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl animate-pulse">🐾</span>
+              <h1 className="text-2xl font-light">9lives</h1>
+            </div>
+            
+            <div className="flex items-center gap-6">
+              <StreakDisplay streakData={streakData} />
+              <div className="text-center">
+                <p className="text-xs text-gray-400 uppercase tracking-wider">Fish</p>
+                <p className="text-xl text-black font-normal">{totalPoints} 🐟</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400 uppercase tracking-wider">Mode</p>
+                <p className="text-sm font-light text-purple-600">Technical</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <TimerProgressBar timeLeft={timeLeft} totalTime={totalTime} />
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="text-center mb-12 bg-white shadow-sm border p-8">
+          <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>
+          <h2 className="text-4xl font-light mb-6 text-gray-900">
+            Technical Interview Question
+          </h2>
+          
+          <div className="flex justify-center gap-4 mb-6">
+            {questionData.difficulty_level && (
+              <DifficultyBadge difficulty={questionData.difficulty_level} />
+            )}
+            {questionData.category && (
+              <span className="px-3 py-1 text-xs font-mono bg-blue-100 text-blue-700 border border-blue-300 uppercase tracking-wider">
+                {questionData.category}
+              </span>
+            )}
+            {questionData.technology_stack && (
+              <span className="px-3 py-1 text-xs font-mono bg-purple-100 text-purple-700 border border-purple-300 uppercase tracking-wider">
+                {questionData.technology_stack}
+              </span>
+            )}
+          </div>
+
+          <div className="bg-purple-50 border-l-4 border-purple-400 p-6 mb-6">
+            <h3 className="text-2xl font-medium text-purple-900 mb-2">Question:</h3>
+            <p className="text-xl text-purple-800 font-bold leading-relaxed">
+              {questionData.question}
+            </p>
+          </div>
+          <p className="text-base text-gray-400 font-light">
+            Master technical concepts, ace your interviews 🚀
+          </p>
+          
+          <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={toggleAllSections}
+                className="px-6 py-2 border border-gray-300 text-gray-700 font-mono text-sm hover:bg-gray-50 transition-colors"
+              >
+                {showAllSections ? '📁 Collapse All' : '📂 Expand All'}
+              </button>
+            </div>
+            <div className="flex gap-4 text-sm text-gray-500 justify-center items-center">
+              <span>📚 {sectionStats.total} sections</span>
+              <span>💻 {sectionStats.withCode} with code</span>
+              <span>📊 {sectionStats.withComplexity} with math</span>
+              <span>👁️ {sectionStats.expanded} expanded</span>
+            </div>
+          </div>
+        </div>
+
+        {parsedSections.length > 0 ? (
+          <div className="space-y-6 mb-12">
+            {parsedSections.map((section) => (
+              <SectionCard
+                key={section.id}
+                section={section}
+                isExpanded={expandedSections.has(section.id)}
+                onToggle={() => toggleSection(section.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white shadow-sm border p-8 mb-12">
+            <ReactMarkdown 
+              components={MarkdownComponents}
+              remarkPlugins={[remarkGfm]}
+            >
+              {processAnswerContent(questionData.answer)}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        <div className="text-center py-8 border-t border-gray-200 bg-white shadow-sm">
+          <div className="animate-pulse text-3xl mb-4">🚀</div>
+          <p className="text-lg text-gray-600 font-light mb-6">
+            {canProceed ? 'Ready for the next technical challenge?' : 'Keep reading to unlock the next question!'}
+          </p>
+          <div className="flex justify-center gap-6">
+            <button
+              onClick={() => router.back()}
+              className="py-3 px-8 border border-gray-300 text-gray-700 font-mono text-base hover:bg-gray-50 transition-all duration-300 shadow-sm hover:shadow-md"
+            >
+              ← Back
+            </button>
+            <button
+              onClick={handleNext}
+              disabled={!canProceed}
+              className={`py-3 px-10 font-mono font-bold text-base transition-all duration-300 shadow-md ${
+                canProceed
+                  ? 'bg-black text-white hover:bg-gray-800 hover:scale-105 hover:shadow-lg'
+                  : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+              }`}
+            >
+              {canProceed ? 'Next Question →' : `Wait ${formatTime(timeLeft)} to continue`}
+            </button>
+          </div>
+          {canProceed && (
+            <p className="text-sm text-purple-600 mt-2 font-light">
+              🎉 Excellent! You've earned 2 points for completing this technical question.
+            </p>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}

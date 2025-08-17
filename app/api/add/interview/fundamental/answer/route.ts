@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // Initialize Groq client
 const groq = new Groq({
-  apiKey: process.env.FUNDAQ_GROQ_API_KEY!,
+  apiKey: process.env.TECHQ_GROQ_API_KEY!,
 });
 
 interface FundamentalQuestion {
@@ -18,17 +18,62 @@ interface FundamentalQuestion {
   question: string;
   difficulty_level?: string;
   category?: string;
+  subject_area?: string;
   answer?: string;
+  created_at?: string;
 }
 
 interface QuestionsCounter {
   fundamental_questions: number;
 }
 
+// Enhanced prompt for generating comprehensive fundamental answers
+const createFundamentalPrompt = (question: string) => `
+You are a world-class educator and expert in fundamental concepts across multiple disciplines including computer science, mathematics, physics, engineering, and logic. You will generate an EXTREMELY COMPREHENSIVE and DETAILED answer for this fundamental question.
+
+**Question**: "${question}"
+
+## ANSWER FORMAT REQUIREMENTS:
+
+Your response MUST follow this exact structure and format:
+
+### 🎯 1. CORE CONCEPT EXPLANATION
+Start with a clear, direct explanation of the fundamental concept. This should be accessible to someone learning the topic for the first time, yet comprehensive enough to serve as a definitive reference. Explain what it is, why it matters, and its significance in the broader field.
+
+### 📚 2. DEEP DIVE ANALYSIS
+After the core explanation, provide a detailed breakdown and comprehensive analysis. Let the content naturally organize itself based on what's most important for understanding this fundamental concept. You decide the headings and structure based on what makes the most sense for this specific question.
+
+## SPECIFIC REQUIREMENTS:
+- **IMPORTANT**: Add one appropriate emoji at the start of EVERY heading (including sub-headings) to make the content more visually engaging
+- Use tables wherever they would help organize and display information clearly
+- Use analogies and real-world examples to explain abstract concepts
+- Include mathematical formulas, diagrams descriptions, or visual representations where applicable
+- Cover historical context and evolution of the concept
+- Provide step-by-step breakdowns for complex processes
+- Include practical applications and real-world implementations
+- Address common misconceptions and clarify confusing aspects
+- Explain relationships to other fundamental concepts
+- Use proper markdown formatting for maximum readability
+- Make each section substantial with practical examples and clear explanations
+
+## STRUCTURE GUIDELINES:
+- Start with the core concept explanation (with emoji)
+- Then organize the detailed analysis logically
+- Use headings that make sense for the specific topic (ALL with appropriate emojis)
+- Include tables for comparisons, classifications, or structured information
+- Use analogies to make abstract concepts concrete and understandable
+- Provide comprehensive examples and case studies
+- Cover theoretical foundations and practical applications
+- Include learning progression and prerequisite knowledge
+
+Remember: First explain the fundamental concept clearly, then provide the comprehensive educational material. Let the content dictate the organization and headings naturally. ALWAYS add appropriate emojis to ALL headings and sub-headings.
+`;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const apiKey = searchParams.get('api_key');
+    const forceRegenerate = searchParams.get('regenerate') === 'true';
     
     // Validate API key
     if (!apiKey || apiKey !== process.env.API_KEY) {
@@ -38,7 +83,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 1: Get current questions_done count
+    // Step 1: Get current questions counter
     const { data: counterData, error: counterError } = await supabase
       .from('questions_done')
       .select('fundamental_question')
@@ -55,14 +100,20 @@ export async function GET(request: NextRequest) {
     const currentCount = counterData.fundamental_question || 0;
     const nextQuestionId = currentCount + 1;
 
-    // Step 2: Get the next fundamental question
-    const { data: questionData, error: questionError } = await supabase
+    // Step 2: Get the next question
+    let query = supabase
       .from('fundamental_questions')
-      .select('*')
-      .eq('id', nextQuestionId)
-      .single();
+      .select('*');
 
-    if (questionError || !questionData) {
+    if (!forceRegenerate) {
+      query = query.is('answer', null).limit(1);
+    } else {
+      query = query.eq('id', nextQuestionId);
+    }
+
+    const { data: questionsData, error: questionError } = await query;
+
+    if (questionError || !questionsData || questionsData.length === 0) {
       console.error('Error fetching question:', questionError);
       return NextResponse.json(
         { error: 'No more questions available or question not found' },
@@ -70,89 +121,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const question = questionData as FundamentalQuestion;
+    const question = questionsData[0] as FundamentalQuestion;
 
-    // Step 3: Generate comprehensive answer using Groq
-    const prompt = `
-You are the world's leading fundamental expert and educator. I need you to create an EXTREMELY DETAILED, COMPREHENSIVE, and THOROUGH answer for this fundamental interview question: "${question.question}"
+    // Step 3: Generate comprehensive fundamental answer using Groq
+    const prompt = createFundamentalPrompt(question.question);
 
-REQUIREMENTS FOR YOUR RESPONSE:
-1. Write a VERY LONG and DETAILED explanation (minimum 3000-4000 words)
-2. Use proper markdown formatting throughout
-3. Include extensive code examples with detailed comments
-4. Provide multiple real-world scenarios and use cases
-5. Explain every concept from basic to advanced level
-6. Include step-by-step breakdowns for complex processes
-7. Add detailed comparisons with alternatives
-8. Provide comprehensive troubleshooting guides
-9. Include performance considerations and optimization tips
-10. Add security considerations where applicable
-
-STRUCTURE YOUR RESPONSE AS FOLLOWS:
-
-# 🎯 Fundamental Interview Question & Answer
-
-## 📝 Question
-${question.question}
-
-## 💡 Executive Summary
-[2-3 paragraph comprehensive overview of what this question covers and why it's important]
-
-## 🔍 Core Concept Deep Dive
-[Provide an extremely detailed explanation of the fundamental concepts. Explain it as if teaching someone completely new to the topic. Include historical context, evolution of the technology/concept, and why it exists.]
-
-## 🏗️ Architecture & Components Breakdown
-[Detail every single component, their relationships, data flow, communication patterns, and dependencies. Include diagrams in text form where helpful.]
-
-## ⚙️ How It Works - Complete Step-by-Step Process
-[Provide an exhaustive step-by-step breakdown. Number each step and explain what happens at each stage, why it happens, and what the implications are.]
-
-## 🔧 Implementation Details
-[Include detailed code examples in multiple programming languages where applicable. Add extensive comments explaining every line. Show different approaches and implementations.]
-
-## 📊 Comprehensive Comparison Analysis
-[Create detailed comparison tables and explanations comparing with alternatives, pros/cons, use cases for each approach.]
-
-## 🌟 Real-World Examples & Case Studies
-[Provide multiple detailed real-world scenarios. Explain how major companies implement this, specific use cases, and actual problems this solves.]
-
-## 🚀 Performance & Optimization
-[Detailed discussion on performance implications, bottlenecks, optimization strategies, benchmarking approaches, and scaling considerations.]
-
-## 🔒 Security Considerations
-[Comprehensive security analysis including vulnerabilities, attack vectors, mitigation strategies, and security best practices.]
-
-## ✅ Best Practices & Design Patterns
-[Extensive list of industry best practices, design patterns, coding standards, and professional recommendations.]
-
-## 🚫 Common Pitfalls & Troubleshooting
-[Detailed analysis of what can go wrong, why it goes wrong, how to identify issues, and comprehensive troubleshooting guides.]
-
-## 🧪 Testing Strategies
-[Complete testing approaches including unit tests, integration tests, performance tests, and quality assurance strategies.]
-
-## 📈 Monitoring & Observability
-[How to monitor, log, trace, and observe the system/concept in production environments.]
-
-## 🎯 Advanced Interview Tips & Strategies
-[Specific strategies for answering this question in interviews, what interviewers are looking for, how to demonstrate deep knowledge.]
-
-## 🔗 Related Technologies & Concepts
-[Comprehensive list of related technologies, concepts, and how they interconnect with this topic.]
-
-## 🌍 Industry Trends & Future Outlook
-[Current trends, emerging technologies, future developments, and how this concept is evolving.]
-
-Make every section extremely detailed and comprehensive. Use proper markdown formatting with headers, subheaders, code blocks, tables, lists, and emphasis. Include plenty of code examples with detailed explanations. Write as if this is the definitive guide that someone could use to become an expert on this topic.
-
-Do not hold back on detail - I want the most comprehensive, detailed, and thorough explanation possible. Every paragraph should be substantial and informative.
-`;
+    console.log('Generating answer for fundamental question:', question.id);
 
     const completion = await groq.chat.completions.create({
       messages: [
         {
           role: "system",
-          content: "You are the world's leading fundamental expert and educator. You provide extremely detailed, comprehensive, and thorough explanations that serve as definitive guides. You write extensive content with proper markdown formatting, detailed code examples, and cover every aspect of fundamental topics in great depth."
+          content: "You are a world-class educator and expert in fundamental concepts across multiple disciplines. You provide comprehensive, educational explanations that serve as definitive learning guides. Always start with a clear core concept explanation, then provide detailed analysis with natural organization, tables where helpful, and analogies to clarify abstract concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
         },
         {
           role: "user",
@@ -160,61 +140,19 @@ Do not hold back on detail - I want the most comprehensive, detailed, and thorou
         }
       ],
       model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
+      temperature: 0.3,
       max_tokens: 8192,
     });
 
     const generatedAnswer = completion.choices[0]?.message?.content || '';
 
-    // If the answer seems too short, generate additional content
-    let finalAnswer = generatedAnswer;
-    
-    if (generatedAnswer.length < 5000) {
-      const additionalPrompt = `
-The previous answer for "${question.question}" needs to be more comprehensive. Please expand it significantly by adding:
-
-1. More detailed code examples with extensive comments
-2. Additional real-world scenarios and use cases
-3. Deeper fundamental explanations
-4. More comprehensive comparisons
-5. Extended troubleshooting sections
-6. Additional best practices
-7. More security considerations
-8. Performance optimization details
-
-Continue from where the previous answer left off and make it much more detailed and comprehensive. Ensure proper markdown formatting throughout.
-
-Previous answer was:
-${generatedAnswer}
-
-Please provide additional comprehensive content to make this a truly detailed fundamental guide.
-`;
-
-      const additionalCompletion = await groq.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: "You are expanding a fundamental answer to make it more comprehensive and detailed. Continue with the same level of expertise and markdown formatting."
-          },
-          {
-            role: "user",
-            content: additionalPrompt
-          }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.2,
-        max_tokens: 8192,
-      });
-
-      const additionalContent = additionalCompletion.choices[0]?.message?.content || '';
-      finalAnswer = generatedAnswer + '\n\n' + additionalContent;
-    }
-
-    // Step 4: Save the answer to the fundamental_questions table
+    // Step 4: Save the comprehensive answer
     const { error: updateError } = await supabase
       .from('fundamental_questions')
-      .update({ answer: finalAnswer })
-      .eq('id', nextQuestionId);
+      .update({ 
+        answer: generatedAnswer
+      })
+      .eq('id', question.id);
 
     if (updateError) {
       console.error('Error updating question with answer:', updateError);
@@ -224,38 +162,46 @@ Please provide additional comprehensive content to make this a truly detailed fu
       );
     }
 
-    // Step 5: Increment the questions_done counter
-    const { error: incrementError } = await supabase
-      .from('questions_done')
-      .update({ fundamental_question: nextQuestionId })
-      .eq('fundamental_question', currentCount);
+    // Step 5: Update counter only if processing sequentially
+    if (!forceRegenerate && question.id === nextQuestionId) {
+      const { error: incrementError } = await supabase
+        .from('questions_done')
+        .update({ 
+          fundamental_questions: question.id
+        })
+        .eq('fundamental_questions', currentCount);
 
-    if (incrementError) {
-      console.error('Error incrementing counter:', incrementError);
-      // Don't fail the request if counter increment fails
+      if (incrementError) {
+        console.error('Error incrementing counter:', incrementError);
+      }
     }
 
     return NextResponse.json({
       success: true,
-      questionId: nextQuestionId,
+      questionId: question.id,
       question: question.question,
-      answer: finalAnswer,
+      category: question.category,
+      difficulty: question.difficulty_level,
+      subject_area: question.subject_area,
+      answer: generatedAnswer,
       previousCount: currentCount,
-      newCount: nextQuestionId,
-      answerLength: finalAnswer.length,
-      message: 'Comprehensive answer generated and saved successfully'
+      newCount: question.id,
+      answerLength: generatedAnswer.length,
+      wordCount: generatedAnswer.split(' ').length,
+      estimatedReadTime: Math.ceil(generatedAnswer.split(' ').length / 200),
+      message: 'Comprehensive fundamental answer generated and saved successfully'
     });
 
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('GET API Error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-// POST method for manual question processing
+// POST method for targeted question processing
 export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -268,7 +214,161 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { questionId } = await request.json();
+    const body = await request.json();
+    const { questionId, questionIds, batchSize = 5 } = body;
+    
+    // Handle batch processing
+    if (questionIds && Array.isArray(questionIds)) {
+      const results = [];
+      
+      for (const id of questionIds.slice(0, batchSize)) {
+        try {
+          const result = await processQuestion(id);
+          results.push(result);
+        } catch (error) {
+          results.push({
+            questionId: id,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      return NextResponse.json({
+        success: true,
+        batchResults: results,
+        processedCount: results.filter(r => r.success).length,
+        totalRequested: questionIds.length,
+        message: `Processed ${results.filter(r => r.success).length} out of ${questionIds.length} fundamental questions`
+      });
+    }
+
+    // Handle single question processing
+    if (questionId) {
+      const result = await processQuestion(questionId);
+      return NextResponse.json(result);
+    }
+
+    // Handle processing unanswered questions
+    let query = supabase
+      .from('fundamental_questions')
+      .select('id, question')
+      .is('answer', null)
+      .limit(batchSize);
+
+    const { data: questions, error } = await query;
+
+    if (error || !questions || questions.length === 0) {
+      return NextResponse.json(
+        { error: 'No unanswered fundamental questions found' },
+        { status: 404 }
+      );
+    }
+
+    const results = [];
+    for (const q of questions) {
+      try {
+        const result = await processQuestion(q.id);
+        results.push(result);
+      } catch (error) {
+        results.push({
+          questionId: q.id,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      batchResults: results,
+      processedCount: results.filter(r => r.success).length,
+      message: `Processed ${results.filter(r => r.success).length} unanswered fundamental questions`
+    });
+
+  } catch (error) {
+    console.error('POST API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to process individual questions
+async function processQuestion(questionId: number) {
+  const { data: questionData, error: questionError } = await supabase
+    .from('fundamental_questions')
+    .select('*')
+    .eq('id', questionId)
+    .single();
+
+  if (questionError || !questionData) {
+    throw new Error(`Fundamental question ${questionId} not found`);
+  }
+
+  const question = questionData as FundamentalQuestion;
+  
+  const prompt = createFundamentalPrompt(question.question);
+
+  const completion = await groq.chat.completions.create({
+    messages: [
+      {
+        role: "system",
+        content: "You are a world-class educator creating comprehensive fundamental concept learning material. Always start with a clear core concept explanation, then provide detailed analysis with natural organization, tables where helpful, and analogies to clarify abstract concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    model: "llama-3.3-70b-versatile",
+    temperature: 0.3,
+    max_tokens: 8192,
+  });
+
+  const generatedAnswer = completion.choices[0]?.message?.content || '';
+
+  // Save the answer
+  const { error: updateError } = await supabase
+    .from('fundamental_questions')
+    .update({ 
+      answer: generatedAnswer,
+    })
+    .eq('id', questionId);
+
+  if (updateError) {
+    throw new Error(`Failed to save answer for fundamental question ${questionId}`);
+  }
+
+  return {
+    success: true,
+    questionId,
+    question: question.question,
+    category: question.category,
+    difficulty: question.difficulty_level,
+    subject_area: question.subject_area,
+    answerLength: generatedAnswer.length,
+    wordCount: generatedAnswer.split(' ').length,
+    estimatedReadTime: Math.ceil(generatedAnswer.split(' ').length / 200),
+    message: 'Fundamental answer generated successfully'
+  };
+}
+
+// PUT method for updating existing answers
+export async function PUT(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const apiKey = searchParams.get('api_key');
+    
+    if (!apiKey || apiKey !== process.env.API_KEY) {
+      return NextResponse.json(
+        { error: 'Invalid or missing API key' },
+        { status: 401 }
+      );
+    }
+
+    const { questionId, regenerateAnswer = false } = await request.json();
     
     if (!questionId) {
       return NextResponse.json(
@@ -277,108 +377,84 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Process specific question by ID
-    const { data: questionData, error: questionError } = await supabase
-      .from('fundamental_questions')
-      .select('*')
-      .eq('id', questionId)
-      .single();
-
-    if (questionError || !questionData) {
-      return NextResponse.json(
-        { error: 'Question not found' },
-        { status: 404 }
-      );
-    }
-
-    const question = questionData as FundamentalQuestion;
-
-    // Generate comprehensive answer using the same detailed prompt as GET method
-    const prompt = `
-You are the world's leading fundamental expert and educator. I need you to create an EXTREMELY DETAILED, COMPREHENSIVE, and THOROUGH answer for this fundamental interview question: "${question.question}"
-
-[Same detailed requirements and structure as in GET method...]
-
-Make every section extremely detailed and comprehensive. Use proper markdown formatting with headers, subheaders, code blocks, tables, lists, and emphasis. Include plenty of code examples with detailed explanations. Write as if this is the definitive guide that someone could use to become an expert on this topic.
-
-Do not hold back on detail - I want the most comprehensive, detailed, and thorough explanation possible. Every paragraph should be substantial and informative.
-`;
-
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are the world's leading fundamental expert and educator. You provide extremely detailed, comprehensive, and thorough explanations that serve as definitive guides."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
-
-    const generatedAnswer = completion.choices[0]?.message?.content || '';
-
-    // Generate additional content if needed
-    let finalAnswer = generatedAnswer;
-    
-    if (generatedAnswer.length < 5000) {
-      const additionalPrompt = `
-Please expand the answer for "${question.question}" to be much more comprehensive and detailed. Add more sections, examples, and explanations.
-
-Previous answer:
-${generatedAnswer}
-`;
-
-      const additionalCompletion = await groq.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: "Expand the fundamental answer to make it more comprehensive."
-          },
-          {
-            role: "user",
-            content: additionalPrompt
-          }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.2,
-        max_tokens: 8192,
+    if (regenerateAnswer) {
+      const result = await processQuestion(questionId);
+      return NextResponse.json({
+        ...result,
+        message: 'Fundamental answer regenerated successfully'
       });
-
-      const additionalContent = additionalCompletion.choices[0]?.message?.content || '';
-      finalAnswer = generatedAnswer + '\n\n' + additionalContent;
     }
 
-    // Update the question with the answer
-    const { error: updateError } = await supabase
-      .from('fundamental_questions')
-      .update({ answer: finalAnswer })
-      .eq('id', questionId);
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: 'Failed to save answer' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      questionId,
-      question: question.question,
-      answer: finalAnswer,
-      answerLength: finalAnswer.length,
-      message: 'Comprehensive answer generated and saved successfully'
-    });
+    return NextResponse.json(
+      { error: 'Specify regenerateAnswer: true to update existing answer' },
+      { status: 400 }
+    );
 
   } catch (error) {
-    console.error('POST API Error:', error);
+    console.error('PUT API Error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE method for removing questions or resetting answers
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const apiKey = searchParams.get('api_key');
+    
+    if (!apiKey || apiKey !== process.env.API_KEY) {
+      return NextResponse.json(
+        { error: 'Invalid or missing API key' },
+        { status: 401 }
+      );
+    }
+
+    const { questionId, resetAnswer = false, resetCounter = false } = await request.json();
+    
+    if (resetCounter) {
+      const { error: resetError } = await supabase
+        .from('questions_done')
+        .update({ fundamental_questions: 0 });
+      
+      if (resetError) {
+        throw new Error('Failed to reset counter');
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Fundamental questions counter reset to 0'
+      });
+    }
+    
+    if (resetAnswer && questionId) {
+      const { error: resetError } = await supabase
+        .from('fundamental_questions')
+        .update({ answer: null })
+        .eq('id', questionId);
+      
+      if (resetError) {
+        throw new Error(`Failed to reset answer for question ${questionId}`);
+      }
+      
+      return NextResponse.json({
+        success: true,
+        questionId,
+        message: 'Answer reset successfully'
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Specify questionId with resetAnswer: true, or resetCounter: true' },
+      { status: 400 }
+    );
+
+  } catch (error) {
+    console.error('DELETE API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

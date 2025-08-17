@@ -28,154 +28,52 @@ interface QuestionsCounter {
 }
 
 // Enhanced prompt for generating comprehensive technical answers
-const createTechnicalPrompt = (question: string, category?: string, difficulty?: string) => `
-You are a world-class technical expert and senior software architect with 15+ years of experience. Generate an EXTREMELY COMPREHENSIVE and DETAILED answer for this technical interview question.
+const createTechnicalPrompt = (question: string) => `
+You are a world-class technical expert and senior software architect with 15+ years of experience. You will generate an EXTREMELY COMPREHENSIVE and DETAILED answer for this technical interview question.
 
 **Question**: "${question}"
-**Category**: ${category || 'General Technical'}
-**Difficulty Level**: ${difficulty || 'Intermediate to Advanced'}
 
-## RESPONSE REQUIREMENTS:
-- Minimum 4000-5000 words
-- Professional, interview-ready format
-- Include extensive code examples with detailed explanations
+## ANSWER FORMAT REQUIREMENTS:
+
+Your response MUST follow this exact structure and format:
+
+### 🎯 1. IMMEDIATE INTERVIEW ANSWER
+First, provide a direct, concise, and professional answer exactly as you would give it in a real technical interview. This should be 2-3 paragraphs that directly address the question with key points an interviewer expects to hear. This is your elevator pitch answer.
+
+### 📚 2. COMPREHENSIVE TECHNICAL EXPLANATION
+After the interview answer, provide a detailed breakdown and explanation. Let the content naturally organize itself based on what's most important for understanding this concept. You decide the headings and structure based on what makes the most sense for this specific question.
+
+## SPECIFIC REQUIREMENTS:
+- **IMPORTANT**: Add one appropriate emoji at the start of EVERY heading (including sub-headings) to make the content more visually engaging
+- Use tables wherever they would help organize and display information clearly
+- Use analogies to explain complex concepts in simple terms
+- Include practical code examples with detailed explanations
 - Cover multiple programming languages where applicable
 - Provide real-world implementation scenarios
-- Include performance benchmarks and optimization strategies
+- Include performance considerations and optimization strategies
+- Address common pitfalls and how to avoid them
+- Explain related concepts that build understanding
+- Use proper markdown formatting for readability
+- Make each section substantial with practical examples and actionable insights
 
-## MANDATORY STRUCTURE:
+## STRUCTURE GUIDELINES:
+- Start with the direct interview answer (with emoji)
+- Then organize the detailed explanation logically
+- Use headings that make sense for the specific topic (ALL with appropriate emojis)
+- Include tables for comparisons, data, or structured information
+- Use analogies to make complex concepts accessible
+- Provide comprehensive code examples
+- Cover security, performance, and best practices
+- Include real-world applications and case studies
 
-# 🎯 Technical Interview Question
-
-## 📋 Question
-${question}
-
-## 🎪 Executive Summary
-[Provide a comprehensive 3-4 paragraph overview explaining what this question tests, why it's important in technical interviews, and the key concepts an interviewer expects you to demonstrate.]
-
-## 🏗️ Fundamental Concepts & Architecture
-[Explain the core technical concepts from ground up. Include:
-- Theoretical foundation
-- Historical context and evolution
-- Why this technology/concept exists
-- Key architectural principles
-- System design considerations]
-
-## 🔧 Technical Deep Dive
-[Provide exhaustive technical details including:
-- Internal workings and mechanisms
-- Data structures and algorithms involved
-- Memory management and resource utilization
-- Concurrent processing considerations
-- Network protocols and communication patterns]
-
-## 💻 Implementation Examples
-[Include comprehensive code examples in multiple languages:
-- Complete, runnable code samples
-- Step-by-step code walkthroughs
-- Different implementation approaches
-- Error handling and edge cases
-- Production-ready patterns]
-
-### Example 1: Basic Implementation
-\`\`\`javascript
-// Detailed implementation with extensive comments
-\`\`\`
-
-### Example 2: Advanced/Optimized Version
-\`\`\`python
-# Advanced implementation with performance optimizations
-\`\`\`
-
-### Example 3: Enterprise-Grade Solution
-\`\`\`java
-// Enterprise patterns and best practices
-\`\`\`
-
-## ⚡ Performance Analysis & Optimization
-[Comprehensive performance discussion:
-- Time and space complexity analysis
-- Performance benchmarking data
-- Bottleneck identification
-- Optimization strategies and techniques
-- Scalability considerations
-- Load testing approaches]
-
-## 🔒 Security Considerations
-[Detailed security analysis:
-- Potential vulnerabilities and attack vectors
-- Security best practices and mitigation strategies
-- Authentication and authorization patterns
-- Data protection and encryption methods
-- Compliance considerations (GDPR, HIPAA, etc.)]
-
-## 🌍 Real-World Applications & Case Studies
-[Multiple detailed real-world examples:
-- How major tech companies implement this
-- Specific industry use cases
-- Success stories and lessons learned
-- Common business problems this solves
-- Integration with existing systems]
-
-## 📊 Comparative Analysis
-[Thorough comparison with alternatives:
-- Detailed comparison tables
-- Pros and cons analysis
-- When to use each approach
-- Trade-off considerations
-- Migration strategies between approaches]
-
-## 🚫 Common Pitfalls & Debugging
-[Comprehensive troubleshooting guide:
-- Most common mistakes and how to avoid them
-- Debugging strategies and tools
-- Error patterns and their solutions
-- Performance anti-patterns
-- Monitoring and alerting strategies]
-
-## 🧪 Testing & Quality Assurance
-[Complete testing strategy:
-- Unit testing approaches and frameworks
-- Integration testing patterns
-- Performance testing methodologies
-- Security testing considerations
-- Test automation strategies
-- Continuous integration best practices]
-
-## 🎯 Interview Strategy & Communication
-[Interview-specific guidance:
-- How to structure your answer in an interview
-- Key points to emphasize
-- Follow-up questions you might receive
-- How to demonstrate deep technical knowledge
-- Red flags interviewers watch for]
-
-## 🔗 Related Technologies & Ecosystem
-[Comprehensive ecosystem overview:
-- Related technologies and how they interact
-- Industry standards and protocols
-- Tool chains and development workflows
-- Community resources and documentation
-- Future trends and emerging technologies]
-
-## 📈 Advanced Topics & Future Considerations
-[Forward-looking analysis:
-- Emerging trends and innovations
-- Next-generation solutions
-- Research and development directions
-- Industry roadmaps and predictions
-- Career growth considerations]
-
-**Make every section extremely detailed with practical examples, code snippets, and actionable insights. Write as if creating the definitive guide that would make someone an expert on this topic.**
+Remember: First answer the question as you would in an interview, then provide the comprehensive learning material. Let the content dictate the organization and headings naturally. ALWAYS add appropriate emojis to ALL headings and sub-headings.
 `;
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const apiKey = searchParams.get('api_key');
-    const category = searchParams.get('category'); // Optional filter by category
-    const difficulty = searchParams.get('difficulty'); // Optional filter by difficulty
-    const forceRegenerate = searchParams.get('regenerate') === 'true'; // Force regenerate existing answers
+    const forceRegenerate = searchParams.get('regenerate') === 'true';
     
     // Validate API key
     if (!apiKey || apiKey !== process.env.API_KEY) {
@@ -202,20 +100,11 @@ export async function GET(request: NextRequest) {
     const currentCount = counterData.technical_question || 0;
     const nextQuestionId = currentCount + 1;
 
-    // Step 2: Build query for next technical question
+    // Step 2: Get the next question
     let query = supabase
       .from('technical_questions')
       .select('*');
 
-    // Apply filters if provided
-    if (category) {
-      query = query.eq('category', category);
-    }
-    if (difficulty) {
-      query = query.eq('difficulty_level', difficulty);
-    }
-
-    // Get the next question (either by ID or first unanswered)
     if (!forceRegenerate) {
       query = query.is('answer', null).limit(1);
     } else {
@@ -235,11 +124,7 @@ export async function GET(request: NextRequest) {
     const question = questionsData[0] as TechnicalQuestion;
 
     // Step 3: Generate comprehensive technical answer using Groq
-    const prompt = createTechnicalPrompt(
-      question.question, 
-      question.category, 
-      question.difficulty_level
-    );
+    const prompt = createTechnicalPrompt(question.question);
 
     console.log('Generating answer for question:', question.id);
 
@@ -247,7 +132,7 @@ export async function GET(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: "You are a world-class technical expert and senior software architect. You provide extremely detailed, comprehensive, and interview-ready explanations that serve as definitive technical guides. Focus on practical, actionable knowledge that demonstrates deep technical expertise."
+          content: "You are a world-class technical expert and senior software architect. You provide comprehensive, interview-ready explanations that serve as definitive technical guides. Always start with a direct interview answer, then provide detailed explanations with natural organization, tables where helpful, and analogies to clarify concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
         },
         {
           role: "user",
@@ -259,49 +144,9 @@ export async function GET(request: NextRequest) {
       max_tokens: 8192,
     });
 
-    let generatedAnswer = completion.choices[0]?.message?.content || '';
+    const generatedAnswer = completion.choices[0]?.message?.content || '';
 
-    // Step 4: Enhance answer if it's too short
-    if (generatedAnswer.length < 6000) {
-      const enhancementPrompt = `
-The previous answer for the technical question "${question.question}" needs significant expansion. Please add comprehensive details in these areas:
-
-1. **More Code Examples**: Provide detailed implementations in JavaScript, Python, Java, and Go
-2. **Performance Benchmarks**: Include actual performance data and optimization strategies
-3. **Enterprise Patterns**: Add enterprise-grade design patterns and architectural considerations
-4. **Security Deep Dive**: Extensive security analysis with specific vulnerabilities and mitigations
-5. **Real-World Case Studies**: Add 3-4 detailed case studies from major tech companies
-6. **Advanced Troubleshooting**: Comprehensive debugging and monitoring strategies
-7. **Testing Strategies**: Detailed testing approaches with example test cases
-8. **Scalability Analysis**: How this scales in distributed systems
-
-Previous answer:
-${generatedAnswer}
-
-Please expand this into a comprehensive technical guide with much more depth and practical examples.
-`;
-
-      const enhancementCompletion = await groq.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: "You are expanding a technical answer to make it more comprehensive and interview-ready. Add substantial detail while maintaining professional quality."
-          },
-          {
-            role: "user",
-            content: enhancementPrompt
-          }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.2,
-        max_tokens: 8192,
-      });
-
-      const enhancementContent = enhancementCompletion.choices[0]?.message?.content || '';
-      generatedAnswer = generatedAnswer + '\n\n---\n\n# 🚀 Enhanced Technical Deep Dive\n\n' + enhancementContent;
-    }
-
-    // Step 5: Save the comprehensive answer
+    // Step 4: Save the comprehensive answer
     const { error: updateError } = await supabase
       .from('technical_questions')
       .update({ 
@@ -317,7 +162,7 @@ Please expand this into a comprehensive technical guide with much more depth and
       );
     }
 
-    // Step 6: Update counter only if processing sequentially
+    // Step 5: Update counter only if processing sequentially
     if (!forceRegenerate && question.id === nextQuestionId) {
       const { error: incrementError } = await supabase
         .from('questions_done')
@@ -370,7 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { questionId, questionIds, category, difficulty, batchSize = 5 } = body;
+    const { questionId, questionIds, batchSize = 5 } = body;
     
     // Handle batch processing
     if (questionIds && Array.isArray(questionIds)) {
@@ -404,52 +249,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    // Handle category/difficulty based processing
-    if (category || difficulty) {
-      let query = supabase
-        .from('technical_questions')
-        .select('id, question, category, difficulty_level')
-        .is('answer', null)
-        .limit(batchSize);
+    // Handle processing unanswered questions
+    let query = supabase
+      .from('technical_questions')
+      .select('id, question')
+      .is('answer', null)
+      .limit(batchSize);
 
-      if (category) query = query.eq('category', category);
-      if (difficulty) query = query.eq('difficulty_level', difficulty);
+    const { data: questions, error } = await query;
 
-      const { data: questions, error } = await query;
-
-      if (error || !questions || questions.length === 0) {
-        return NextResponse.json(
-          { error: 'No questions found matching criteria' },
-          { status: 404 }
-        );
-      }
-
-      const results = [];
-      for (const q of questions) {
-        try {
-          const result = await processQuestion(q.id);
-          results.push(result);
-        } catch (error) {
-          results.push({
-            questionId: q.id,
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-        }
-      }
-
-      return NextResponse.json({
-        success: true,
-        batchResults: results,
-        processedCount: results.filter(r => r.success).length,
-        message: `Processed questions for category: ${category}, difficulty: ${difficulty}`
-      });
+    if (error || !questions || questions.length === 0) {
+      return NextResponse.json(
+        { error: 'No unanswered questions found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json(
-      { error: 'Either questionId, questionIds array, or category/difficulty filters are required' },
-      { status: 400 }
-    );
+    const results = [];
+    for (const q of questions) {
+      try {
+        const result = await processQuestion(q.id);
+        results.push(result);
+      } catch (error) {
+        results.push({
+          questionId: q.id,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      batchResults: results,
+      processedCount: results.filter(r => r.success).length,
+      message: `Processed ${results.filter(r => r.success).length} unanswered questions`
+    });
 
   } catch (error) {
     console.error('POST API Error:', error);
@@ -474,17 +309,13 @@ async function processQuestion(questionId: number) {
 
   const question = questionData as TechnicalQuestion;
   
-  const prompt = createTechnicalPrompt(
-    question.question, 
-    question.category, 
-    question.difficulty_level
-  );
+  const prompt = createTechnicalPrompt(question.question);
 
   const completion = await groq.chat.completions.create({
     messages: [
       {
         role: "system",
-        content: "You are a world-class technical expert creating comprehensive interview preparation material."
+        content: "You are a world-class technical expert creating comprehensive interview preparation material. Always start with a direct interview answer, then provide detailed explanations with natural organization, tables where helpful, and analogies to clarify concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
       },
       {
         role: "user",
@@ -496,31 +327,7 @@ async function processQuestion(questionId: number) {
     max_tokens: 8192,
   });
 
-  let generatedAnswer = completion.choices[0]?.message?.content || '';
-
-  // Enhance if needed
-  if (generatedAnswer.length < 6000) {
-    const enhancementPrompt = `Expand the technical answer for "${question.question}" with more practical examples, code implementations, and real-world applications. Make it comprehensive for interview preparation.`;
-
-    const enhancementCompletion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "Expand technical answers with comprehensive detail and practical examples."
-        },
-        {
-          role: "user",
-          content: enhancementPrompt + `\n\nPrevious answer:\n${generatedAnswer}`
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
-
-    const enhancement = enhancementCompletion.choices[0]?.message?.content || '';
-    generatedAnswer = generatedAnswer + '\n\n---\n\n# 🎯 Additional Technical Insights\n\n' + enhancement;
-  }
+  const generatedAnswer = completion.choices[0]?.message?.content || '';
 
   // Save the answer
   const { error: updateError } = await supabase
