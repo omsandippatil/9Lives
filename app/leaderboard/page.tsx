@@ -3,9 +3,14 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY'
+// Initialize Supabase client with proper type checking
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables')
+}
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 interface LeaderboardUser {
@@ -44,7 +49,6 @@ interface LeaderboardUser {
     java: number
     python: number
     sql: number
-    contact: number
   }
 }
 
@@ -125,8 +129,7 @@ const Leaderboard = () => {
           system_design_covered,
           java_lang_covered,
           python_lang_covered,
-          sql_lang_covered,
-          contact
+          sql_lang_covered
         `)
 
       if (todayError) throw todayError
@@ -190,7 +193,6 @@ const Leaderboard = () => {
             java: todayActivity.java_lang_covered || 0,
             python: todayActivity.python_lang_covered || 0,
             sql: todayActivity.sql_lang_covered || 0,
-            contact: todayActivity.contact || 0,
           }
         }
       }) || []
@@ -439,7 +441,6 @@ const Leaderboard = () => {
                                 {user.today_activity.sql > 0 && <span>🗄️ {user.today_activity.sql}sql</span>}
                                 {user.today_activity.ai > 0 && <span>🤖 {user.today_activity.ai}ai</span>}
                                 {user.today_activity.system_design > 0 && <span>🏗️ {user.today_activity.system_design}sd</span>}
-                                {user.today_activity.contact > 0 && <span>📞 {user.today_activity.contact}contact</span>}
                               </>
                             )}
                           </div>

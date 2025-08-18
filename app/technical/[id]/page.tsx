@@ -16,7 +16,7 @@ interface TechnicalQuestionData {
   answer: string
   difficulty_level?: string
   category?: string
-  technology_stack?: string
+  subject_area?: string
 }
 
 const CodeBlock = ({ children, language = 'javascript' }: { children: string, language?: string }) => {
@@ -206,7 +206,7 @@ interface ParsedSection {
   emoji: string
   content: string
   hasCodeBlocks: boolean
-  hasComplexity: boolean
+  hasMathFormulas: boolean
 }
 
 function processAnswerContent(answer: string): string {
@@ -236,7 +236,7 @@ function parseAnswerContent(answer: string): ParsedSection[] {
     const titleLine = lines[0]
     
     // Extract emoji and title from the heading
-    const emojiMatch = titleLine.match(/^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡]+)\s*(.+)/)
+    const emojiMatch = titleLine.match(/^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡🧮🎯⚛️🔬📐📊🎨🌟💡🧩🔎🎪🧠🌍🎯🔢🎪🔬🧮⚛️🔩🔍🎨🎪🧩🎯🎪🌟🎪🔑🎪]+)\s*(.+)/)
     let emoji = '💡'
     let title = titleLine
     
@@ -252,7 +252,7 @@ function parseAnswerContent(answer: string): ParsedSection[] {
     
     if (content) {
       const hasCodeBlocks = content.includes('```') || content.includes('$#')
-      const hasComplexity = content.includes('O(') || content.includes('Ω(') || content.includes('Θ(')
+      const hasMathFormulas = content.includes('$$') || content.includes('\\(') || content.includes('\\[') || /\b(formula|equation|theorem|proof)\b/i.test(content)
       
       sections.push({
         id: `section-${index}`,
@@ -260,7 +260,7 @@ function parseAnswerContent(answer: string): ParsedSection[] {
         emoji,
         content,
         hasCodeBlocks,
-        hasComplexity
+        hasMathFormulas
       })
     }
   })
@@ -296,9 +296,9 @@ function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
                 💻 Code
               </span>
             )}
-            {section.hasComplexity && (
+            {section.hasMathFormulas && (
               <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 font-mono">
-                📊 Math
+                🧮 Math
               </span>
             )}
             <div className={`text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
@@ -431,152 +431,147 @@ function DifficultyBadge({ difficulty }: { difficulty?: string }) {
   )
 }
 
-// Fish Animation Component
-function FishAnimation() {
+// Enhanced Fish Animation Component with smooth full-screen movement and fade out
+function FishAnimation({ isActive }: { isActive: boolean }) {
   const [fishes, setFishes] = useState<Array<{
     id: number
     emoji: string
     x: number
     y: number
-    baseY: number
-    speed: number
-    direction: number
-    wobblePhase: number
-    size: number
+    speedX: number
+    speedY: number
+    directionX: number
+    directionY: number
+    angle: number
+    scale: number
     opacity: number
   }>>([])
-
-  const fishEmojis = ['🐟', '🐠', '🐡', '🦈', '🐙', '🦀', '🎣', '🐟', '🐠', '🐡', '🦈']
+  const [isEnding, setIsEnding] = useState(false)
 
   useEffect(() => {
-    // Create initial fishes with more variety
-    const initialFishes = Array.from({ length: 12 }, (_, i) => ({
-      id: i,
-      emoji: fishEmojis[i % fishEmojis.length],
-      x: Math.random() > 0.5 ? -150 - (i * 200) : window.innerWidth + 150 + (i * 200), // Start from both sides
-      y: Math.random() * 70 + 15, // Random vertical position (15% to 85%)
-      baseY: Math.random() * 70 + 15, // Base Y position for wobbling
-      speed: Math.random() * 3 + 1.5, // Speed between 1.5-4.5
-      direction: Math.random() > 0.5 ? 1 : -1, // 1 for left-to-right, -1 for right-to-left
-      wobblePhase: Math.random() * Math.PI * 2, // Random starting phase for wobbling
-      size: Math.random() * 1.5 + 1, // Size multiplier between 1-2.5
-      opacity: Math.random() * 0.4 + 0.6 // Opacity between 0.6-1.0
-    }))
+    if (!isActive) {
+      setIsEnding(true)
+      // Fade out existing fishes
+      const fadeOutTimer = setTimeout(() => {
+        setFishes([])
+        setIsEnding(false)
+      }, 2000) // 2 second fade out
+      
+      return () => clearTimeout(fadeOutTimer)
+    }
 
-    // Ensure direction matches initial position
-    initialFishes.forEach(fish => {
-      if (fish.x < 0) {
-        fish.direction = 1 // Moving right
-      } else {
-        fish.direction = -1 // Moving left
+    setIsEnding(false)
+    const fishEmojis = ['🐟', '🐠', '🐡', '🦈', '🐙', '🦞', '🦀', '🐋', '🐬', '🦑']
+    
+    const createFish = () => {
+      const startFromLeft = Math.random() > 0.5
+      const angle = (Math.random() - 0.5) * Math.PI * 0.4 // Random angle between -36 to +36 degrees
+      
+      return {
+        id: Math.random(),
+        emoji: fishEmojis[Math.floor(Math.random() * fishEmojis.length)],
+        x: startFromLeft ? -80 : window.innerWidth + 80,
+        y: Math.random() * (window.innerHeight - 100) + 50,
+        speedX: Math.random() * 2 + 1.5, // Speed between 1.5 and 3.5
+        speedY: Math.random() * 1 + 0.5, // Vertical speed between 0.5 and 1.5
+        directionX: startFromLeft ? 1 : -1,
+        directionY: Math.random() > 0.5 ? 1 : -1,
+        angle: angle,
+        scale: Math.random() * 0.5 + 0.8, // Scale between 0.8 and 1.3
+        opacity: 0.85
       }
-    })
+    }
 
-    setFishes(initialFishes)
+    let animationFrame: number
 
-    const animationInterval = setInterval(() => {
-      setFishes(prevFishes => 
-        prevFishes.map(fish => {
-          let newX = fish.x + (fish.speed * fish.direction)
-          
-          // Update wobble phase for natural swimming motion
-          const newWobblePhase = fish.wobblePhase + 0.15
-          
-          // Calculate wobbling Y position (fish swimming motion)
-          const wobbleAmount = Math.sin(newWobblePhase) * 8 // Wobble up and down by 8px
-          const newY = fish.baseY + wobbleAmount
-          
-          // Reset position when fish moves off screen with some randomization
-          if (fish.direction === 1 && newX > window.innerWidth + 150) {
-            newX = -150 - Math.random() * 300
-            return {
-              ...fish,
-              x: newX,
-              y: newY,
-              baseY: Math.random() * 70 + 15, // New random Y position
-              wobblePhase: newWobblePhase,
-              speed: Math.random() * 3 + 1.5, // New random speed
-              size: Math.random() * 1.5 + 1,
-              opacity: Math.random() * 0.4 + 0.6
-            }
-          } else if (fish.direction === -1 && newX < -150) {
-            newX = window.innerWidth + 150 + Math.random() * 300
-            return {
-              ...fish,
-              x: newX,
-              y: newY,
-              baseY: Math.random() * 70 + 15, // New random Y position
-              wobblePhase: newWobblePhase,
-              speed: Math.random() * 3 + 1.5, // New random speed
-              size: Math.random() * 1.5 + 1,
-              opacity: Math.random() * 0.4 + 0.6
-            }
+    const updateFishes = () => {
+      setFishes(prevFishes => {
+        let updatedFishes = prevFishes.map(fish => {
+          let newX = fish.x + (fish.speedX * fish.directionX)
+          let newY = fish.y + (fish.speedY * fish.directionY * Math.sin(fish.angle))
+          let newDirectionY = fish.directionY
+          let newAngle = fish.angle
+          let newOpacity = fish.opacity
+
+          // If animation is ending, fade out the fish
+          if (isEnding) {
+            newOpacity = Math.max(0, fish.opacity - 0.02)
           }
+
+          // Bounce off top and bottom edges with smooth curve
+          if (newY <= 30 || newY >= window.innerHeight - 70) {
+            newDirectionY = -fish.directionY
+            newAngle = -fish.angle
+            newY = Math.max(30, Math.min(window.innerHeight - 70, newY))
+          }
+
+          // Add slight wave motion
+          newY += Math.sin(Date.now() * 0.001 + fish.id) * 0.3
 
           return {
             ...fish,
             x: newX,
             y: newY,
-            wobblePhase: newWobblePhase
+            directionY: newDirectionY,
+            angle: newAngle,
+            opacity: newOpacity
           }
         })
-      )
-    }, 50)
 
-    return () => clearInterval(animationInterval)
-  }, [])
+        // Remove fishes that have gone off screen or faded completely
+        updatedFishes = updatedFishes.filter(fish => 
+          fish.x > -100 && fish.x < window.innerWidth + 100 && fish.opacity > 0
+        )
+
+        // Add new fish occasionally (more controlled spawning) - only if not ending
+        if (!isEnding && Math.random() > 0.985 && updatedFishes.length < 8) {
+          updatedFishes.push(createFish())
+        }
+
+        return updatedFishes
+      })
+
+      animationFrame = requestAnimationFrame(updateFishes)
+    }
+
+    // Start with a few initial fishes
+    const initialFishes = Array.from({ length: 3 }, () => createFish())
+    setFishes(initialFishes)
+
+    // Start the animation loop
+    animationFrame = requestAnimationFrame(updateFishes)
+
+    return () => {
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame)
+      }
+    }
+  }, [isActive, isEnding])
+
+  if (!isActive && fishes.length === 0) return null
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-30 overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none z-20 overflow-hidden">
       {fishes.map(fish => (
         <div
           key={fish.id}
-          className="absolute transition-all duration-100 ease-linear"
+          className="absolute text-3xl transition-opacity duration-100"
           style={{
             left: `${fish.x}px`,
-            top: `${fish.y}%`,
-            transform: `scaleX(${fish.direction === -1 ? -1 : 1}) scale(${fish.size})`,
+            top: `${fish.y}px`,
+            transform: `
+              scale(${fish.scale}) 
+              scaleX(${fish.directionX}) 
+              rotate(${fish.angle * 20}deg)
+            `,
             opacity: fish.opacity,
-            fontSize: '24px',
-            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
-            animation: 'fishGlow 3s ease-in-out infinite alternate'
+            filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.1))',
+            zIndex: Math.floor(fish.scale * 100)
           }}
         >
-          <span className="inline-block animate-pulse">
-            {fish.emoji}
-          </span>
+          {fish.emoji}
         </div>
       ))}
-      
-      {/* Add some floating bubbles for effect */}
-      <div className="absolute inset-0">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div
-            key={`bubble-${i}`}
-            className="absolute rounded-full bg-blue-100 opacity-30"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: `${Math.random() * 8 + 4}px`,
-              height: `${Math.random() * 8 + 4}px`,
-              animation: `bubble ${3 + Math.random() * 4}s ease-in-out infinite`,
-              animationDelay: `${Math.random() * 2}s`
-            }}
-          />
-        ))}
-      </div>
-      
-      <style jsx>{`
-        @keyframes fishGlow {
-          0% { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)) brightness(1); }
-          100% { filter: drop-shadow(0 4px 8px rgba(59,130,246,0.2)) brightness(1.1); }
-        }
-        
-        @keyframes bubble {
-          0%, 100% { transform: translateY(0px) scale(1); opacity: 0.3; }
-          50% { transform: translateY(-20px) scale(1.1); opacity: 0.1; }
-        }
-      `}</style>
     </div>
   )
 }
@@ -594,13 +589,12 @@ export default function TechnicalQuestionsPage() {
   const [totalPoints, setTotalPoints] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
   const [technicalQuestions, setTechnicalQuestions] = useState(0)
+  const [showFishAnimation, setShowFishAnimation] = useState(false)
   
-  const [timeLeft, setTimeLeft] = useState(90) // Increased time for technical questions
+  const [timeLeft, setTimeLeft] = useState(60) // Time for technical questions
   const [canProceed, setCanProceed] = useState(false)
   const [hasAttempted, setHasAttempted] = useState(false)
-  const [apiCalled, setApiCalled] = useState(false) // Track if API has been called
-  const [showFishAnimation, setShowFishAnimation] = useState(false)
-  const totalTime = 90
+  const totalTime = 60
 
   useEffect(() => {
     const cats = ['😺', '😸', '😹', '😻', '😽', '🙀', '😿', '😾', '🐱']
@@ -621,15 +615,24 @@ export default function TechnicalQuestionsPage() {
       }, 1000)
       
       return () => clearTimeout(timer)
-    } else if (timeLeft === 0 && !hasAttempted) {
+    } else if (timeLeft === 0) {
       setCanProceed(true)
       setShowFishAnimation(true)
-      updateUserProgress()
       
-      // Hide fish animation after 8 seconds
+      // Stop fish animation after 8 seconds for smoother experience
       setTimeout(() => {
         setShowFishAnimation(false)
       }, 8000)
+      
+      if (!hasAttempted) {
+        updateUserProgress()
+        // Call API directly when timer ends
+        fetch('/api/update/today?inc=technical_questions_attempted', {
+          method: 'POST',
+          credentials: 'include'
+        }).catch(console.error)
+        setHasAttempted(true)
+      }
     }
   }, [timeLeft, hasAttempted])
 
@@ -684,78 +687,34 @@ export default function TechnicalQuestionsPage() {
     }
   }
 
-  const callUpdateTodayAPI = async () => {
-    if (apiCalled) return // Prevent duplicate calls
-    
-    try {
-      setApiCalled(true)
-      console.log('Calling /api/update/today API...')
-      
-      const response = await fetch('/api/update/today?inc=technical_questions_attempted', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`API call failed with status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log('API call successful:', data)
-    } catch (error) {
-      console.error('Failed to call /api/update/today:', error)
-      setApiCalled(false) // Reset on error to allow retry
-    }
-  }
-
   const updateUserProgress = async () => {
-    if (hasAttempted) return // Prevent duplicate updates
-    
     try {
-      setHasAttempted(true)
-      
       const currentQuestionId = parseInt(params.id as string)
       
-      // Always call the update today API when timer completes
-      await callUpdateTodayAPI()
-      
-      // Update user progress if this is the next question in sequence
       if (currentQuestionId === technicalQuestions + 1) {
         let userId = getCookie('client-user-id') || 
                     (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
                     (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
         
         if (userId) {
-          console.log('Updating user progress for question:', currentQuestionId)
-          
           const { error } = await supabase
             .from('users')
             .update({ 
               technical_question: currentQuestionId,
-              total_points: totalPoints + 2 // Technical questions give 2 points
+              total_points: totalPoints + 1 // Technical questions give 1 point
             })
             .eq('id', userId)
 
-          if (error) {
-            console.error('Failed to update user progress in database:', error)
-          } else {
-            console.log('User progress updated successfully')
+          if (!error) {
             setTechnicalQuestions(currentQuestionId)
-            setTotalPoints(prev => prev + 2)
+            setTotalPoints(prev => prev + 1)
           }
-        } else {
-          console.warn('No user ID found for updating progress')
         }
       }
 
-      // Refresh user data
-      await fetchUserData()
+      fetchUserData()
     } catch (error) {
       console.error('Failed to update user progress:', error)
-      setHasAttempted(false) // Reset on error to allow retry
     }
   }
 
@@ -782,12 +741,12 @@ export default function TechnicalQuestionsPage() {
           const sections = parseAnswerContent(data.answer)
           setParsedSections(sections)
           
-          // Auto-expand the first section (Interview Answer) and any overview sections
+          // Auto-expand the first section (Core Concept) and any overview sections
           const autoExpandSections = new Set<string>()
           sections.forEach((section, index) => {
             if (index === 0 || 
-                section.title.toLowerCase().includes('interview answer') ||
-                section.title.toLowerCase().includes('immediate interview') ||
+                section.title.toLowerCase().includes('core concept') ||
+                section.title.toLowerCase().includes('immediate') ||
                 section.title.toLowerCase().includes('overview') || 
                 section.title.toLowerCase().includes('summary')) {
               autoExpandSections.add(section.id)
@@ -844,7 +803,7 @@ export default function TechnicalQuestionsPage() {
   const sectionStats = {
     total: parsedSections.length,
     withCode: parsedSections.filter(s => s.hasCodeBlocks).length,
-    withComplexity: parsedSections.filter(s => s.hasComplexity).length,
+    withMath: parsedSections.filter(s => s.hasMathFormulas).length,
     expanded: expandedSections.size
   }
 
@@ -853,7 +812,7 @@ export default function TechnicalQuestionsPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6 animate-bounce">🐱</div>
-          <p className="text-gray-600 font-mono text-lg mb-6">Loading technical question...</p>
+          <p className="text-gray-600 font-mono text-lg mb-6">Loading technical concept...</p>
           <LoadingProgressBar />
         </div>
       </div>
@@ -890,8 +849,8 @@ export default function TechnicalQuestionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 text-black font-mono relative">
-      {showFishAnimation && <FishAnimation />}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 text-black font-mono">
+      <FishAnimation isActive={showFishAnimation} />
       
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="py-6">
@@ -909,7 +868,7 @@ export default function TechnicalQuestionsPage() {
               </div>
               <div className="text-center">
                 <p className="text-xs text-gray-400 uppercase tracking-wider">Mode</p>
-                <p className="text-sm font-light text-purple-600">Technical</p>
+                <p className="text-sm font-light text-blue-600">Technical</p>
               </div>
             </div>
           </div>
@@ -922,7 +881,7 @@ export default function TechnicalQuestionsPage() {
         <div className="text-center mb-12 bg-white shadow-sm border p-8">
           <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>
           <h2 className="text-4xl font-light mb-6 text-gray-900">
-            Technical Interview Question
+            Technical Concept
           </h2>
           
           <div className="flex justify-center gap-4 mb-6">
@@ -934,21 +893,21 @@ export default function TechnicalQuestionsPage() {
                 {questionData.category}
               </span>
             )}
-            {questionData.technology_stack && (
-              <span className="px-3 py-1 text-xs font-mono bg-purple-100 text-purple-700 border border-purple-300 uppercase tracking-wider">
-                {questionData.technology_stack}
+            {questionData.subject_area && (
+              <span className="px-3 py-1 text-xs font-mono bg-green-100 text-green-700 border border-green-300 uppercase tracking-wider">
+                {questionData.subject_area}
               </span>
             )}
           </div>
 
-          <div className="bg-purple-50 border-l-4 border-purple-400 p-6 mb-6">
-            <h3 className="text-2xl font-medium text-purple-900 mb-2">Question:</h3>
-            <p className="text-xl text-purple-800 font-bold leading-relaxed">
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-6 mb-6">
+            <h3 className="text-2xl font-medium text-blue-900 mb-2">Concept:</h3>
+            <p className="text-xl text-blue-800 font-bold leading-relaxed">
               {questionData.question}
             </p>
           </div>
           <p className="text-base text-gray-400 font-light">
-            Master technical concepts, ace your interviews 🚀
+            Master technical concepts, build strong foundations 🧠
           </p>
           
           <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
@@ -963,7 +922,7 @@ export default function TechnicalQuestionsPage() {
             <div className="flex gap-4 text-sm text-gray-500 justify-center items-center">
               <span>📚 {sectionStats.total} sections</span>
               <span>💻 {sectionStats.withCode} with code</span>
-              <span>📊 {sectionStats.withComplexity} with math</span>
+              <span>🧮 {sectionStats.withMath} with math</span>
               <span>👁️ {sectionStats.expanded} expanded</span>
             </div>
           </div>
@@ -992,9 +951,9 @@ export default function TechnicalQuestionsPage() {
         )}
 
         <div className="text-center py-8 border-t border-gray-200 bg-white shadow-sm">
-          <div className="animate-pulse text-3xl mb-4">🚀</div>
+          <div className="animate-pulse text-3xl mb-4">🧠</div>
           <p className="text-lg text-gray-600 font-light mb-6">
-            {canProceed ? 'Ready for the next technical challenge?' : 'Keep reading to unlock the next question!'}
+            {canProceed ? 'Ready to explore the next technical concept?' : 'Keep reading to unlock the next concept!'}
           </p>
           <div className="flex justify-center gap-6">
             <button
@@ -1012,12 +971,12 @@ export default function TechnicalQuestionsPage() {
                   : 'bg-gray-400 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {canProceed ? 'Next Question →' : `Wait ${formatTime(timeLeft)} to continue`}
+              {canProceed ? 'Next Concept →' : `Wait ${formatTime(timeLeft)} to continue`}
             </button>
           </div>
           {canProceed && (
-            <p className="text-sm text-purple-600 mt-2 font-light">
-              🎉 Excellent! You've earned 2 points for completing this technical question.
+            <p className="text-sm text-blue-600 mt-2 font-light">
+              🎉 Excellent! You've earned 1 point for completing this technical concept.
             </p>
           )}
         </div>

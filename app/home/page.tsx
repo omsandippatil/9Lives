@@ -721,7 +721,7 @@ export default function HomePage() {
             current={profile.tech_topics_covered}
             total={50}
             subtitle="Curiosity didn't kill this cat"
-            onClick={() => router.push('/topics')}
+            onClick={() => router.push('/tech-topic')}
           />
         </div>
 

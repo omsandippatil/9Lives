@@ -431,66 +431,142 @@ function DifficultyBadge({ difficulty }: { difficulty?: string }) {
   )
 }
 
-// Fish Animation Component
+// Enhanced Fish Animation Component with smooth full-screen movement and fade out
 function FishAnimation({ isActive }: { isActive: boolean }) {
-  const [fishes, setFishes] = useState<Array<{id: number, emoji: string, left: number, top: number, speed: number}>>([])
+  const [fishes, setFishes] = useState<Array<{
+    id: number
+    emoji: string
+    x: number
+    y: number
+    speedX: number
+    speedY: number
+    directionX: number
+    directionY: number
+    angle: number
+    scale: number
+    opacity: number
+  }>>([])
+  const [isEnding, setIsEnding] = useState(false)
 
   useEffect(() => {
-    if (!isActive) return
+    if (!isActive) {
+      setIsEnding(true)
+      // Fade out existing fishes
+      const fadeOutTimer = setTimeout(() => {
+        setFishes([])
+        setIsEnding(false)
+      }, 2000) // 2 second fade out
+      
+      return () => clearTimeout(fadeOutTimer)
+    }
 
+    setIsEnding(false)
     const fishEmojis = ['🐟', '🐠', '🐡', '🦈', '🐙', '🦞', '🦀', '🐋', '🐬', '🦑']
     
     const createFish = () => {
+      const startFromLeft = Math.random() > 0.5
+      const angle = (Math.random() - 0.5) * Math.PI * 0.4 // Random angle between -36 to +36 degrees
+      
       return {
         id: Math.random(),
         emoji: fishEmojis[Math.floor(Math.random() * fishEmojis.length)],
-        left: -50,
-        top: Math.random() * (window.innerHeight - 100),
-        speed: Math.random() * 3 + 1
+        x: startFromLeft ? -80 : window.innerWidth + 80,
+        y: Math.random() * (window.innerHeight - 100) + 50,
+        speedX: Math.random() * 2 + 1.5, // Speed between 1.5 and 3.5
+        speedY: Math.random() * 1 + 0.5, // Vertical speed between 0.5 and 1.5
+        directionX: startFromLeft ? 1 : -1,
+        directionY: Math.random() > 0.5 ? 1 : -1,
+        angle: angle,
+        scale: Math.random() * 0.5 + 0.8, // Scale between 0.8 and 1.3
+        opacity: 0.85
       }
     }
 
-    const interval = setInterval(() => {
-      setFishes(prevFishes => {
-        // Remove fishes that have gone off screen
-        const activeFishes = prevFishes.filter(fish => fish.left < window.innerWidth + 100)
-        
-        // Add new fish occasionally
-        if (Math.random() > 0.7 && activeFishes.length < 5) {
-          activeFishes.push(createFish())
-        }
-        
-        // Update positions
-        return activeFishes.map(fish => ({
-          ...fish,
-          left: fish.left + fish.speed
-        }))
-      })
-    }, 50)
+    let animationFrame: number
 
-    // Initial fish spawn
-    setTimeout(() => {
-      setFishes([createFish()])
-    }, 500)
+    const updateFishes = () => {
+      setFishes(prevFishes => {
+        let updatedFishes = prevFishes.map(fish => {
+          let newX = fish.x + (fish.speedX * fish.directionX)
+          let newY = fish.y + (fish.speedY * fish.directionY * Math.sin(fish.angle))
+          let newDirectionY = fish.directionY
+          let newAngle = fish.angle
+          let newOpacity = fish.opacity
+
+          // If animation is ending, fade out the fish
+          if (isEnding) {
+            newOpacity = Math.max(0, fish.opacity - 0.02)
+          }
+
+          // Bounce off top and bottom edges with smooth curve
+          if (newY <= 30 || newY >= window.innerHeight - 70) {
+            newDirectionY = -fish.directionY
+            newAngle = -fish.angle
+            newY = Math.max(30, Math.min(window.innerHeight - 70, newY))
+          }
+
+          // Add slight wave motion
+          newY += Math.sin(Date.now() * 0.001 + fish.id) * 0.3
+
+          return {
+            ...fish,
+            x: newX,
+            y: newY,
+            directionY: newDirectionY,
+            angle: newAngle,
+            opacity: newOpacity
+          }
+        })
+
+        // Remove fishes that have gone off screen or faded completely
+        updatedFishes = updatedFishes.filter(fish => 
+          fish.x > -100 && fish.x < window.innerWidth + 100 && fish.opacity > 0
+        )
+
+        // Add new fish occasionally (more controlled spawning) - only if not ending
+        if (!isEnding && Math.random() > 0.985 && updatedFishes.length < 8) {
+          updatedFishes.push(createFish())
+        }
+
+        return updatedFishes
+      })
+
+      animationFrame = requestAnimationFrame(updateFishes)
+    }
+
+    // Start with a few initial fishes
+    const initialFishes = Array.from({ length: 3 }, () => createFish())
+    setFishes(initialFishes)
+
+    // Start the animation loop
+    animationFrame = requestAnimationFrame(updateFishes)
 
     return () => {
-      clearInterval(interval)
-      setFishes([])
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame)
+      }
     }
-  }, [isActive])
+  }, [isActive, isEnding])
 
-  if (!isActive) return null
+  if (!isActive && fishes.length === 0) return null
 
   return (
     <div className="fixed inset-0 pointer-events-none z-20 overflow-hidden">
       {fishes.map(fish => (
         <div
           key={fish.id}
-          className="absolute text-3xl transition-all duration-75 ease-linear"
+          className="absolute text-3xl transition-opacity duration-100"
           style={{
-            left: `${fish.left}px`,
-            top: `${fish.top}px`,
-            opacity: fish.left < window.innerWidth ? 0.8 : 0
+            left: `${fish.x}px`,
+            top: `${fish.y}px`,
+            transform: `
+              scale(${fish.scale}) 
+              scaleX(${fish.directionX}) 
+              rotate(${fish.angle * 20}deg)
+            `,
+            opacity: fish.opacity,
+            filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.1))',
+            zIndex: Math.floor(fish.scale * 100)
           }}
         >
           {fish.emoji}
@@ -543,10 +619,10 @@ export default function FundamentalQuestionsPage() {
       setCanProceed(true)
       setShowFishAnimation(true)
       
-      // Stop fish animation after 5 seconds
+      // Stop fish animation after 8 seconds for smoother experience
       setTimeout(() => {
         setShowFishAnimation(false)
-      }, 5000)
+      }, 8000)
       
       if (!hasAttempted) {
         updateUserProgress()
