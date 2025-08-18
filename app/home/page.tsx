@@ -15,7 +15,7 @@ interface UserProfile {
   python_lang_covered: number
   sql_lang_covered: number
   hr_questions_attempted: number
-  artificial_intelligence_topics_covered: number
+  ai_ml: number
   system_design_covered: number
   tech_topics_covered: number
   current_streak: [string, number] // [date, days] format
@@ -32,7 +32,7 @@ interface TodayProgress {
   tech_topics_covered: number
   aptitude_questions_attempted: number
   hr_questions_attempted: number
-  artificial_intelligence_topics_covered: number
+  ai_ml: number
   system_design_covered: number
   java_lang_covered: number
   python_lang_covered: number
@@ -177,7 +177,7 @@ function OverallProgressBar({ profile }: { profile: UserProfile }) {
     Math.floor(profile.technical_questions_attempted / 50) +
     profile.hr_questions_attempted +
     Math.floor(profile.fundamental_questions_attempted / 50) +
-    profile.artificial_intelligence_topics_covered +
+    profile.ai_ml +
     profile.system_design_covered +
     profile.tech_topics_covered
   
@@ -278,8 +278,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       title: 'AI/ML Topic',
       emoji: '🤖',
       target: 1,
-      completed: todayProgress?.artificial_intelligence_topics_covered || 0,
-      isCompleted: (todayProgress?.artificial_intelligence_topics_covered || 0) >= 1
+      completed: todayProgress?.ai_ml || 0,
+      isCompleted: (todayProgress?.ai_ml || 0) >= 1
     },
     {
       id: 'system_design',
@@ -439,7 +439,7 @@ export default function HomePage() {
           python_lang_covered,
           sql_lang_covered,
           hr_questions_attempted,
-          artificial_intelligence_topics_covered,
+          ai_ml,
           system_design_covered,
           tech_topics_covered,
           current_streak,
@@ -472,7 +472,7 @@ export default function HomePage() {
           tech_topics_covered,
           aptitude_questions_attempted,
           hr_questions_attempted,
-          artificial_intelligence_topics_covered,
+          ai_ml,
           system_design_covered,
           java_lang_covered,
           python_lang_covered,
@@ -524,7 +524,7 @@ export default function HomePage() {
            Math.floor(profile.fundamental_questions_attempted / 50) +
            Math.floor(profile.aptitude_questions_attempted / 50) +
            profile.hr_questions_attempted +
-           profile.artificial_intelligence_topics_covered +
+           profile.ai_ml +
            profile.system_design_covered
   }
 
@@ -700,10 +700,10 @@ export default function HomePage() {
           <ProgressCard
             title="AI & ML Topics"
             emoji="🤖"
-            current={profile.artificial_intelligence_topics_covered}
+            current={profile.ai_ml}
             total={75}
             subtitle="Artificial intelligence topics, real results"
-            onClick={() => router.push('/ai-topics')}
+            onClick={() => router.push('/ai-ml')}
           />
 
           <ProgressCard
