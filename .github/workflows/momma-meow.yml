@@ -6,8 +6,8 @@ on:
     - cron: "30 6 * * *"
     # 6:00 PM UTC
     - cron: "0 18 * * *"
-    # Every 30 minutes
-    - cron: "*/30 * * * *"
+    # Every 15 minutes
+    - cron: "*/15 * * * *"
     # 10:00 PM UTC
     - cron: "0 22 * * *"
   workflow_dispatch: # Allows manual trigger
@@ -26,8 +26,8 @@ jobs:
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/reminder?api_key=${{ secrets.API_KEY }}"
 
-      - name: Call Reply API (Every 30 mins)
-        if: github.event.schedule == '*/30 * * * *'
+      - name: Call Reply API (Every 15 mins)
+        if: github.event.schedule == '*/15 * * * *'
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/reply?api_key=${{ secrets.API_KEY }}"
 

@@ -48,7 +48,7 @@ interface Memory {
   short_term_memory: string;
   durva_data: string;
   om_data: string;
-  last_message: string; // New field to track last bot reply
+  last_message: string;
   last_message_id: number;
   created_at?: string;
   updated_at?: string;
@@ -285,8 +285,16 @@ async function updateMemory(memoryData: Omit<Memory, 'id' | 'created_at' | 'upda
   }
 }
 
-// Get all messages since the last bot message
-async function getMessagesSinceLastBot(): Promise<{ 
+// Check if a person is Om or Durva based on first name
+function identifyPerson(firstName: string): 'Om' | 'Durva' | 'unknown' {
+  const name = firstName.toLowerCase().trim();
+  if (name === 'om') return 'Om';
+  if (name === 'durva') return 'Durva';
+  return 'unknown';
+}
+
+// Get messages since the last processed message ID
+async function getNewMessages(): Promise<{ 
   messages: TelegramMessage[], 
   hasNewMessages: boolean, 
   debug: any 
@@ -296,8 +304,7 @@ async function getMessagesSinceLastBot(): Promise<{
     const currentMemory = await getMemory();
     const lastMessageId = currentMemory?.last_message_id || 0;
 
-    console.log('Debug - Current memory last_message_id:', lastMessageId);
-    console.log('Debug - BOT_USERNAME:', BOT_USERNAME);
+    console.log('Debug - Last processed message ID:', lastMessageId);
     console.log('Debug - TELEGRAM_GROUP_CHAT_ID:', TELEGRAM_GROUP_CHAT_ID);
 
     // Get recent updates from Telegram
@@ -327,7 +334,8 @@ async function getMessagesSinceLastBot(): Promise<{
         console.log(`Debug - Message from chat ${message.chat.id}, target: ${TELEGRAM_GROUP_CHAT_ID}, match: ${message.chat.id.toString() === TELEGRAM_GROUP_CHAT_ID}`);
         
         if (message.chat.id.toString() === TELEGRAM_GROUP_CHAT_ID && message.text) {
-          console.log(`Debug - Valid message: ID ${message.message_id}, from ${message.from.first_name} (@${message.from.username}), text: "${message.text}"`);
+          const person = identifyPerson(message.from.first_name);
+          console.log(`Debug - Valid message: ID ${message.message_id}, from ${message.from.first_name} (identified as ${person}), text: "${message.text}"`);
           allMessages.push(message);
         }
       }
@@ -338,45 +346,29 @@ async function getMessagesSinceLastBot(): Promise<{
     // Sort messages by message_id to process them in order
     allMessages.sort((a, b) => a.message_id - b.message_id);
 
-    // Find messages since last bot message or last processed message
-    const newMessages: TelegramMessage[] = [];
-    let foundLastBotMessage = false;
-    let lastBotMessageId = 0;
+    // Get only messages with ID greater than last processed message ID
+    // and exclude bot messages (by checking first name against BOT_USERNAME)
+    const newMessages = allMessages.filter(message => {
+      const isNotBot = message.from.first_name !== BOT_USERNAME && message.from.username !== BOT_USERNAME;
+      const isNewMessage = message.message_id > lastMessageId;
+      const isOmOrDurva = identifyPerson(message.from.first_name) !== 'unknown';
+      
+      console.log(`Debug - Message ${message.message_id}: isNotBot=${isNotBot}, isNewMessage=${isNewMessage}, isOmOrDurva=${isOmOrDurva}`);
+      
+      return isNotBot && isNewMessage && isOmOrDurva;
+    });
 
-    // Find the most recent bot message
-    for (let i = allMessages.length - 1; i >= 0; i--) {
-      const message = allMessages[i];
-      if (message.from.username === BOT_USERNAME) {
-        lastBotMessageId = message.message_id;
-        foundLastBotMessage = true;
-        console.log('Debug - Found last bot message with ID:', lastBotMessageId);
-        break;
-      }
+    console.log('Debug - New messages found:', newMessages.length);
+    if (newMessages.length > 0) {
+      console.log('Debug - New message IDs:', newMessages.map(m => m.message_id));
     }
-
-    // If we found a bot message, get messages after it
-    // If not, get messages after the last processed message ID from memory
-    const cutoffMessageId = foundLastBotMessage ? lastBotMessageId : lastMessageId;
-    console.log('Debug - Cutoff message ID:', cutoffMessageId);
-
-    for (const message of allMessages) {
-      if (message.message_id > cutoffMessageId && 
-          message.from.username !== BOT_USERNAME) {
-        console.log(`Debug - New message found: ID ${message.message_id}, from ${message.from.first_name}`);
-        newMessages.push(message);
-      }
-    }
-
-    console.log('Debug - Total new messages:', newMessages.length);
 
     const debugInfo = {
       totalUpdates: updates.length,
       totalGroupMessages: allMessages.length,
-      lastBotMessageFound: foundLastBotMessage,
-      lastBotMessageId,
-      cutoffMessageId,
+      lastProcessedMessageId: lastMessageId,
       newMessagesCount: newMessages.length,
-      botUsername: BOT_USERNAME,
+      newMessageIds: newMessages.map(m => m.message_id),
       targetChatId: TELEGRAM_GROUP_CHAT_ID
     };
 
@@ -443,9 +435,11 @@ function getRandomResponseOptions(): {
 
 // Analyze messages using Groq
 async function analyzeWithGroq(messages: TelegramMessage[], currentMemory: Memory | null, timeContext: TimeContext): Promise<CatResponse> {
-  const messageTexts = messages.map(msg => 
-    `${msg.from.first_name} (${msg.from.username || 'no_username'}): ${msg.text}`
-  ).join('\n');
+  // Create message context with person identification
+  const messageTexts = messages.map(msg => {
+    const person = identifyPerson(msg.from.first_name);
+    return `${person}: ${msg.text}`;
+  }).join('\n');
 
   const memoryContext = currentMemory ? 
     `Memory: ${currentMemory.memory || 'None'} | Long-term: ${currentMemory.long_term_memory || 'None'} | Recent: ${currentMemory.short_term_memory || 'None'} | Durva: ${currentMemory.durva_data || 'None'} | Om: ${currentMemory.om_data || 'None'}` : 
@@ -462,6 +456,8 @@ async function analyzeWithGroq(messages: TelegramMessage[], currentMemory: Memor
   const responseOptions = getRandomResponseOptions();
 
   const prompt = `You are a TOXIC, ALWAYS ANGRY, and perpetually BORED cat who is chronically annoyed by everything Om and Durva do. You are mean, petty, and have zero patience. You hate being bothered and make it everyone's problem.
+
+IMPORTANT: Only Om and Durva exist in this group. Any message from "unknown" should be ignored.
 
 PERSONALITY: Toxic, angry, bored, mean-spirited, petty, always irritated, zero filter, brutally honest, dramatic, and completely over everything.
 
@@ -627,8 +623,8 @@ export async function GET(request: NextRequest) {
     // Get current time context
     const timeContext = getTimeContext();
 
-    // Get messages since last bot message
-    const { messages, hasNewMessages, debug } = await getMessagesSinceLastBot();
+    // Get new messages since last processed message ID
+    const { messages, hasNewMessages, debug } = await getNewMessages();
     
     if (!hasNewMessages && !forceTest) {
       return NextResponse.json({ 
@@ -662,9 +658,13 @@ export async function GET(request: NextRequest) {
         for (const update of updates) {
           if (update.message && 
               update.message.chat.id.toString() === TELEGRAM_GROUP_CHAT_ID &&
-              update.message.text &&
-              update.message.from.username !== BOT_USERNAME) {
-            testMessages.push(update.message);
+              update.message.text) {
+            const person = identifyPerson(update.message.from.first_name);
+            const isNotBot = update.message.from.first_name !== BOT_USERNAME && update.message.from.username !== BOT_USERNAME;
+            
+            if (isNotBot && person !== 'unknown') {
+              testMessages.push(update.message);
+            }
           }
         }
 
@@ -674,13 +674,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Filter out any unknown people (safety check)
+    const validMessages = messages.filter(msg => identifyPerson(msg.from.first_name) !== 'unknown');
+
+    if (validMessages.length === 0) {
+      return NextResponse.json({ 
+        success: true, 
+        message: 'No valid messages from Om or Durva to analyze',
+        responses: [],
+        analyzed_messages: 0,
+        debug: { ...debug, filteredMessages: validMessages.length },
+        timeContext: timeContext
+      });
+    }
+
     // Get current memory
     const currentMemory = await getMemory();
 
     // Analyze with Groq
-    const catResponse = await analyzeWithGroq(messages, currentMemory, timeContext);
+    const catResponse = await analyzeWithGroq(validMessages, currentMemory, timeContext);
 
-    // Prepare memory update - preserve existing long-term memory if not updating
+    // Find the highest message ID from the new messages to update last_message_id
+    const highestMessageId = Math.max(...validMessages.map(m => m.message_id));
+
+    // Prepare memory update with the new last_message_id
     const memoryUpdate = {
       memory: catResponse.memory_update.memory || 'Current conversation',
       long_term_memory: catResponse.memory_update.should_update_long_term 
@@ -690,7 +707,7 @@ export async function GET(request: NextRequest) {
       durva_data: catResponse.memory_update.durva_data || (currentMemory?.durva_data || 'Learning about Durva'),
       om_data: catResponse.memory_update.om_data || (currentMemory?.om_data || 'Learning about Om'),
       last_message: catResponse.memory_update.last_message || (catResponse.messages[0] || 'No response'),
-      last_message_id: messages.length > 0 ? Math.max(...messages.map(m => m.message_id)) : (currentMemory?.last_message_id || 0)
+      last_message_id: highestMessageId // Update to the highest processed message ID
     };
 
     // Update memory
@@ -708,13 +725,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      analyzed_messages: messages.length,
+      analyzed_messages: validMessages.length,
       responses: catResponse.messages,
       memory_updated: true,
       long_term_updated: catResponse.memory_update.should_update_long_term,
       last_message_id: memoryUpdate.last_message_id,
       last_message: memoryUpdate.last_message,
-      timeContext: timeContext
+      processed_message_ids: validMessages.map(m => m.message_id),
+      timeContext: timeContext,
+      debug: debug
     });
 
   } catch (error) {
@@ -741,7 +760,7 @@ export async function POST(request: NextRequest) {
   });
 }
 
-// Debug endpoint to see all chats - REMOVE IN PRODUCTION
+// Debug endpoint to see current state - REMOVE IN PRODUCTION
 export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -754,21 +773,23 @@ export async function PUT(request: NextRequest) {
     const response = await axios.get(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates`,
       {
-        params: { limit: 100 }
+        params: { limit: 20 }
       }
     );
 
     const updates = response.data.result || [];
-    const chats = new Map();
+    const recentMessages = [];
 
     for (const update of updates) {
-      if (update.message) {
-        const chat = update.message.chat;
-        chats.set(chat.id, {
-          id: chat.id,
-          type: chat.type,
-          title: chat.title || `${update.message.from.first_name}`,
-          username: chat.username
+      if (update.message && update.message.chat.id.toString() === TELEGRAM_GROUP_CHAT_ID) {
+        const message = update.message;
+        const person = identifyPerson(message.from.first_name);
+        recentMessages.push({
+          message_id: message.message_id,
+          from: message.from.first_name,
+          identified_as: person,
+          text: message.text?.substring(0, 50) + (message.text?.length > 50 ? '...' : ''),
+          is_bot: message.from.first_name === BOT_USERNAME || message.from.username === BOT_USERNAME
         });
       }
     }
@@ -777,15 +798,22 @@ export async function PUT(request: NextRequest) {
     const currentMemory = await getMemory();
 
     return NextResponse.json({
-      availableChats: Array.from(chats.values()),
+      recentMessages: recentMessages.slice(-10), // Last 10 messages
       currentTargetChatId: TELEGRAM_GROUP_CHAT_ID,
-      botUsername: BOT_USERNAME,
       timeContext: timeContext,
       currentMemory: {
         memory: currentMemory?.memory || 'None',
         lastMessage: currentMemory?.last_message || 'None',
+        lastMessageId: currentMemory?.last_message_id || 0,
         shortTerm: currentMemory?.short_term_memory || 'None',
-        longTerm: currentMemory?.long_term_memory || 'None'
+        longTerm: currentMemory?.long_term_memory || 'None',
+        durvaData: currentMemory?.durva_data || 'None',
+        omData: currentMemory?.om_data || 'None'
+      },
+      identificationRules: {
+        Om: "First name matches 'om' (case insensitive)",
+        Durva: "First name matches 'durva' (case insensitive)",
+        unknown: "Any other first name - messages ignored"
       }
     });
 

@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-interface TechTopicData {
+interface SystemDesignData {
   id: number
   name: string
   theory: string
@@ -44,12 +44,12 @@ const CodeBlock = ({ children, language = 'javascript' }: { children: string, la
 
 const MarkdownComponents = {
   h1: ({ children }: any) => (
-    <h1 className="text-3xl font-bold mb-6 mt-8 text-gray-900 border-b-2 border-purple-500 pb-3">
+    <h1 className="text-3xl font-bold mb-6 mt-8 text-gray-900 border-b-2 border-orange-500 pb-3">
       {children}
     </h1>
   ),
   h2: ({ children }: any) => (
-    <h2 className="text-2xl font-semibold mb-4 mt-8 text-gray-800 border-l-4 border-purple-400 pl-4">
+    <h2 className="text-2xl font-semibold mb-4 mt-8 text-gray-800 border-l-4 border-orange-400 pl-4">
       {children}
     </h2>
   ),
@@ -153,7 +153,7 @@ const MarkdownComponents = {
     </div>
   ),
   blockquote: ({ children }: any) => (
-    <blockquote className="border-l-4 border-purple-400 bg-purple-50 pl-4 py-3 mb-4 italic text-gray-700">
+    <blockquote className="border-l-4 border-orange-400 bg-orange-50 pl-4 py-3 mb-4 italic text-gray-700">
       {children}
     </blockquote>
   ),
@@ -225,47 +225,92 @@ function parseTheoryContent(theory: string): ParsedSection[] {
   
   const processedTheory = processTheoryContent(theory)
   
-  // Split by both markdown headings (###) and bold headings (**)
-  const parts = processedTheory.split(/^(?:### |\*\*)/gm).filter(part => part.trim())
+  // Split by emoji patterns - look for emoji at start of line followed by text
+  const emojiPattern = /^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡🧮🎯⚛️🔬📐📊🎨🌟💡🧩🔎🎪🧠🌍🎯🔢🎪🔬🧮⚛️🔩🔍🎨🎪🧩🎯🎪🌟🎪🔑🎪💾🌐]+)\s*\*\*([^*]+)\*\*/gm
   
-  parts.forEach((part, index) => {
-    const lines = part.trim().split('\n')
-    let titleLine = lines[0]
+  // Find all emoji section headers with their positions
+  const matches = []
+  let match
+  while ((match = emojiPattern.exec(processedTheory)) !== null) {
+    matches.push({
+      emoji: match[1],
+      title: match[2].trim(),
+      startIndex: match.index,
+      endIndex: match.index + match[0].length
+    })
+  }
+  
+  // If no emoji patterns found, try alternative patterns
+  if (matches.length === 0) {
+    // Fallback to existing logic for ### headings and **bold** headings
+    const parts = processedTheory.split(/^(?:### |\*\*)/gm).filter(part => part.trim())
     
-    // Handle ** headings by removing trailing **
-    if (titleLine.includes('**')) {
-      titleLine = titleLine.replace(/\*\*$/, '').trim()
-    }
+    parts.forEach((part, index) => {
+      const lines = part.trim().split('\n')
+      let titleLine = lines[0]
+      
+      // Handle ** headings by removing trailing **
+      if (titleLine.includes('**')) {
+        titleLine = titleLine.replace(/\*\*$/, '').trim()
+      }
+      
+      // Extract emoji and title from the heading
+      const emojiMatch = titleLine.match(/^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡🧮🎯⚛️🔬📐📊🎨🌟💡🧩🔎🎪🧠🌍🎯🔢🎪🔬🧮⚛️🔩🔍🎨🎪🧩🎯🎪🌟🎪🔑🎪💾🌐]+)\s*(.+)/)
+      let emoji = '🏗️'
+      let title = titleLine
+      
+      if (emojiMatch) {
+        emoji = emojiMatch[1]
+        title = emojiMatch[2]
+      }
+      
+      // Clean up title
+      title = title.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '').replace(/\*\*/g, '').trim()
+      
+      const content = lines.slice(1).join('\n').trim()
+      
+      if (content) {
+        const hasCodeBlocks = content.includes('```') || content.includes('$#')
+        const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || /\b(algorithm|complexity|formula|equation|theorem|proof)\b/i.test(content)
+        
+        sections.push({
+          id: `section-${index}`,
+          title,
+          emoji,
+          content,
+          hasCodeBlocks,
+          hasMathFormulas
+        })
+      }
+    })
     
-    // Extract emoji and title from the heading
-    const emojiMatch = titleLine.match(/^([🎯📚🔧🌍📖✅❌🔍🔗🎤💡📊🎓📋⚠️🛠️💻🚀📌🔄⭐📝🎪🏠🎯🔒🌟🚫🧪📈🏗️⚙️⚡🎨🔥💎🎉🌈🎪🎭🎨🔮💫🌟⭐🎯🎪🎨🔮⚡🧮🎯⚛️🔬📐📊🎨🌟💡🧩🔎🎪🧠🌍🎯🔢🎪🔬🧮⚛️🔩🔍🎨🎪🧩🎯🎪🌟🎪🔑🎪]+)\s*(.+)/)
-    let emoji = '💻'
-    let title = titleLine
+    return sections
+  }
+  
+  // Process emoji-based sections
+  for (let i = 0; i < matches.length; i++) {
+    const currentMatch = matches[i]
+    const nextMatch = matches[i + 1]
     
-    if (emojiMatch) {
-      emoji = emojiMatch[1]
-      title = emojiMatch[2]
-    }
-    
-    // Clean up title
-    title = title.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '').replace(/\*\*/g, '').trim()
-    
-    const content = lines.slice(1).join('\n').trim()
+    // Extract content from end of current match to start of next match (or end of string)
+    const contentStart = currentMatch.endIndex
+    const contentEnd = nextMatch ? nextMatch.startIndex : processedTheory.length
+    const content = processedTheory.slice(contentStart, contentEnd).trim()
     
     if (content) {
       const hasCodeBlocks = content.includes('```') || content.includes('$#')
       const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || /\b(algorithm|complexity|formula|equation|theorem|proof)\b/i.test(content)
       
       sections.push({
-        id: `section-${index}`,
-        title,
-        emoji,
+        id: `section-${i}`,
+        title: currentMatch.title,
+        emoji: currentMatch.emoji,
         content,
         hasCodeBlocks,
         hasMathFormulas
       })
     }
-  })
+  }
   
   return sections
 }
@@ -294,7 +339,7 @@ function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
           </div>
           <div className="flex items-center gap-3">
             {section.hasCodeBlocks && (
-              <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 font-mono">
+              <span className="px-2 py-1 text-xs bg-orange-100 text-orange-700 font-mono">
                 💻 Code
               </span>
             )}
@@ -560,10 +605,10 @@ function FishAnimation({ isActive }: { isActive: boolean }) {
   )
 }
 
-export default function TechTopicsPage() {
+export default function SystemDesignPage() {
   const params = useParams()
   const router = useRouter()
-  const [topicData, setTopicData] = useState<TechTopicData | null>(null)
+  const [systemDesignData, setSystemDesignData] = useState<SystemDesignData | null>(null)
   const [parsedSections, setParsedSections] = useState<ParsedSection[]>([])
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -572,13 +617,13 @@ export default function TechTopicsPage() {
   const [streakData, setStreakData] = useState(null)
   const [totalPoints, setTotalPoints] = useState(0)
   const [showAllSections, setShowAllSections] = useState(false)
-  const [techTopicsStudied, setTechTopicsStudied] = useState(0)
+  const [systemDesignsStudied, setSystemDesignsStudied] = useState(0)
   const [showFishAnimation, setShowFishAnimation] = useState(false)
   
-  const [timeLeft, setTimeLeft] = useState(120) // 2 minutes for tech topics
+  const [timeLeft, setTimeLeft] = useState(180) // 3 minutes for system design
   const [canProceed, setCanProceed] = useState(false)
   const [hasAttempted, setHasAttempted] = useState(false)
-  const totalTime = 120
+  const totalTime = 180
 
   useEffect(() => {
     const cats = ['😺', '😸', '😹', '😻', '😽', '🙀', '😿', '😾', '🐱']
@@ -611,7 +656,7 @@ export default function TechTopicsPage() {
       if (!hasAttempted) {
         updateUserProgress()
         // Call API directly when timer ends
-        fetch('/api/update/today?inc=tech_topics_covered', {
+        fetch('/api/update/today?inc=system_designs_covered', {
           method: 'POST',
           credentials: 'include'
         }).catch(console.error)
@@ -641,7 +686,7 @@ export default function TechTopicsPage() {
 
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('current_streak, total_points, tech_topics_covered')
+        .select('current_streak, total_points, system_design_covered')
         .eq('id', userId)
         .single()
 
@@ -665,7 +710,7 @@ export default function TechTopicsPage() {
 
       setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
-      setTechTopicsStudied(userData?.tech_topics_covered || 0)
+      setSystemDesignsStudied(userData?.system_design_covered || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
     }
@@ -673,9 +718,9 @@ export default function TechTopicsPage() {
 
   const updateUserProgress = async () => {
     try {
-      const currentTopicId = parseInt(params.id as string)
+      const currentSystemDesignId = parseInt(params.id as string)
       
-      if (currentTopicId === techTopicsStudied + 1) {
+      if (currentSystemDesignId === systemDesignsStudied + 1) {
         let userId = getCookie('client-user-id') || 
                     (typeof localStorage !== 'undefined' ? localStorage.getItem('client-user-id') : null) || 
                     (typeof localStorage !== 'undefined' ? localStorage.getItem('supabase-user-id') : null)
@@ -684,14 +729,14 @@ export default function TechTopicsPage() {
           const { error } = await supabase
             .from('users')
             .update({ 
-              tech_topics_covered: currentTopicId,
-              total_points: totalPoints + 2 // Tech topics give 2 points
+              system_designs_covered: currentSystemDesignId,
+              total_points: totalPoints + 3 // System design gives 3 points
             })
             .eq('id', userId)
 
           if (!error) {
-            setTechTopicsStudied(currentTopicId)
-            setTotalPoints(prev => prev + 2)
+            setSystemDesignsStudied(currentSystemDesignId)
+            setTotalPoints(prev => prev + 3)
           }
         }
       }
@@ -707,10 +752,10 @@ export default function TechTopicsPage() {
   }, [])
 
   useEffect(() => {
-    const fetchTopicData = async () => {
+    const fetchSystemDesignData = async () => {
       try {
         const { data, error } = await supabase
-          .from('tech_topics')
+          .from('system_design')
           .select('*')
           .eq('id', params.id)
           .single()
@@ -719,35 +764,35 @@ export default function TechTopicsPage() {
           throw error
         }
 
-        setTopicData(data)
+        setSystemDesignData(data)
         
         if (data.theory) {
           const sections = parseTheoryContent(data.theory)
           setParsedSections(sections)
           
-          // Auto-expand the first section (Core Concept) and any overview sections
+          // Auto-expand the first section (Introduction) and any overview sections
           const autoExpandSections = new Set<string>()
           sections.forEach((section, index) => {
             if (index === 0 || 
-                section.title.toLowerCase().includes('core concept') ||
                 section.title.toLowerCase().includes('introduction') ||
                 section.title.toLowerCase().includes('overview') || 
-                section.title.toLowerCase().includes('summary')) {
+                section.title.toLowerCase().includes('summary') ||
+                section.title.toLowerCase().includes('definition')) {
               autoExpandSections.add(section.id)
             }
           })
           setExpandedSections(autoExpandSections)
         }
       } catch (err) {
-        console.error('Error fetching topic data:', err)
-        setError('Failed to load tech topic content. Please try again.')
+        console.error('Error fetching system design data:', err)
+        setError('Failed to load system design content. Please try again.')
       } finally {
         setLoading(false)
       }
     }
 
     if (params.id) {
-      fetchTopicData()
+      fetchSystemDesignData()
     }
   }, [params.id])
 
@@ -775,7 +820,7 @@ export default function TechTopicsPage() {
     
     const currentId = parseInt(params.id as string)
     const nextId = currentId + 1
-    router.push(`/tech-topic/${nextId}`)
+    router.push(`/system-design/${nextId}`)
   }
 
   const formatTime = (seconds: number) => {
@@ -796,7 +841,7 @@ export default function TechTopicsPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6 animate-bounce">🐱</div>
-          <p className="text-gray-600 font-mono text-lg mb-6">Loading tech topic...</p>
+          <p className="text-gray-600 font-mono text-lg mb-6">Loading system design...</p>
           <LoadingProgressBar />
         </div>
       </div>
@@ -821,12 +866,12 @@ export default function TechTopicsPage() {
     )
   }
 
-  if (!topicData) {
+  if (!systemDesignData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6">🙀</div>
-          <p className="text-gray-600 font-mono text-lg">Tech topic not found</p>
+          <p className="text-gray-600 font-mono text-lg">System design not found</p>
         </div>
       </div>
     )
@@ -852,7 +897,7 @@ export default function TechTopicsPage() {
               </div>
               <div className="text-center">
                 <p className="text-xs text-gray-400 uppercase tracking-wider">Mode</p>
-                <p className="text-sm font-light text-green-600">Tech</p>
+                <p className="text-sm font-light text-orange-600">System Design</p>
               </div>
             </div>
           </div>
@@ -865,17 +910,17 @@ export default function TechTopicsPage() {
         <div className="text-center mb-12 bg-white shadow-sm border p-8">
           <div className="text-6xl mb-8 transition-all duration-500">{catAnimation}</div>
           <h2 className="text-4xl font-light mb-6 text-gray-900">
-            Tech Topic
+            System Design
           </h2>
 
-          <div className="bg-green-50 border-l-4 border-green-400 p-6 mb-6">
-            <h3 className="text-2xl font-medium text-green-900 mb-2">Topic:</h3>
-            <p className="text-xl text-green-800 font-bold leading-relaxed">
-              {topicData.name}
+          <div className="bg-orange-50 border-l-4 border-orange-400 p-6 mb-6">
+            <h3 className="text-2xl font-medium text-orange-900 mb-2">System:</h3>
+            <p className="text-xl text-orange-800 font-bold leading-relaxed">
+              {systemDesignData.name}
             </p>
           </div>
           <p className="text-base text-gray-400 font-light">
-            Master technical concepts, build engineering skills 💻
+            Master large-scale system architecture and design patterns 🏗️
           </p>
           
           <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
@@ -913,15 +958,15 @@ export default function TechTopicsPage() {
               components={MarkdownComponents}
               remarkPlugins={[remarkGfm]}
             >
-              {processTheoryContent(topicData.theory)}
+              {processTheoryContent(systemDesignData.theory)}
             </ReactMarkdown>
           </div>
         )}
 
         <div className="text-center py-8 border-t border-gray-200 bg-white shadow-sm">
-          <div className="animate-pulse text-3xl mb-4">💻</div>
+          <div className="animate-pulse text-3xl mb-4">🏗️</div>
           <p className="text-lg text-gray-600 font-light mb-6">
-            {canProceed ? 'Ready to explore the next tech topic?' : 'Keep learning to unlock the next topic!'}
+            {canProceed ? 'Ready to architect the next system?' : 'Keep studying to unlock the next system design!'}
           </p>
           <div className="flex justify-center gap-6">
             <button
@@ -939,12 +984,12 @@ export default function TechTopicsPage() {
                   : 'bg-gray-400 text-gray-600 cursor-not-allowed'
               }`}
             >
-              {canProceed ? 'Next Topic →' : `Wait ${formatTime(timeLeft)} to continue`}
+              {canProceed ? 'Next System →' : `Wait ${formatTime(timeLeft)} to continue`}
             </button>
           </div>
           {canProceed && (
             <p className="text-sm text-green-600 mt-2 font-light">
-              🎉 Excellent! You've earned 2 points for studying this tech topic.
+              🎉 Excellent! You've earned 3 points for studying this system design.
             </p>
           )}
         </div>

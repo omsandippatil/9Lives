@@ -1,0 +1,15 @@
+name: Tech Topics Theory API Every 2 Hours
+
+on:
+  schedule:
+    # Runs every 2 hours (00:00, 02:00, 04:00, ...)
+    - cron: "0 */2 * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-tech-topics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Tech Topics Theory API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/tech-topic/theory?api_key=${{ secrets.API_KEY }}"
