@@ -1,0 +1,15 @@
+name: Daily Reset API at Midnight
+
+on:
+  schedule:
+    # Runs every day at 12:00 AM UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  reset-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Reset API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/update/today/reset?api_key=${{ secrets.API_KEY }}"

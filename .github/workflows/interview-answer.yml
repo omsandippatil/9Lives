@@ -1,0 +1,19 @@
+name: Interview Answers API Every 30 Min (Except 7 AM)
+
+on:
+  schedule:
+    # Runs every 30 minutes, except during 7:00–7:29 UTC
+    - cron: "*/30 0-6,8-23 * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-answers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Fundamental Answers API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/interview/fundamental/answer?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call Technical Answers API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/interview/technical/answer?api_key=${{ secrets.API_KEY }}"

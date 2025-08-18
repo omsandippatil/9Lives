@@ -1,0 +1,19 @@
+name: Interview Questions API Daily 7 AM
+
+on:
+  schedule:
+    # Runs every day at 7:00 AM UTC
+    - cron: "0 7 * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-questions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Fundamental Questions API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/interview/fundamental/questions?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call Technical Questions API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/interview/technical/questions?api_key=${{ secrets.API_KEY }}"

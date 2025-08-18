@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 
 interface UserProfile {
@@ -16,6 +16,12 @@ interface FundamentalQuestion {
 interface Topic {
   id: number
   topic_name: string
+}
+
+interface TopicProgress {
+  topicNumber: number
+  questionNumber: number
+  totalQuestions: number
 }
 
 // Helper function to read cookies
@@ -39,70 +45,57 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 
 // Aesthetic emojis for topics
 const topicEmojis = [
-  '🌟', '💎', '🔮', '⚡', '🚀', '🎯', '🏆', '⭐', '💡', '🔥',
-  '📚', '🌈', '🦄', '👑', '💫', '🎪', '🎭', '🎨', '🌺', '🍃',
+  '🚀', '💎', '⚡', '🔮', '🌟', '🎯', '🏆', '⭐', '💡', '🔥',
+  '🎨', '🌈', '🦄', '👑', '💫', '🎪', '🎭', '🎨', '🌺', '🍃',
   '🌊', '⛰️', '🌙', '☀️', '🌸', '🦋', '🐾', '🎵', '🎪', '🎨',
-  '🧠', '🧪', '⚙️', '🔬', '📡', '💻', '🖥️', '📱', '🔧', '⚡',
+  '🔭', '🧪', '⚙️', '🔬', '📡', '💻', '🖥️', '📱', '🔧', '⚡',
   '🎲', '🎯', '🎪', '🎨', '🌟', '💫', '🔮', '🚀', '💎', '⭐'
 ]
 
-export default function FundamentalTopicQuestionsPage() {
-  const router = useRouter()
-  const params = useParams()
-  
-  console.log('🐱 Component rendered with params:', params)
-  console.log('🐱 Raw params.id:', params.id)
-  
-  const topicId = parseInt(params.id as string)
-  console.log('🐱 Parsed topicId:', topicId)
-  console.log('🐱 Is topicId valid?', !isNaN(topicId))
-
+export default function FundamentalQuestionsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [topic, setTopic] = useState<Topic | null>(null)
-  const [questions, setQuestions] = useState<FundamentalQuestion[]>([])
+  const [currentQuestion, setCurrentQuestion] = useState<FundamentalQuestion | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState(0)
+  const [nextQuestionNumber, setNextQuestionNumber] = useState<number>(0)
+  const [topicProgress, setTopicProgress] = useState<TopicProgress | null>(null)
   const [catAnimation, setCatAnimation] = useState('🐱')
+  const [showAllTopics, setShowAllTopics] = useState(false)
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [topicsLoading, setTopicsLoading] = useState(false)
+  const router = useRouter()
 
-  // Constants
+  // Constants for topic structure
   const QUESTIONS_PER_TOPIC = 50
-  const QUESTIONS_PER_TAB = 10
-  const TABS_PER_TOPIC = QUESTIONS_PER_TOPIC / QUESTIONS_PER_TAB // 5 tabs
+  const TOTAL_TOPICS = 50
+  const TOTAL_QUESTIONS = TOTAL_TOPICS * QUESTIONS_PER_TOPIC // 2500
 
-  // Calculate question range for this topic
-  const getQuestionRange = (topicId: number) => {
-    const startId = (topicId - 1) * QUESTIONS_PER_TOPIC + 1
-    const endId = topicId * QUESTIONS_PER_TOPIC
-    return { startId, endId }
+  // Helper function to calculate topic and question number from question ID
+  const calculateTopicProgress = (questionId: number): TopicProgress => {
+    const topicNumber = Math.ceil(questionId / QUESTIONS_PER_TOPIC)
+    const questionNumber = ((questionId - 1) % QUESTIONS_PER_TOPIC) + 1
+    return {
+      topicNumber,
+      questionNumber,
+      totalQuestions: questionId
+    }
   }
 
-  // Get questions for specific tab
-  const getQuestionsForTab = (tabIndex: number) => {
-    const startIndex = tabIndex * QUESTIONS_PER_TAB
-    const endIndex = startIndex + QUESTIONS_PER_TAB
-    return questions.slice(startIndex, endIndex)
-  }
-
-  // Get relative question number (1-50 within topic)
-  const getRelativeQuestionNumber = (actualQuestionId: number): number => {
-    const { startId } = getQuestionRange(topicId)
-    return actualQuestionId - startId + 1
-  }
-
-  // Check if question is accessible based on user progress
-  const isQuestionAccessible = (questionId: number): boolean => {
+  // Helper function to check if a topic is completed
+  const isTopicCompleted = (topicId: number): boolean => {
     if (!profile) return false
-    return questionId <= profile.fundamental_questions_attempted + 1
+    const completedTopics = Math.floor(profile.fundamental_questions_attempted / QUESTIONS_PER_TOPIC)
+    return topicId <= completedTopics
   }
 
-  // Check if question is completed
-  const isQuestionCompleted = (questionId: number): boolean => {
+  // Helper function to check if a topic is accessible
+  const isTopicAccessible = (topicId: number): boolean => {
     if (!profile) return false
-    return questionId <= profile.fundamental_questions_attempted
+    const completedTopics = Math.floor(profile.fundamental_questions_attempted / QUESTIONS_PER_TOPIC)
+    return topicId <= completedTopics + 1 // Current topic + 1 next topic is accessible
   }
 
-  // Get topic emoji
+  // Get random emoji for topic
   const getTopicEmoji = (topicId: number): string => {
     return topicEmojis[(topicId - 1) % topicEmojis.length]
   }
@@ -121,140 +114,134 @@ export default function FundamentalTopicQuestionsPage() {
   }, [])
 
   useEffect(() => {
-    console.log('🐱 useEffect triggered with topicId:', topicId)
-    if (topicId) {
-      loadTopicData()
-    } else {
-      console.log('❌ No topicId provided')
-    }
-  }, [topicId])
+    loadFundamentalQuestionData()
+  }, [])
 
-  const loadTopicData = async () => {
+  const loadFundamentalQuestionData = async () => {
     try {
-      console.log('🐱 Starting loadTopicData function...')
-      console.log('🐱 Topic ID:', topicId)
-      
+      // Check if Supabase is properly initialized
       if (!supabase) {
-        console.error('❌ Supabase client not initialized')
-        console.log('❌ supabaseUrl:', supabaseUrl)
-        console.log('❌ supabaseAnonKey:', supabaseAnonKey ? 'Present' : 'Missing')
         setError('Database connection not available')
         setLoading(false)
         return
       }
 
-      console.log('✅ Supabase client initialized successfully')
-
-      // Get user ID
-      const cookieUserId = getCookie('client-user-id')
-      const localStorageUserId = localStorage.getItem('client-user-id')
-      const supabaseUserId = localStorage.getItem('supabase-user-id')
-      
-      console.log('🔍 Looking for user ID...')
-      console.log('🍪 Cookie user ID:', cookieUserId)
-      console.log('💾 localStorage client-user-id:', localStorageUserId)
-      console.log('💾 localStorage supabase-user-id:', supabaseUserId)
-      
-      let userId = cookieUserId || localStorageUserId || supabaseUserId
+      // Get user ID from client-accessible cookie or localStorage
+      let userId = getCookie('client-user-id') || localStorage.getItem('client-user-id') || localStorage.getItem('supabase-user-id')
       
       if (!userId) {
-        console.error('❌ No user ID found in any storage location')
         setError('User not authenticated')
         setLoading(false)
         return
       }
 
-      console.log('✅ Using user ID:', userId)
-      console.log('🐱 Loading fundamental topic data for topic ID:', topicId)
+      console.log('Fetching fundamental questions data for user ID:', userId)
 
-      // Fetch user profile
-      console.log('📊 Fetching user profile...')
+      // Fetch user's fundamental questions progress
       const { data: userProfile, error: profileError } = await supabase
         .from('users')
         .select('id, fundamental_questions_attempted')
         .eq('id', userId)
         .single()
 
-      console.log('📊 User profile query result:')
-      console.log('📊 Data:', userProfile)
-      console.log('📊 Error:', profileError)
-
       if (profileError || !userProfile) {
-        console.error('❌ Failed to fetch user profile:', profileError)
-        setError('Failed to load user profile')
+        console.error('Failed to fetch user profile:', profileError)
+        if (profileError?.code === 'PGRST116') {
+          setError('User profile not found')
+        } else {
+          setError('Failed to load user profile: ' + (profileError?.message || 'Unknown error'))
+        }
         setLoading(false)
         return
       }
 
-      console.log('✅ User profile loaded:', userProfile)
       setProfile(userProfile)
+      
+      // Calculate next question number (current + 1)
+      const nextQuestionId = userProfile.fundamental_questions_attempted + 1
+      setNextQuestionNumber(nextQuestionId)
 
-      // Fetch topic info from fundamental topics table
-      console.log('🏷️ Fetching topic info from fundaq_topics...')
-      const { data: topicData, error: topicError } = await supabase
-        .from('fundaq_topics')
-        .select('id, topic_name')
-        .eq('id', topicId)
-        .single()
+      // Calculate topic progress
+      const progress = calculateTopicProgress(nextQuestionId)
+      setTopicProgress(progress)
 
-      console.log('🏷️ Topic query result:')
-      console.log('🏷️ Data:', topicData)
-      console.log('🏷️ Error:', topicError)
+      console.log('Current fundamental questions attempted:', userProfile.fundamental_questions_attempted)
+      console.log('Next question ID to fetch:', nextQuestionId)
 
-      if (topicError || !topicData) {
-        console.error('❌ Failed to fetch fundamental topic:', topicError)
-        setError('Topic not found')
-        setLoading(false)
-        return
-      }
-
-      console.log('✅ Topic loaded:', topicData)
-      setTopic(topicData)
-
-      // Calculate question range for this topic
-      const { startId, endId } = getQuestionRange(topicId)
-      console.log('📝 Question range calculation:')
-      console.log('📝 Start ID:', startId)
-      console.log('📝 End ID:', endId)
-
-      // Fetch questions for this topic from fundamental_questions table
-      console.log('❓ Fetching fundamental questions...')
-      const { data: questionsData, error: questionsError } = await supabase
+      // Fetch the next fundamental question
+      const { data: fundamentalQuestion, error: questionError } = await supabase
         .from('fundamental_questions')
         .select('id, question')
-        .gte('id', startId)
-        .lte('id', endId)
-        .order('id')
+        .eq('id', nextQuestionId)
+        .single()
 
-      console.log('❓ Questions query result:')
-      console.log('❓ Data:', questionsData)
-      console.log('❓ Error:', questionsError)
-      console.log('❓ Questions count:', questionsData?.length || 0)
-
-      if (questionsError) {
-        console.error('❌ Failed to fetch fundamental questions:', questionsError)
-        setError('Failed to load questions')
+      if (questionError) {
+        console.error('Failed to fetch fundamental question:', questionError)
+        if (questionError?.code === 'PGRST116') {
+          setError('No more fundamental questions available')
+        } else {
+          setError('Failed to load fundamental question: ' + (questionError?.message || 'Unknown error'))
+        }
         setLoading(false)
         return
       }
 
-      console.log('✅ Questions loaded successfully:', questionsData?.length || 0, 'questions')
-      setQuestions(questionsData || [])
-      
-      console.log('🎉 All data loaded successfully! Setting loading to false...')
+      if (!fundamentalQuestion) {
+        setError('Fundamental question not found')
+        setLoading(false)
+        return
+      }
+
+      console.log('Fundamental question loaded successfully:', fundamentalQuestion)
+      setCurrentQuestion(fundamentalQuestion)
       setLoading(false)
 
     } catch (err) {
-      console.error('💥 Unexpected error in loadTopicData:', err)
-      console.error('💥 Error stack:', err instanceof Error ? err.stack : 'No stack trace')
-      setError('Failed to load topic data: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      console.error('Fundamental question load error:', err)
+      setError('Failed to load fundamental question: ' + (err instanceof Error ? err.message : 'Unknown error'))
       setLoading(false)
     }
   }
 
-  const handleQuestionClick = (questionId: number) => {
-    if (isQuestionAccessible(questionId)) {
-      router.push(`/fundamental/${questionId}`)
+  const loadAllTopics = async () => {
+    if (!supabase) {
+      setError('Database connection not available')
+      return
+    }
+
+    setTopicsLoading(true)
+    try {
+      const { data: topicsData, error: topicsError } = await supabase
+        .from('fundaq_topics')
+        .select('id, topic_name')
+        .order('id')
+
+      if (topicsError) {
+        console.error('Failed to fetch topics:', topicsError)
+        setError('Failed to load topics: ' + topicsError.message)
+        setTopicsLoading(false)
+        return
+      }
+
+      setTopics(topicsData || [])
+      setShowAllTopics(true)
+      setTopicsLoading(false)
+    } catch (err) {
+      console.error('Topics load error:', err)
+      setError('Failed to load topics: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      setTopicsLoading(false)
+    }
+  }
+
+  const handleQuestionClick = () => {
+    if (currentQuestion) {
+      router.push(`/fundamental/${currentQuestion.id}`)
+    }
+  }
+
+  const handleTopicClick = (topicId: number) => {
+    if (isTopicAccessible(topicId)) {
+      router.push(`/fundamental/list/${topicId}`)
     }
   }
 
@@ -262,14 +249,22 @@ export default function FundamentalTopicQuestionsPage() {
     router.back()
   }
 
+  const handleViewAllTopics = () => {
+    if (!showAllTopics) {
+      loadAllTopics()
+    } else {
+      setShowAllTopics(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6 animate-pulse">🐱</div>
-          <p className="font-mono text-gray-600">Loading fundamental questions...</p>
+          <p className="font-mono text-gray-600">Loading your fundamental challenge...</p>
           <div className="mt-6 w-32 h-0.5 bg-gray-100 mx-auto overflow-hidden">
-            <div className="h-full bg-gray-300 animate-pulse"></div>
+            <div className="h-full bg-black animate-pulse"></div>
           </div>
         </div>
       </div>
@@ -285,13 +280,13 @@ export default function FundamentalTopicQuestionsPage() {
           <div className="space-y-4">
             <button 
               onClick={handleBack}
-              className="w-full py-4 bg-gray-900 text-white font-mono hover:bg-gray-700 transition-all duration-300"
+              className="w-full py-4 bg-black text-white font-mono hover:bg-gray-800 transition-all duration-300"
             >
               Go Back
             </button>
             <button 
-              onClick={loadTopicData}
-              className="w-full py-4 border border-gray-200 font-mono hover:border-gray-400 hover:bg-gray-50 transition-all duration-300"
+              onClick={loadFundamentalQuestionData}
+              className="w-full py-4 border border-gray-200 font-mono hover:border-black hover:bg-gray-50 transition-all duration-300"
             >
               Try Again
             </button>
@@ -301,17 +296,17 @@ export default function FundamentalTopicQuestionsPage() {
     )
   }
 
-  if (!topic || questions.length === 0) {
+  if (!profile || !currentQuestion) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6">😾</div>
-          <p className="font-mono text-gray-600 mb-6">No fundamental questions found for this topic.</p>
+          <p className="font-mono text-gray-600 mb-6">No fundamental questions available.</p>
           <button 
-            onClick={handleBack}
-            className="py-3 px-6 bg-gray-900 text-white font-mono hover:bg-gray-700 transition-colors"
+            onClick={loadFundamentalQuestionData}
+            className="py-3 px-6 bg-black text-white font-mono hover:bg-gray-800 transition-colors"
           >
-            Go Back
+            Reload Data
           </button>
         </div>
       </div>
@@ -336,17 +331,14 @@ export default function FundamentalTopicQuestionsPage() {
           </div>
           
           <div className="flex items-center gap-3">
-            <span className="text-2xl">{getTopicEmoji(topicId)}</span>
-            <div className="text-center">
-              <h1 className="text-2xl font-light">{topic.topic_name}</h1>
-              <p className="text-sm text-gray-500">Fundamental Topic {topicId}</p>
-            </div>
+            <span className="text-2xl animate-pulse">{catAnimation}</span>
+            <h1 className="text-2xl font-light">Fundamental Questions</h1>
           </div>
           
           <div className="flex items-center gap-4">
             <div className="text-center">
-              <p className="text-xs text-gray-400 uppercase tracking-wider">Questions</p>
-              <p className="text-lg font-light">{questions.length}</p>
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Topics</p>
+              <p className="text-lg font-light">{topicProgress ? topicProgress.topicNumber : 1}/{TOTAL_TOPICS}</p>
             </div>
           </div>
         </div>
@@ -354,142 +346,155 @@ export default function FundamentalTopicQuestionsPage() {
 
       {/* Main Content */}
       <main className="px-4 pb-32">
-        <div className="max-w-7xl mx-auto py-8">
-          
-          {/* Topic Info */}
-          <div className="text-center mb-12">
-            <div className="text-4xl mb-4">{catAnimation}</div>
-            <h2 className="text-3xl font-light mb-2">{topic.topic_name}</h2>
-            <p className="text-gray-600 font-mono">
-              {questions.length} fundamental questions • Topic {topicId}
-            </p>
-            <p className="text-sm text-gray-500 mt-2">
-              Master the fundamentals to build a strong foundation
-            </p>
-          </div>
+        {/* Single Card - Centered */}
+        <div className="min-h-[60vh] flex flex-col items-center justify-center">
+          <div 
+            onClick={handleQuestionClick}
+            className="group bg-white border-2 border-gray-100 hover:border-black cursor-pointer transition-all duration-500 ease-out hover:shadow-xl overflow-hidden max-w-4xl w-full mb-8"
+          >
+            <div className="p-8">
+              {/* Cat Header */}
+              <div className="text-center mb-6">
+                <div className="text-6xl mb-4 transition-all duration-500">{catAnimation}</div>
+                <div className="text-xl text-gray-600 mb-4 max-w-3xl mx-auto leading-relaxed">
+                  {currentQuestion.question}
+                </div>
+                {topicProgress && (
+                  <>
+                    <h3 className="font-mono font-medium text-lg mb-1">
+                      Topic {topicProgress.topicNumber} • Question {topicProgress.questionNumber}
+                    </h3>
+                    <p className="text-xs text-gray-500 mb-3 font-mono">
+                      Question #{nextQuestionNumber} of {TOTAL_QUESTIONS}
+                    </p>
+                  </>
+                )}
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-mono text-sm text-gray-400">Topic Progress</span>
+                  <span className="font-mono text-sm text-gray-600">
+                    {topicProgress ? `${topicProgress.questionNumber - 1}/${QUESTIONS_PER_TOPIC}` : '0/50'}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-50 h-3 overflow-hidden">
+                  <div 
+                    className="bg-black h-full transition-all duration-700 ease-out"
+                    style={{ 
+                      width: topicProgress 
+                        ? `${Math.min(((topicProgress.questionNumber - 1) / QUESTIONS_PER_TOPIC) * 100, 100)}%`
+                        : '0%'
+                    }}
+                  />
+                </div>
+              </div>
 
-          {/* Tabs */}
-          <div className="mb-8">
-            <div className="flex flex-wrap justify-center gap-2 border-b border-gray-100">
-              {Array.from({ length: TABS_PER_TOPIC }, (_, index) => {
-                const tabQuestions = getQuestionsForTab(index)
-                const startNum = index * QUESTIONS_PER_TAB + 1
-                const endNum = Math.min((index + 1) * QUESTIONS_PER_TAB, questions.length)
-                const hasAccessibleQuestions = tabQuestions.some(q => isQuestionAccessible(q.id))
-                const completedCount = tabQuestions.filter(q => isQuestionCompleted(q.id)).length
-                
-                return (
-                  <button
-                    key={index}
-                    onClick={() => setActiveTab(index)}
-                    className={`
-                      px-6 py-3 font-mono text-sm transition-all duration-300 border-b-2 relative
-                      ${activeTab === index 
-                        ? 'border-blue-400 text-blue-900 bg-blue-50' 
-                        : hasAccessibleQuestions
-                        ? 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-200'
-                        : 'border-transparent text-gray-400 cursor-not-allowed'
-                      }
-                    `}
-                    disabled={!hasAccessibleQuestions}
-                  >
-                    <span className="block">
-                      Questions {startNum}-{endNum}
-                    </span>
-                    {completedCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs rounded-full flex items-center justify-center">
-                        {completedCount}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
+              {/* Status */}
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center gap-3 text-gray-500 group-hover:text-black transition-colors">
+                  <span className="font-mono text-base">Ready to pounce</span>
+                  <span className="transform group-hover:translate-x-2 transition-transform duration-300 text-xl">→</span>
+                </div>
+              </div>
+
+              {/* Action */}
+              <div className="text-center">
+                <div className="font-mono text-sm text-gray-400 mb-3">Click anywhere to start pouncing</div>
+                <div className="text-2xl group-hover:animate-bounce">🐱</div>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Questions List */}
-          <div className="space-y-3 mb-20">
-            {getQuestionsForTab(activeTab).map((question) => {
-              const relativeQuestionNumber = getRelativeQuestionNumber(question.id)
-              const accessible = isQuestionAccessible(question.id)
-              const completed = isQuestionCompleted(question.id)
-              const isCurrent = question.id === (profile?.fundamental_questions_attempted || 0) + 1
-
-              return (
-                <div
-                  key={question.id}
-                  onClick={() => handleQuestionClick(question.id)}
-                  className={`
-                    group border border-gray-200 p-6 transition-all duration-300 hover:shadow-sm
-                    ${accessible
-                      ? 'hover:border-blue-400 cursor-pointer'
-                      : 'opacity-60 cursor-not-allowed'
-                    }
-                    ${isCurrent ? 'border-blue-300 bg-blue-50' : ''}
-                    ${completed ? 'bg-green-50 border-green-200' : ''}
-                  `}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <div className={`
-                        w-10 h-10 border border-gray-300 flex items-center justify-center font-mono text-sm font-medium rounded
-                        ${completed ? 'bg-green-100 border-green-300 text-green-700' : ''}
-                        ${isCurrent ? 'bg-blue-100 border-blue-300 text-blue-700' : ''}
-                      `}>
-                        {completed ? '✓' : relativeQuestionNumber}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <p className="text-lg leading-relaxed mb-2 text-gray-800">
-                        {question.question}
-                      </p>
-                      
-                      <div className="flex items-center gap-4 text-sm">
-                        <span className="font-mono text-gray-500">
-                          Question {relativeQuestionNumber} of {QUESTIONS_PER_TOPIC}
-                        </span>
-                        
-                        {completed && (
-                          <span className="text-green-600 font-mono text-xs bg-green-100 px-2 py-1 rounded">
-                            Completed
-                          </span>
-                        )}
-                        
-                        {isCurrent && (
-                          <span className="text-blue-600 font-mono text-xs bg-blue-100 px-2 py-1 rounded">
-                            Next Question
-                          </span>
-                        )}
-
-                        {!accessible && (
-                          <span className="text-gray-400 font-mono text-xs">
-                            Locked
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {accessible && (
-                      <div className="flex-shrink-0 transform transition-transform duration-300 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1">
-                        →
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+        {/* Topics Section */}
+        <div className="max-w-7xl mx-auto">
+          {/* View All Topics Text */}
+          <div className="text-center mb-12">
+            <span
+              onClick={handleViewAllTopics}
+              className="font-mono text-lg text-gray-600 hover:text-black cursor-pointer underline underline-offset-4 hover:underline-offset-8 transition-all duration-300 inline-flex items-center gap-2"
+            >
+              {showAllTopics ? 'Hide All Topics' : 'View All Topics'}
+              <span className={`transform transition-transform duration-300 ${showAllTopics ? 'rotate-180' : ''}`}>
+                ↓
+              </span>
+            </span>
           </div>
 
-          {/* Footer */}
-          <div className="text-center py-16 border-t border-gray-100">
+          {/* Topics Grid */}
+          {showAllTopics && (
+            <div className="w-full mb-20">
+              {topicsLoading ? (
+                // Skeleton Loading
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {Array.from({ length: 20 }, (_, i) => (
+                    <div key={i} className="animate-pulse">
+                      <div className="bg-gray-100 border border-gray-200 p-6 h-32">
+                        <div className="flex flex-col items-center justify-center h-full space-y-3">
+                          <div className="w-8 h-8 bg-gray-200 rounded"></div>
+                          <div className="w-20 h-4 bg-gray-200 rounded"></div>
+                          <div className="w-12 h-3 bg-gray-200 rounded"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Topics Grid
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {topics.map((topic) => {
+                    const completed = isTopicCompleted(topic.id)
+                    const accessible = isTopicAccessible(topic.id)
+                    
+                    return (
+                      <div
+                        key={topic.id}
+                        onClick={() => handleTopicClick(topic.id)}
+                        className={`
+                          border-2 p-6 transition-all duration-300 cursor-pointer relative
+                          ${completed 
+                            ? 'bg-black text-white border-black hover:bg-gray-800' 
+                            : accessible
+                            ? 'bg-white border-gray-200 hover:border-black hover:bg-gray-50'
+                            : 'bg-gray-50 border-gray-100 text-gray-400 cursor-not-allowed'
+                          }
+                        `}
+                      >
+                        <div className="flex flex-col items-center justify-center space-y-3 h-20">
+                          <div className={`text-2xl ${!accessible ? 'opacity-50' : ''}`}>
+                            {getTopicEmoji(topic.id)}
+                          </div>
+                          <div className="text-center">
+                            <h3 className={`font-mono text-sm font-medium line-clamp-2 ${!accessible ? 'opacity-50' : ''}`}>
+                              {topic.topic_name}
+                            </h3>
+                            <p className={`text-xs mt-1 ${completed ? 'text-gray-300' : accessible ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Topic {topic.id}
+                            </p>
+                          </div>
+                          {completed && (
+                            <div className="absolute top-2 right-2 text-xs">✓</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Footer section for better visual completion */}
+          <div className="text-center py-16 border-t border-gray-100 mt-12">
             <div className="max-w-2xl mx-auto">
-              <div className="text-4xl mb-6">{getTopicEmoji(topicId)}</div>
+              <div className="text-4xl mb-6">{catAnimation}</div>
               <p className="font-mono text-gray-500 mb-4">
-                Fundamental Topic {topicId}: {topic.topic_name}
+                Keep pouncing on those fundamental challenges!
               </p>
               <div className="text-sm text-gray-400 font-mono">
-                {questions.filter(q => isQuestionCompleted(q.id)).length} of {questions.length} questions completed
+                Progress: {profile?.fundamental_questions_attempted || 0} / {TOTAL_QUESTIONS} questions completed
               </div>
             </div>
           </div>
