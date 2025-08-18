@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // Initialize Groq client
 const groq = new Groq({
-  apiKey: process.env.TECHQ_GROQ_API_KEY!,
+  apiKey: process.env.FUNDAQ_GROQ_API_KEY!,
 });
 
 interface FundamentalQuestion {

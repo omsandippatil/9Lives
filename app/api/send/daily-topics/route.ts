@@ -31,7 +31,7 @@ interface GeneratedQuestions {
 
 // Calculate day number from August 18, 2026
 function getDayNumber(): number {
-  const startDate = new Date('2026-08-18');
+  const startDate = new Date('2026-08-20');
   const currentDate = new Date();
   const diffTime = currentDate.getTime() - startDate.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -243,7 +243,7 @@ async function handleDailyTopics() {
   
   // Calculate day number
   const dayNumber = getDayNumber();
-  console.log(`Day ${dayNumber} from August 18, 2026`);
+  console.log(`Day ${dayNumber} from August 20, 2026`);
 
   // Fetch topics
   console.log('Fetching topics from database...');

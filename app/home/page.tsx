@@ -694,7 +694,7 @@ export default function HomePage() {
             current={Math.floor(profile.fundamental_questions_attempted / 50)}
             total={50}
             subtitle="Master the cat-egories of knowledge"
-            onClick={() => router.push('/fundamentals')}
+            onClick={() => router.push('/fundamental')}
           />
 
           <ProgressCard

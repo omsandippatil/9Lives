@@ -186,7 +186,7 @@ const CAT_GIFS = {
 
 // Calculate day number from August 18, 2026
 function getDayNumber(): number {
-  const startDate = new Date('2025-08-16');
+  const startDate = new Date('2025-08-20');
   const currentDate = new Date();
   const diffTime = currentDate.getTime() - startDate.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
