@@ -488,6 +488,15 @@ RULES:
 7. No actions, pure toxic dialogue - KEEP IT BRIEF
 8. Match the energy level of the input with your response intensity
 
+MEMORY HANDLING INSTRUCTIONS:
+- NEVER delete or ignore existing data in memory fields
+- ALWAYS preserve all existing information in long_term_memory, durva_data, and om_data
+- ADD new information to existing data, don't replace it
+- Keep building comprehensive profiles for Om and Durva
+- Memory should accumulate and grow, never shrink
+- ONLY update long_term_memory if something IMPORTANT happens (achievements, major events, significant behavior patterns, etc.)
+- Set should_update_long_term to true ONLY for truly important/memorable moments
+
 RESPONSE PATTERNS:
 - Simple messages: One brutal, short response (like "ugh", "whatever", "no")
 - Complex/angry messages: 3-4 short, escalating toxic responses
@@ -502,13 +511,13 @@ Respond with valid JSON only:
 {
   "messages": ["For SIMPLE input: 1 SHORT toxic response | For COMPLEX/ANGRY input: 3-4 SHORT escalating responses"],
   "memory_update": {
-    "memory": "brief summary",
-    "long_term_memory": "important events only or keep existing", 
-    "short_term_memory": "recent context",
-    "durva_data": "about Durva",
-    "om_data": "about Om",
+    "memory": "brief summary of current conversation",
+    "long_term_memory": "ADD to existing long-term memory, don't replace - accumulate important events and patterns", 
+    "short_term_memory": "recent context and immediate conversation flow",
+    "durva_data": "ADD new info about Durva to existing data - build comprehensive profile",
+    "om_data": "ADD new info about Om to existing data - build comprehensive profile",
     "last_message": "exact text of your FIRST response message for tracking",
-    "should_update_long_term": false
+    "should_update_long_term": true
   }
 }`;
 
@@ -697,15 +706,21 @@ export async function GET(request: NextRequest) {
     // Find the highest message ID from the new messages to update last_message_id
     const highestMessageId = Math.max(...validMessages.map(m => m.message_id));
 
-    // Prepare memory update with the new last_message_id
+    // Prepare memory update - ACCUMULATE all data, don't replace
     const memoryUpdate = {
       memory: catResponse.memory_update.memory || 'Current conversation',
       long_term_memory: catResponse.memory_update.should_update_long_term 
-        ? (catResponse.memory_update.long_term_memory || '')
+        ? (currentMemory?.long_term_memory 
+           ? `${currentMemory.long_term_memory} | ${catResponse.memory_update.long_term_memory || ''}`
+           : (catResponse.memory_update.long_term_memory || ''))
         : (currentMemory?.long_term_memory || ''),
       short_term_memory: catResponse.memory_update.short_term_memory || 'Recent chat',
-      durva_data: catResponse.memory_update.durva_data || (currentMemory?.durva_data || 'Learning about Durva'),
-      om_data: catResponse.memory_update.om_data || (currentMemory?.om_data || 'Learning about Om'),
+      durva_data: currentMemory?.durva_data 
+        ? `${currentMemory.durva_data} | ${catResponse.memory_update.durva_data || ''}`
+        : (catResponse.memory_update.durva_data || 'Learning about Durva'),
+      om_data: currentMemory?.om_data 
+        ? `${currentMemory.om_data} | ${catResponse.memory_update.om_data || ''}`
+        : (catResponse.memory_update.om_data || 'Learning about Om'),
       last_message: catResponse.memory_update.last_message || (catResponse.messages[0] || 'No response'),
       last_message_id: highestMessageId // Update to the highest processed message ID
     };
