@@ -24,7 +24,7 @@ interface TechnicalQuestion {
 }
 
 interface QuestionsCounter {
-  technical_questions: number;
+  technical_question: number;
 }
 
 // Enhanced prompt for generating comprehensive technical answers
@@ -100,80 +100,76 @@ export async function GET(request: NextRequest) {
     const currentCount = counterData.technical_question || 0;
     const nextQuestionId = currentCount + 1;
 
-    // Step 2: Get the next question
-    let query = supabase
+    // Step 2: Get the next question based on counter
+    const { data: questionData, error: questionError } = await supabase
       .from('technical_questions')
-      .select('*');
+      .select('*')
+      .eq('id', nextQuestionId)
+      .single();
 
-    if (!forceRegenerate) {
-      query = query.is('answer', null).limit(1);
-    } else {
-      query = query.eq('id', nextQuestionId);
-    }
-
-    const { data: questionsData, error: questionError } = await query;
-
-    if (questionError || !questionsData || questionsData.length === 0) {
+    if (questionError || !questionData) {
       console.error('Error fetching question:', questionError);
       return NextResponse.json(
-        { error: 'No more questions available or question not found' },
+        { error: 'Question not found or no more questions available' },
         { status: 404 }
       );
     }
 
-    const question = questionsData[0] as TechnicalQuestion;
+    const question = questionData as TechnicalQuestion;
 
-    // Step 3: Generate comprehensive technical answer using Groq
-    const prompt = createTechnicalPrompt(question.question);
+    // Step 3: Generate or regenerate answer if needed
+    let generatedAnswer = question.answer || '';
+    
+    if (!question.answer || forceRegenerate) {
+      const prompt = createTechnicalPrompt(question.question);
 
-    console.log('Generating answer for question:', question.id);
+      console.log('Generating answer for question:', question.id);
 
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a world-class technical expert and senior software architect. You provide comprehensive, interview-ready explanations that serve as definitive technical guides. Always start with a direct interview answer, then provide detailed explanations with natural organization, tables where helpful, and analogies to clarify concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
+      const completion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: "You are a world-class technical expert and senior software architect. You provide comprehensive, interview-ready explanations that serve as definitive technical guides. Always start with a direct interview answer, then provide detailed explanations with natural organization, tables where helpful, and analogies to clarify concepts. IMPORTANT: Add appropriate emojis at the start of ALL headings and sub-headings to make the content visually engaging."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.2,
+        max_tokens: 8192,
+      });
 
-    const generatedAnswer = completion.choices[0]?.message?.content || '';
+      generatedAnswer = completion.choices[0]?.message?.content || '';
 
-    // Step 4: Save the comprehensive answer
-    const { error: updateError } = await supabase
-      .from('technical_questions')
-      .update({ 
-        answer: generatedAnswer
-      })
-      .eq('id', question.id);
+      // Step 4: Save the comprehensive answer
+      const { error: updateError } = await supabase
+        .from('technical_questions')
+        .update({ 
+          answer: generatedAnswer
+        })
+        .eq('id', question.id);
 
-    if (updateError) {
-      console.error('Error updating question with answer:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to save answer' },
-        { status: 500 }
-      );
+      if (updateError) {
+        console.error('Error updating question with answer:', updateError);
+        return NextResponse.json(
+          { error: 'Failed to save answer' },
+          { status: 500 }
+        );
+      }
     }
 
-    // Step 5: Update counter only if processing sequentially
-    if (!forceRegenerate && question.id === nextQuestionId) {
-      const { error: incrementError } = await supabase
-        .from('questions_done')
-        .update({ 
-          technical_question: question.id
-        })
-        .eq('technical_questions', currentCount);
+    // Step 5: Update counter to mark this question as processed
+    const { error: incrementError } = await supabase
+      .from('questions_done')
+      .update({ 
+        technical_question: nextQuestionId
+      })
+      .eq('technical_question', currentCount);
 
-      if (incrementError) {
-        console.error('Error incrementing counter:', incrementError);
-      }
+    if (incrementError) {
+      console.error('Error incrementing counter:', incrementError);
     }
 
     return NextResponse.json({
@@ -185,11 +181,11 @@ export async function GET(request: NextRequest) {
       technology_stack: question.technology_stack,
       answer: generatedAnswer,
       previousCount: currentCount,
-      newCount: question.id,
+      newCount: nextQuestionId,
       answerLength: generatedAnswer.length,
       wordCount: generatedAnswer.split(' ').length,
       estimatedReadTime: Math.ceil(generatedAnswer.split(' ').length / 200),
-      message: 'Comprehensive technical answer generated and saved successfully'
+      message: forceRegenerate ? 'Answer regenerated successfully' : 'Answer processed successfully'
     });
 
   } catch (error) {
@@ -215,9 +211,48 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { questionId, questionIds, batchSize = 5 } = body;
+    const { questionId, questionIds, batchSize = 5, startFromId } = body;
     
-    // Handle batch processing
+    // Handle batch processing by ID range
+    if (startFromId) {
+      const { data: questions, error } = await supabase
+        .from('technical_questions')
+        .select('id, question')
+        .gte('id', startFromId)
+        .limit(batchSize)
+        .order('id', { ascending: true });
+
+      if (error || !questions || questions.length === 0) {
+        return NextResponse.json(
+          { error: 'No questions found in specified range' },
+          { status: 404 }
+        );
+      }
+
+      const results = [];
+      for (const q of questions) {
+        try {
+          const result = await processQuestion(q.id);
+          results.push(result);
+        } catch (error) {
+          results.push({
+            questionId: q.id,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        batchResults: results,
+        processedCount: results.filter(r => r.success).length,
+        totalRequested: questions.length,
+        message: `Processed ${results.filter(r => r.success).length} out of ${questions.length} questions`
+      });
+    }
+    
+    // Handle batch processing by specific IDs
     if (questionIds && Array.isArray(questionIds)) {
       const results = [];
       
@@ -249,42 +284,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    // Handle processing unanswered questions
-    let query = supabase
-      .from('technical_questions')
-      .select('id, question')
-      .is('answer', null)
-      .limit(batchSize);
-
-    const { data: questions, error } = await query;
-
-    if (error || !questions || questions.length === 0) {
-      return NextResponse.json(
-        { error: 'No unanswered questions found' },
-        { status: 404 }
-      );
-    }
-
-    const results = [];
-    for (const q of questions) {
-      try {
-        const result = await processQuestion(q.id);
-        results.push(result);
-      } catch (error) {
-        results.push({
-          questionId: q.id,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      batchResults: results,
-      processedCount: results.filter(r => r.success).length,
-      message: `Processed ${results.filter(r => r.success).length} unanswered questions`
-    });
+    return NextResponse.json(
+      { error: 'Please provide questionId, questionIds array, or startFromId parameter' },
+      { status: 400 }
+    );
 
   } catch (error) {
     console.error('POST API Error:', error);
@@ -367,7 +370,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { questionId, regenerateAnswer = false } = await request.json();
+    const { questionId, regenerateAnswer = false, updateCounter = false } = await request.json();
     
     if (!questionId) {
       return NextResponse.json(
@@ -378,6 +381,19 @@ export async function PUT(request: NextRequest) {
 
     if (regenerateAnswer) {
       const result = await processQuestion(questionId);
+      
+      // Optionally update counter if specified
+      if (updateCounter) {
+        const { error: counterError } = await supabase
+          .from('questions_done')
+          .update({ technical_question: questionId })
+          .single();
+          
+        if (counterError) {
+          console.error('Error updating counter:', counterError);
+        }
+      }
+      
       return NextResponse.json({
         ...result,
         message: 'Technical answer regenerated successfully'
@@ -391,6 +407,67 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('PUT API Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE method for resetting counter or specific operations
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const apiKey = searchParams.get('api_key');
+    
+    if (!apiKey || apiKey !== process.env.API_KEY) {
+      return NextResponse.json(
+        { error: 'Invalid or missing API key' },
+        { status: 401 }
+      );
+    }
+
+    const { resetCounter = false, setCounterTo } = await request.json();
+    
+    if (resetCounter) {
+      const { error } = await supabase
+        .from('questions_done')
+        .update({ technical_question: 0 })
+        .single();
+        
+      if (error) {
+        throw new Error('Failed to reset counter');
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Counter reset to 0 successfully'
+      });
+    }
+    
+    if (typeof setCounterTo === 'number') {
+      const { error } = await supabase
+        .from('questions_done')
+        .update({ technical_question: setCounterTo })
+        .single();
+        
+      if (error) {
+        throw new Error('Failed to set counter');
+      }
+      
+      return NextResponse.json({
+        success: true,
+        message: `Counter set to ${setCounterTo} successfully`
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Specify resetCounter: true or setCounterTo: number' },
+      { status: 400 }
+    );
+
+  } catch (error) {
+    console.error('DELETE API Error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

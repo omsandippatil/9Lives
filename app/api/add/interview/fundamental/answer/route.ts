@@ -24,7 +24,7 @@ interface FundamentalQuestion {
 }
 
 interface QuestionsCounter {
-  fundamental_questions: number;
+  fundamental_question: number;
 }
 
 // Enhanced prompt for generating comprehensive fundamental answers
@@ -101,27 +101,21 @@ export async function GET(request: NextRequest) {
     const nextQuestionId = currentCount + 1;
 
     // Step 2: Get the next question
-    let query = supabase
+    const { data: questionsData, error: questionError } = await supabase
       .from('fundamental_questions')
-      .select('*');
+      .select('*')
+      .eq('id', nextQuestionId)
+      .single();
 
-    if (!forceRegenerate) {
-      query = query.is('answer', null).limit(1);
-    } else {
-      query = query.eq('id', nextQuestionId);
-    }
-
-    const { data: questionsData, error: questionError } = await query;
-
-    if (questionError || !questionsData || questionsData.length === 0) {
+    if (questionError || !questionsData) {
       console.error('Error fetching question:', questionError);
       return NextResponse.json(
-        { error: 'No more questions available or question not found' },
+        { error: 'Question not found or no more questions available' },
         { status: 404 }
       );
     }
 
-    const question = questionsData[0] as FundamentalQuestion;
+    const question = questionsData as FundamentalQuestion;
 
     // Step 3: Generate comprehensive fundamental answer using Groq
     const prompt = createFundamentalPrompt(question.question);
@@ -162,18 +156,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 5: Update counter only if processing sequentially
-    if (!forceRegenerate && question.id === nextQuestionId) {
-      const { error: incrementError } = await supabase
-        .from('questions_done')
-        .update({ 
-          fundamental_questions: question.id
-        })
-        .eq('fundamental_questions', currentCount);
+    // Step 5: Update counter after successful answer generation
+    const { error: incrementError } = await supabase
+      .from('questions_done')
+      .update({ 
+        fundamental_question: question.id
+      })
+      .eq('fundamental_question', currentCount);
 
-      if (incrementError) {
-        console.error('Error incrementing counter:', incrementError);
-      }
+    if (incrementError) {
+      console.error('Error incrementing counter:', incrementError);
     }
 
     return NextResponse.json({
@@ -249,18 +241,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    // Handle processing unanswered questions
-    let query = supabase
+    // Handle processing questions based on counter
+    const { data: counterData, error: counterError } = await supabase
+      .from('questions_done')
+      .select('fundamental_question')
+      .single();
+
+    if (counterError) {
+      return NextResponse.json(
+        { error: 'Failed to fetch question counter' },
+        { status: 500 }
+      );
+    }
+
+    const currentCount = counterData.fundamental_question || 0;
+    const startId = currentCount + 1;
+    
+    const { data: questions, error } = await supabase
       .from('fundamental_questions')
       .select('id, question')
-      .is('answer', null)
+      .gte('id', startId)
       .limit(batchSize);
-
-    const { data: questions, error } = await query;
 
     if (error || !questions || questions.length === 0) {
       return NextResponse.json(
-        { error: 'No unanswered fundamental questions found' },
+        { error: 'No more fundamental questions found to process' },
         { status: 404 }
       );
     }
@@ -270,6 +275,13 @@ export async function POST(request: NextRequest) {
       try {
         const result = await processQuestion(q.id);
         results.push(result);
+        
+        // Update counter after each successful processing
+        await supabase
+          .from('questions_done')
+          .update({ fundamental_question: q.id })
+          .eq('fundamental_question', currentCount + results.length - 1);
+          
       } catch (error) {
         results.push({
           questionId: q.id,
@@ -417,7 +429,7 @@ export async function DELETE(request: NextRequest) {
     if (resetCounter) {
       const { error: resetError } = await supabase
         .from('questions_done')
-        .update({ fundamental_questions: 0 });
+        .update({ fundamental_question: 0 });
       
       if (resetError) {
         throw new Error('Failed to reset counter');
