@@ -21,7 +21,7 @@ const RESETTABLE_COLUMNS = [
   'tech_topics_covered',
   'aptitude_questions_attempted',
   'hr_questions_attempted',
-  'artificial_intelligence_topics_covered',
+  'ai_ml_covered',
   'system_design_covered',
   'java_lang_covered',
   'python_lang_covered',

@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -213,9 +216,10 @@ function processTheoryContent(theory: string): string {
     return `\`\`\`${lang}\n${cleanCode}\n\`\`\``
   })
 
-  processed = processed.replace(/\$O\(([^)]+)\)\$/g, 'O($1)')
-  processed = processed.replace(/\$\Omega\(([^)]+)\)\$/g, 'Ω($1)')
-  processed = processed.replace(/\$\Theta\(([^)]+)\)\$/g, 'Θ($1)')
+  // Convert custom math notation to LaTeX
+  processed = processed.replace(/\$O\(([^)]+)\)\$/g, '$O($1)$')
+  processed = processed.replace(/\$\Omega\(([^)]+)\)\$/g, '$\\Omega($1)$')
+  processed = processed.replace(/\$\Theta\(([^)]+)\)\$/g, '$\\Theta($1)$')
 
   return processed
 }
@@ -225,86 +229,65 @@ function parseTheoryContent(theory: string): ParsedSection[] {
   
   const processedTheory = processTheoryContent(theory)
   
-  // Split by emoji patterns - look for emoji at start of line followed by text
-  const emojiPattern = /^([🧠🤖💡📊🔬🎯📚🔧🌟💻🚀🎨🔍📈🧩⚡🎓📋🔮🌍🧪📐🔢💾🎪🏠🔒🚫🌈🎭🔥💎🎉🎪🧮⚛️🎯🔑🎪🔄⭐📝📌🛠️⚠️🎤🔗✅❌]+)\s*\*\*([^*]+)\*\*/gm
+  // Split content by any emoji at the beginning of a line
+  const emojiRegex = /^[\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]+/gmu
   
-  // Find all emoji section headers with their positions
-  const matches = []
-  let match
-  while ((match = emojiPattern.exec(processedTheory)) !== null) {
-    matches.push({
-      emoji: match[1],
-      title: match[2].trim(),
-      startIndex: match.index,
-      endIndex: match.index + match[0].length
-    })
-  }
+  // Find all lines that start with emoji
+  const lines = processedTheory.split('\n')
+  const sectionStarts: { lineIndex: number; emoji: string; title: string }[] = []
   
-  // If no emoji patterns found, try alternative patterns
-  if (matches.length === 0) {
-    // Fallback to existing logic for ### headings and **bold** headings
-    const parts = processedTheory.split(/^(?:### |\*\*)/gm).filter(part => part.trim())
-    
-    parts.forEach((part, index) => {
-      const lines = part.trim().split('\n')
-      let titleLine = lines[0]
+  lines.forEach((line, index) => {
+    const match = line.match(emojiRegex)
+    if (match) {
+      const emoji = match[0]
+      // Extract title from the rest of the line
+      const title = line.replace(emojiRegex, '').trim()
+        .replace(/^\*\*|\*\*$/g, '') // Remove markdown bold markers
+        .replace(/^#+\s*/, '') // Remove markdown headers
+        .trim()
       
-      // Handle ** headings by removing trailing **
-      if (titleLine.includes('**')) {
-        titleLine = titleLine.replace(/\*\*$/, '').trim()
+      if (title) { // Only add if there's actual text after the emoji
+        sectionStarts.push({ lineIndex: index, emoji, title })
       }
+    }
+  })
+  
+  // If we found emoji sections, process them
+  if (sectionStarts.length > 0) {
+    sectionStarts.forEach((sectionStart, index) => {
+      const nextSectionStart = sectionStarts[index + 1]
+      const startLine = sectionStart.lineIndex + 1 // Content starts after the header line
+      const endLine = nextSectionStart ? nextSectionStart.lineIndex : lines.length
       
-      // Extract emoji and title from the heading
-      const emojiMatch = titleLine.match(/^([🧠🤖💡📊🔬🎯📚🔧🌟💻🚀🎨🔍📈🧩⚡🎓📋🔮🌍🧪📐🔢💾🎪🏠🔒🚫🌈🎭🔥💎🎉🎪🧮⚛️🎯🔑🎪🔄⭐📝📌🛠️⚠️🎤🔗✅❌]+)\s*(.+)/)
-      let emoji = '🧠'
-      let title = titleLine
-      
-      if (emojiMatch) {
-        emoji = emojiMatch[1]
-        title = emojiMatch[2]
-      }
-      
-      // Clean up title
-      title = title.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '').replace(/\*\*/g, '').trim()
-      
-      const content = lines.slice(1).join('\n').trim()
+      const content = lines.slice(startLine, endLine).join('\n').trim()
       
       if (content) {
         const hasCodeBlocks = content.includes('```') || content.includes('$#')
-        const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || /\b(algorithm|complexity|formula|equation|theorem|proof|model|neural|gradient|loss|optimization)\b/i.test(content)
+        const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || 
+          /\b(algorithm|complexity|formula|equation|theorem|proof|model|neural|gradient|loss|optimization)\b/i.test(content)
         
         sections.push({
           id: `section-${index}`,
-          title,
-          emoji,
+          title: sectionStart.title,
+          emoji: sectionStart.emoji,
           content,
           hasCodeBlocks,
           hasMathFormulas
         })
       }
     })
-    
-    return sections
-  }
-  
-  // Process emoji-based sections
-  for (let i = 0; i < matches.length; i++) {
-    const currentMatch = matches[i]
-    const nextMatch = matches[i + 1]
-    
-    // Extract content from end of current match to start of next match (or end of string)
-    const contentStart = currentMatch.endIndex
-    const contentEnd = nextMatch ? nextMatch.startIndex : processedTheory.length
-    const content = processedTheory.slice(contentStart, contentEnd).trim()
-    
+  } else {
+    // Fallback: create a single section with all content
+    const content = processedTheory.trim()
     if (content) {
       const hasCodeBlocks = content.includes('```') || content.includes('$#')
-      const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || /\b(algorithm|complexity|formula|equation|theorem|proof|model|neural|gradient|loss|optimization)\b/i.test(content)
+      const hasMathFormulas = content.includes('$') || content.includes('\\(') || content.includes('\\[') || 
+        /\b(algorithm|complexity|formula|equation|theorem|proof|model|neural|gradient|loss|optimization)\b/i.test(content)
       
       sections.push({
-        id: `section-${i}`,
-        title: currentMatch.title,
-        emoji: currentMatch.emoji,
+        id: 'section-0',
+        title: 'Content',
+        emoji: '🧠',
         content,
         hasCodeBlocks,
         hasMathFormulas
@@ -360,7 +343,8 @@ function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
           <div className="pt-4">
             <ReactMarkdown 
               components={MarkdownComponents}
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
             >
               {section.content}
             </ReactMarkdown>
@@ -379,7 +363,7 @@ function TimerProgressBar({ timeLeft, totalTime }: { timeLeft: number, totalTime
     <div className="w-full bg-gray-200 h-2 overflow-hidden">
       <div 
         className={`h-full transition-all duration-1000 ease-linear ${
-          isComplete ? 'bg-purple-600' : 'bg-purple-600'
+          isComplete ? 'bg-black' : 'bg-black'
         }`}
         style={{ width: `${progress}%` }}
       />
@@ -404,7 +388,7 @@ function LoadingProgressBar() {
   return (
     <div className="w-64 bg-gray-200 h-2 overflow-hidden">
       <div 
-        className="h-full bg-purple-600 transition-all duration-300 ease-out"
+        className="h-full bg-black transition-all duration-300 ease-out"
         style={{ width: `${Math.min(progress, 100)}%` }}
       />
     </div>
@@ -675,7 +659,7 @@ export default function AIMLPage() {
 
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('current_streak, total_points, ai_ml')
+        .select('current_streak, total_points, ai_ml_covered')
         .eq('id', userId)
         .single()
 
@@ -699,7 +683,7 @@ export default function AIMLPage() {
 
       setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
-      setAimlStudied(userData?.ai_ml || 0)
+      setAimlStudied(userData?.ai_ml_covered || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
     }
@@ -718,7 +702,7 @@ export default function AIMLPage() {
           const { error } = await supabase
             .from('users')
             .update({ 
-              ai_ml: currentAimlId,
+              ai_ml_covered: currentAimlId,
               total_points: totalPoints + 4 // AI/ML gives 4 points
             })
             .eq('id', userId)
@@ -947,7 +931,8 @@ export default function AIMLPage() {
           <div className="bg-white shadow-sm border p-8 mb-12">
             <ReactMarkdown 
               components={MarkdownComponents}
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
             >
               {processTheoryContent(aimlData.theory)}
             </ReactMarkdown>

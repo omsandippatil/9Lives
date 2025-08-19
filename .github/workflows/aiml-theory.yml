@@ -1,0 +1,15 @@
+name: AI-ML Theory API Every 2 Hours
+
+on:
+  schedule:
+    # Runs every 2 hours (00:00, 02:00, 04:00, ...)
+    - cron: "0 */2 * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-ai-ml:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call AI-ML Theory API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/ai-ml/theory?api_key=${{ secrets.API_KEY }}"

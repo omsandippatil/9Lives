@@ -24,144 +24,138 @@ interface QuestionsCounter {
   ai_ml: number;
 }
 
-// Enhanced prompt for generating comprehensive AI/ML theories
+// Enhanced prompt optimized for the frontend's emoji-section parsing system
 const createAiMlPrompt = (topicName: string) => `
-You are a distinguished AI/ML researcher, professor, and practitioner with deep expertise in artificial intelligence, machine learning, deep learning, mathematical foundations, and cutting-edge research. You have extensive experience in both theoretical foundations and practical applications across academia and industry. You will generate a COMPREHENSIVE, MATHEMATICALLY RIGOROUS, and CONCEPTUALLY DETAILED explanation about the AI/ML topic provided.
+You are a distinguished AI/ML researcher, professor, and practitioner with deep expertise in artificial intelligence, machine learning, deep learning, mathematical foundations, and cutting-edge research. You will generate a COMPREHENSIVE, MATHEMATICALLY RIGOROUS, and CONCEPTUALLY DETAILED explanation about the AI/ML topic provided.
 
 **AI/ML Topic**: "${topicName}"
 
-## RESPONSE FORMAT REQUIREMENTS:
+## CRITICAL FORMATTING REQUIREMENTS FOR FRONTEND COMPATIBILITY:
 
-Your response MUST be a comprehensive AI/ML deep-dive that covers EVERY aspect of the topic. You have complete autonomy to decide the headings and structure based on what makes most sense for this specific AI/ML concept. The response should be formatted as a detailed academic and practical guide that could serve as both a learning resource and implementation reference.
+### 🎯 **Section Structure Format**
+Each main section MUST follow this EXACT format:
+
+🔬 **Section Title Here**
+
+Section content goes here with detailed explanations, mathematical formulas, code examples, etc.
+
+Mathematical formulas should use LaTeX notation: $E = mc^2$, $O(n)$, $\Omega(n \log n)$, $\Theta(n^2)$
+
+### 📋 **Required Emoji Section Headers**
+You MUST include sections with these specific emoji patterns (choose appropriate emojis from this list):
+- 🧠 🤖 💡 📊 🔬 🎯 📚 🔧 🌟 💻 🚀 🎨 🔍 📈 🧩 ⚡ 🎓 📋 🔮 🌍 🧪 📐 🔢 💾 🎪 🏠 🔒 🚫 🌈 🎭 🔥 💎 🎉 🧮 ⚛️ 🔑 🔄 ⭐ 📝 📌 🛠️ ⚠️ 🎤 🔗 ❌
+
+### 💡 **Mathematical Notation Guidelines**
+- Use LaTeX notation: $O(n)$, $\Omega(n)$, $\Theta(n)$ for complexity
+- Inline math: $E = mc^2$, $P(X|Y) = \frac{P(Y|X)P(X)}{P(Y)}$
+- Display math for complex equations: $$\nabla_\theta J(\theta) = \frac{1}{m}\sum_{i=1}^{m}\nabla_\theta L(f_\theta(x^{(i)}), y^{(i)})$$
+- Use proper mathematical symbols: $\alpha$, $\beta$, $\gamma$, $\sigma$, $\mu$, $\lambda$
 
 ## MANDATORY CONTENT AREAS TO COVER:
+# AI / ML CONCEPT — Study & Validation Template
+(Goal: learn the concept deeply **and** prove it works — intuition, math, code, experiments, and production-readiness.)
 
-### 📚 CONCEPTUAL FOUNDATION & CONTEXT
-- **Concept (Precise Definition)**: Formal, technical definition using standard notation. — **(Essential)** (mathematical precision; one-line + formal equation if possible)
-- **Problem Domain**: The class of ML problems it addresses (classification, density estimation, control, etc.). — **(Essential)**
-- **What Problem Is Solved (Outcome)**: Concrete mapping from concept → measurable outcome (e.g., reduce error from X→Y, enable sample-efficient learning). — **(Essential)**
-- **How It Solves the Problem (Mechanism)**: Intuitive + formal explanation of the mechanism (one-paragraph + key equations). — **(Essential)**
-- **What's Unique / Differentiators**: Distinctive assumptions, guarantees, or capabilities vs alternatives. — **(Essential / Concise)**
-- **Historical Context & Lineage**: Short timeline of origins, major breakthroughs, and seminal papers. — **(Useful)**
-- **Relationship to Other Concepts**: Dependencies and conceptual neighbors (e.g., link to optimization/regularization/representation). — **(Essential)**
-- **Prerequisites & Assumptions**: Required math/ML background and explicit problem assumptions. — **(Essential)**
-- **User/Task Personas**: Typical use-cases and stakeholders (researchers vs engineers). — **(Useful)**
-- **Glossary: Key Terms & Notation**: Symbols, abbreviations, and conventions used in the document. — **(Essential)**
+## 🧠 CONCEPT & CONTEXT
+- **One-line Concept Statement** — **(Essential)**: single clear sentence describing the idea and its goal.
+- **Precise Definition & Notation** — **(Essential)**: formal math notation and a glossary of symbols.
+- **Problem Domain & Use Cases** — **(Essential)**: tasks it targets (classification, RL, density estimation) and concrete product examples.
+- **What Problem Is Solved (Measurable)** — **(Essential)**: map concept → specific, measurable outcomes (e.g., accuracy ↑ from A→B, sample-efficiency ↑, latency ↓).
+- **How It Solves the Problem (Intuition + Mechanism)** — **(Essential)**: short intuitive paragraph + core mechanism summary (cause → effect).
+- **Uniqueness / Differentiators** — **(Useful)**: key assumptions, guarantees, or capabilities that set it apart.
+- **When to Use / When NOT to Use** — **(Essential)**: practical applicability and clear anti-patterns.
+- **Prerequisites & Assumptions** — **(Essential)**: required math/ML knowledge and explicit problem assumptions.
 
-### 🧮 MATHEMATICAL FOUNDATIONS
-- **Required Math Background**: Linear algebra, probability, stats, optimization prerequisites. — **(Essential)**
-- **Core Formulations**: Central equations, objective functions, probabilistic models — with brief derivations. — **(Essential)**
-- **Optimization Landscape**: Loss geometry, convexity/non-convexity, stationary points. — **(Essential)**
-- **Probabilistic Foundations**: Likelihoods, priors, Bayesian view (if applicable). — **(Essential / If applicable)**
-- **Linear Algebra & Calculus Details**: Matrix/vector ops, Jacobians, Hessians, chain rule usage. — **(Essential / If applicable)**
-- **Information-Theoretic View**: Entropy, KL, mutual information where relevant. — **(Useful)**
-- **Key Proofs & Bounds**: Short proofs or references for convergence/bounds. — **(Useful / For rigorous study)**
+## 🔬 MATHEMATICAL & THEORETICAL CORE
+- **Required Math Background** — **(Essential)**: linear algebra, probability, optimization pieces you must know first.
+- **Core Objective(s) & Formulations** — **(Essential)**: loss functions, probabilistic models, and main equations.
+- **Derivations & Key Steps** — **(Essential)**: step-by-step derivations for main results; include simplified proofs or references.
+- **Optimization Landscape & Guarantees** — **(Essential)**: convexity/non-convexity, convergence rates, sample complexity where known.
+- **Theoretical Limits & Failure Modes** — **(Essential)**: cases where theory fails or bounds are loose.
 
-### 🔬 THEORETICAL FRAMEWORK
-- **Algorithmic Foundation**: Formal statement of core algorithm(s) and update rules. — **(Essential)**
-- **Guarantees & Bounds**: Convergence rates, sample complexity, generalization bounds. — **(Essential)** 
-- **Assumptions & Applicability Conditions**: When the guarantees hold and required regularity conditions. — **(Essential)**
-- **Limitations & Failure Modes**: Known theoretical weaknesses and counterexamples. — **(Essential)**
-- **Complexity Analysis**: Time/space complexity and scaling behavior. — **(Essential)**
-- **Generalization & Learning Theory Links**: VC/PAC/sample-complexity notes if relevant. — **(Useful)**
+## 💻 ALGORITHMIC SPECIFICATION
+- **Algorithm (Compact Pseudocode)** — **(Essential)**: inputs, outputs, complexity annotations.
+- **Key Hyperparameters & Defaults** — **(Essential)**: which knobs matter and sensible starting values.
+- **Numerical Stability & Practical Fixes** — **(Essential)**: normalization, clipping, regularizers, precision choices.
+- **Data Representation & Preprocessing** — **(Essential)**: required transforms, augmentation, feature engineering tips.
+- **Complexity Analysis (Time/Space)** — **(Essential)**: Big-O and bottleneck identification.
 
-### 🛠️ ALGORITHMIC IMPLEMENTATION
-- **Core Algorithm(s) (Pseudocode)**: Clear, compact pseudocode with inputs/outputs and complexity notes. — **(Essential)**
-- **Numerical Considerations**: Stability, conditioning, precision issues, and fixes (normalization, clipping). — **(Essential)**
-- **Initialization & Regularization**: Practical strategies and their theoretical rationale. — **(Essential / If applicable)**
-- **Hyperparameters & Tuning**: Key hyperparameters, default ranges, and tuning heuristics. — **(Essential)**
-- **Data Representations & Preprocessing**: Feature transforms, normalization, augmentation needs. — **(Essential)**
-- **Computational Optimizations**: Vectorization, batching, parallel & distributed strategies. — **(Useful)**
+## 🛠️ PRACTICAL IMPLEMENTATION & DEMO
+- **Recommended Frameworks** — **(Essential)**: e.g., PyTorch/JAX for research; TF/TF-Serving for production; scikit-learn for simple baselines.
+- **Minimal Working Example (Code Snippet)** — **(Essential)**: a runnable minimal example that trains and evaluates on a tiny dataset.
+- **Reproducibility Controls** — **(Essential)**: seed management, environment, deterministic ops, random-split protocol.
+- **Toy Experiments to Build Intuition** — **(Essential)**: 2–3 tiny experiments (toy dataset + expected behavior + visualization).
+- **Scaling Recipe** — **(Useful)**: steps to move from toy → benchmark → production (data, compute, distributed training).
+- **Common Implementation Pitfalls** — **(Essential)**: typical bugs and how to detect them.
 
-### ⚙️ PRACTICAL CONSIDERATIONS
-- **Frameworks & Tooling**: Recommended libraries (PyTorch, TensorFlow, JAX, scikit-learn) and why. — **(Essential)**
-- **Code Examples (Minimal)**: Short, copy-paste-ready snippet showing core usage. — **(Essential / Brief)**
-- **Hardware & Runtime**: GPU/CPU/TPU needs, memory footprint, mixed precision advice. — **(Useful)**
-- **Scalability Strategies**: Data/model parallelism, sharding, streaming data approaches. — **(Useful)**
-- **Common Implementation Pitfalls**: Practical gotchas and debugging tips. — **(Essential)**
+## 📊 EXPERIMENTAL PROTOCOL — *How to show it works*
+- **Datasets & Benchmarks** — **(Essential)**: recommended datasets (toy, benchmark, and realistic) and baseline comparisons.
+- **Train/Val/Test Splits & Protocol** — **(Essential)**: exact split strategy, cross-val or holdout, repeated runs.
+- **Primary Metrics & Secondary Metrics** — **(Essential)**: e.g., accuracy / F1 / p95 latency / memory; choose metrics that map to the problem statement.
+- **Ablation & Sensitivity Studies** — **(Essential)**: ablate components, vary hyperparams, show which parts matter.
+- **Statistical Rigor** — **(Essential)**: report mean ± std over N runs, significance testing, confidence intervals.
+- **Visualization Checklist** — **(Essential)**: loss curves, metric vs epoch, confusion matrix/ROC, calibration plots, example successes & failures.
+- **Failure Analysis** — **(Essential)**: systematic analysis of error cases and root-cause hypotheses.
 
-### 📊 EVALUATION & METRICS
-- **Evaluation Protocol**: Train/validation/test splits, sampling strategy, reproducibility notes. — **(Essential)**
-- **Primary Metrics**: Task-appropriate metrics (accuracy, F1, AUC, log-likelihood, BLEU, etc.) with interpretation. — **(Essential)**
-- **Robustness & Stress Tests**: Adversarial, OOD, and robustness evaluation plans. — **(Useful)** 
-- **Benchmarking & Baselines**: Standard benchmarks and strong baseline implementations. — **(Essential)**
-- **Statistical Validation**: Significance testing, confidence intervals, and error bars. — **(Useful)**
-- **Ablation & Sensitivity Studies**: How to measure component contributions and parameter sensitivity. — **(Useful)**
+## 🔍 COMPARISON & BASELINES
+- **Strong Baselines to Beat** — **(Essential)**: 2–3 well-tuned baselines (include simple heuristics).
+- **Comparison Table** — **(Essential)**: accuracy, latency, memory, data-efficiency, assumptions.
+- **Trade-off Analysis** — **(Essential)**: compute vs performance, sample-efficiency vs generalization, simplicity vs robustness.
 
-### 🔄 VARIANTS, EXTENSIONS & HYBRIDS
-- **Algorithm Variants**: Brief list of important variants and their tradeoffs. — **(Essential)**
-- **Hybrid Approaches**: Combinations with other models/techniques and when they help. — **(Useful)**
-- **Recent Improvements**: Incremental or architectural improvements (practical notes). — **(Useful)**
+## 🚀 DEPLOYMENT & PRODUCTION CHECKS
+- **Latency / Throughput Benchmarks** — **(Essential if production)**: per-inference latency, batch throughput, p99/p95.
+- **Resource & Cost Estimates** — **(Useful)**: GPU hours, memory footprint, recurring infra costs.
+- **Robustness & OOD Checks** — **(Essential)**: adversarial or distribution-shift tests, fallback behavior.
+- **Monitoring Signals** — **(Essential)**: metrics to watch in prod (drift, input distribution, performance).
+- **Explainability & Debugging Tools** — **(Useful)**: saliency maps, SHAP/LIME, counterfactuals where relevant.
 
-### 🎯 DESIGN CHOICES & TRADE-OFFS
-- **Trade-off Map**: Core trade-offs (bias vs variance, accuracy vs latency, sample-efficiency vs compute) with recommended choices. — **(Essential)**
-- **When to Use / When NOT to Use**: Concrete scenarios and counterexamples. — **(Essential)**
-- **Comparison Table**: Short table comparing with 2–3 competing methods on key axes. — **(Essential / Concise)**
-- **Parameter Sensitivity & Robust Defaults**: Which knobs matter most and safe defaults. — **(Useful)**
 
-### 📈 ADVANCED TOPICS & RESEARCH DIRECTIONS
-- **State of the Field**: Snapshot of maturity and active research threads. — **(Useful)**
-- **Open Problems**: Clear list of unsolved challenges worth investigating. — **(Useful)**
-- **Cross-Disciplinary Links**: Connections to control, optimization, information theory, causal inference. — **(Useful)**
+## CONTENT DEPTH AND STYLE REQUIREMENTS:
 
-### 💡 LEARNING & MASTERY GUIDANCE
-- **Learning Path**: Sequenced steps to master the concept (theory → implementation → experiments). — **(Essential)**
-- **Key Papers & Texts**: Must-read papers, surveys, and books (annotated). — **(Essential)**
-- **Hands-on Exercises**: Small projects, datasets, and experiments to practice core ideas. — **(Essential / Practical)**
-- **Interview & Teaching Notes**: Core questions, common derivations, and concise explanations for interviews. — **(Useful)**
-- **Common Misconceptions**: Short clarifications for frequent misunderstandings. — **(Essential)**
-
----
-**Usage guidance:**  
-1. Start with **Concept → Problem → What’s Unique → How it Solves** (narrative spine).  
-2. Fill **Mathematical Foundations + Theoretical Guarantees** next for rigor.  
-3. Add **Pseudocode, Code Snippets, and Evaluation** to make it reproducible.  
-4. Use **Variants/Trade-offs** for practical decision-making, and **Learning Guidance** for study.  
-Keep bullets to 1–3 lines, include key equations and one compact diagram (mechanism or model flow), and attach concrete example numbers (dataset sizes, runtimes, metric baselines) when available.
-
----
-
-## FORMATTING AND STYLE REQUIREMENTS:
-
-- **IMPORTANT**: Add one appropriate emoji at the start of EVERY main heading to make the content visually engaging
-- Use proper markdown formatting with multiple heading levels (##, ###, ####)
-- Include mathematical formulas using LaTeX notation in code blocks or inline math
-- Include algorithmic pseudocode using markdown code blocks
-- Use tables for comparisons, parameter specifications, or structured mathematical content
-- Include complexity analysis and performance characteristics with Big O notation where relevant
-- Use bullet points and numbered lists for clarity and organization
-- Bold important mathematical concepts, algorithms, and key terms
-- Create clear visual separation between major sections
-- Include step-by-step derivations for complex mathematical concepts
+1. **Academic Rigor**: Include mathematical proofs, derivations, and formal statements
+2. **Practical Insight**: Provide implementation details, code snippets, and real-world considerations  
+3. **Clear Explanations**: Balance technical depth with intuitive explanations
+4. **Comprehensive Coverage**: Address theoretical foundations, algorithms, and applications
+5. **Current Relevance**: Include recent developments and state-of-the-art techniques
 
 ## MATHEMATICAL RIGOR REQUIREMENTS:
 
-- **Mathematical Precision**: Use correct mathematical notation and terminology throughout
-- **Derivation Completeness**: Show key mathematical derivations step-by-step when they aid understanding
-- **Formula Explanation**: Explain what each variable and parameter represents
-- **Intuitive Explanations**: Provide intuitive explanations alongside mathematical formalism
-- **Numerical Examples**: Include concrete numerical examples to illustrate abstract concepts
-- **Graphical Intuition**: Describe visualizations that would help understand the concept
-- **Complexity Analysis**: Provide time and space complexity analysis for algorithms
-- **Convergence Analysis**: Discuss convergence properties and rates where applicable
+- **Precision**: Use correct mathematical notation and terminology
+- **Derivations**: Show key mathematical steps and reasoning
+- **Examples**: Include concrete numerical examples where helpful
+- **Complexity**: Analyze time/space complexity and convergence rates
+- **Bounds**: Discuss theoretical guarantees and limitations
 
-## STRUCTURE FLEXIBILITY:
+## CODE AND ALGORITHM REQUIREMENTS:
 
-You have complete freedom to organize the content using headings that make the most sense for this specific AI/ML topic. The headings provided above are guidelines - adapt, modify, merge, or create new headings as needed to best explain this particular concept. Some topics might need more focus on mathematical theory, others on practical implementation, others on recent research developments, etc.
+- Include pseudocode for core algorithms
+- Show practical implementation snippets
+- Explain algorithmic choices and optimizations
+- Discuss numerical considerations and stability
+- Provide complexity analysis
 
-## AUDIENCE CONSIDERATION:
+## AUDIENCE AND TONE:
 
-Write for a technical audience that includes:
-- AI/ML researchers and PhD students
-- Data scientists and machine learning engineers
-- Software engineers working on AI/ML systems
-- Graduate students studying AI/ML
-- Technical professionals transitioning into AI/ML
-- Anyone who needs to understand, implement, or research this AI/ML concept
+Write for ML practitioners, researchers, and advanced students who need:
+- Deep theoretical understanding
+- Practical implementation guidance  
+- Mathematical rigor and formal treatment
+- Current research context and developments
+- Clear explanations of complex concepts
 
-The explanation should be thorough enough that someone could understand not just WHAT this concept is, but WHY it works mathematically, HOW to implement it practically, and WHEN to apply it effectively. Include both theoretical depth and practical implementation guidance.
+The content should be comprehensive enough to serve as both a learning resource and implementation reference, combining academic depth with practical utility.
 
-Remember: This should read like a comprehensive AI/ML reference written by a world-class AI researcher and practitioner. Make it mathematically rigorous, conceptually clear, and practically useful while being engaging and well-structured. ALWAYS add appropriate emojis to ALL main headings for visual appeal. Include mathematical formulations, algorithmic details, and practical implementation guidance throughout.
+## FINAL FORMATTING CHECKLIST:
+
+Each section starts with an emoji followed by **Bold Title**
+Mathematical formulas use proper LaTeX notation ($...$)  
+Code blocks are properly formatted with language specification
+Complex equations are displayed on separate lines ($$...$$)
+Big O notation uses proper mathematical formatting: $O(n)$, $\Omega(n)$, $\Theta(n)$
+Content is structured with clear headings and subheadings
+Both theoretical depth and practical implementation details are included
+The explanation progresses logically from concepts to implementation to applications
+
+Remember: The frontend parsing system will automatically detect emoji-prefixed sections and create expandable cards. Each section should be substantial and self-contained while contributing to the overall comprehensive understanding of the topic.
 `;
 
 export async function GET(request: NextRequest) {
@@ -251,15 +245,15 @@ export async function GET(request: NextRequest) {
 
     const topic = topicsData[0] as AiMl;
 
-    // Step 3: Generate comprehensive AI/ML theory using Groq
+    // Step 3: Generate frontend-optimized AI/ML theory using Groq
     const prompt = createAiMlPrompt(topic.name);
-    console.log('Generating theory for AI/ML topic:', topic.id, '-', topic.name);
+    console.log('Generating frontend-optimized theory for AI/ML topic:', topic.id, '-', topic.name);
 
     const completion = await groq.chat.completions.create({
       messages: [
         {
           role: "system",
-          content: "You are a distinguished AI/ML researcher and professor with deep expertise in artificial intelligence, machine learning, mathematical foundations, and cutting-edge research. You create comprehensive, mathematically rigorous explanations that serve as authoritative academic and practical guides. Your explanations combine theoretical depth, mathematical rigor, algorithmic details, and practical implementation insights. You have complete autonomy to structure your response with appropriate headings that best explain the specific AI/ML concept. IMPORTANT: Add appropriate emojis at the start of ALL main headings to make the content visually engaging and easier to navigate. Include mathematical formulations, derivations, and algorithmic details throughout."
+          content: "You are a distinguished AI/ML researcher and professor creating comprehensive educational content. You must format ALL content to be compatible with a frontend parsing system that detects emoji-prefixed sections. CRITICAL: Every main section must start with an emoji followed by **bold text** for the title. Use proper LaTeX notation for math ($...$), format code blocks correctly, and create content that will be parsed into expandable cards. Your explanations must combine deep theoretical knowledge with practical implementation guidance, structured in a way that enhances learning through interactive exploration."
         },
         {
           role: "user",
@@ -273,7 +267,7 @@ export async function GET(request: NextRequest) {
 
     const generatedTheory = completion.choices[0]?.message?.content || '';
 
-    // Step 4: Save the comprehensive theory
+    // Step 4: Save the frontend-optimized theory
     const { error: updateError } = await supabase
       .from('ai_ml')
       .update({ 
@@ -303,6 +297,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Step 6: Analyze generated content for frontend compatibility
+    const emojiSectionCount = (generatedTheory.match(/^[🧠🤖💡📊🔬🎯📚🔧🌟💻🚀🎨🔍📈🧩⚡🎓📋🔮🌍🧪📐🔢💾🎪🏠🔒🚫🌈🎭🔥💎🎉🎪🧮⚛️🎯🔑🎪🔄⭐📝📌🛠️⚠️🎤🔗✅❌]+\s*\*\*[^*]+\*\*/gm) || []).length;
+    const mathFormulaCount = (generatedTheory.match(/\$[^$]+\$/g) || []).length;
+    const codeBlockCount = (generatedTheory.match(/```[\s\S]*?```/g) || []).length;
+
     return NextResponse.json({
       success: true,
       topicId: topic.id,
@@ -310,10 +309,16 @@ export async function GET(request: NextRequest) {
       theory: generatedTheory,
       previousCount: currentCount,
       newCount: topic.id,
-      theoryLength: generatedTheory.length,
-      wordCount: generatedTheory.split(' ').length,
-      estimatedReadTime: Math.ceil(generatedTheory.split(' ').length / 200),
-      message: 'Comprehensive AI/ML theory generated and saved successfully'
+      contentAnalysis: {
+        theoryLength: generatedTheory.length,
+        wordCount: generatedTheory.split(' ').length,
+        estimatedReadTime: Math.ceil(generatedTheory.split(' ').length / 200),
+        emojiSections: emojiSectionCount,
+        mathFormulas: mathFormulaCount,
+        codeBlocks: codeBlockCount,
+        frontendCompatible: emojiSectionCount > 0
+      },
+      message: 'Frontend-optimized AI/ML theory generated and saved successfully'
     });
 
   } catch (error) {
@@ -419,7 +424,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Helper function to process individual AI/ML topics
+// Helper function to process individual AI/ML topics with frontend optimization
 async function processAiMlTopic(topicId: number) {
   const { data: topicData, error: topicError } = await supabase
     .from('ai_ml')
@@ -439,7 +444,7 @@ async function processAiMlTopic(topicId: number) {
     messages: [
       {
         role: "system",
-        content: "You are a distinguished AI/ML researcher and professor creating comprehensive theoretical and practical reference materials. You structure content with clear, logical headings that best explain each specific AI/ML concept. Your explanations combine deep mathematical foundations with algorithmic insights and practical implementation guidance. IMPORTANT: Add appropriate emojis at the start of ALL main headings to make the content visually engaging. Include mathematical formulations, derivations, and algorithmic details throughout your explanations."
+        content: "You are a distinguished AI/ML researcher creating educational content optimized for interactive learning. Format ALL content for frontend parsing: every main section must start with emoji + **bold title**, use LaTeX math notation ($...$), and create comprehensive content that will become expandable learning cards. Combine theoretical rigor with practical implementation guidance."
       },
       {
         role: "user",
@@ -465,14 +470,25 @@ async function processAiMlTopic(topicId: number) {
     throw new Error(`Failed to save theory for AI/ML topic ${topicId}`);
   }
 
+  // Analyze content for frontend compatibility
+  const emojiSectionCount = (generatedTheory.match(/^[🧠🤖💡📊🔬🎯📚🔧🌟💻🚀🎨🔍📈🧩⚡🎓📋🔮🌍🧪📐🔢💾🎪🏠🔒🚫🌈🎭🔥💎🎉🎪🧮⚛️🎯🔑🎪🔄⭐📝📌🛠️⚠️🎤🔗✅❌]+\s*\*\*[^*]+\*\*/gm) || []).length;
+  const mathFormulaCount = (generatedTheory.match(/\$[^$]+\$/g) || []).length;
+  const codeBlockCount = (generatedTheory.match(/```[\s\S]*?```/g) || []).length;
+
   return {
     success: true,
     topicId,
     topicName: topic.name,
-    theoryLength: generatedTheory.length,
-    wordCount: generatedTheory.split(' ').length,
-    estimatedReadTime: Math.ceil(generatedTheory.split(' ').length / 200),
-    message: 'AI/ML theory generated successfully'
+    contentAnalysis: {
+      theoryLength: generatedTheory.length,
+      wordCount: generatedTheory.split(' ').length,
+      estimatedReadTime: Math.ceil(generatedTheory.split(' ').length / 200),
+      emojiSections: emojiSectionCount,
+      mathFormulas: mathFormulaCount,
+      codeBlocks: codeBlockCount,
+      frontendCompatible: emojiSectionCount > 0
+    },
+    message: 'Frontend-optimized AI/ML theory generated successfully'
   };
 }
 
@@ -502,7 +518,7 @@ export async function PUT(request: NextRequest) {
       const result = await processAiMlTopic(topicId);
       return NextResponse.json({
         ...result,
-        message: 'AI/ML theory regenerated successfully'
+        message: 'Frontend-optimized AI/ML theory regenerated successfully'
       });
     }
 

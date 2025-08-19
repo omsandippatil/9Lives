@@ -50,7 +50,7 @@ interface CatActivity {
   tech_topics_covered: number;
   aptitude_questions_attempted: number;
   hr_questions_attempted: number;
-  artificial_intelligence_topics_covered: number;
+  ai_ml_covered: number;
   system_design_covered: number;
   java_lang_covered: number;
   python_lang_covered: number;
@@ -334,7 +334,7 @@ async function fetchCatActivities(): Promise<CatActivity[]> {
         tech_topics_covered: dailyActivity?.tech_topics_covered || 0,
         aptitude_questions_attempted: dailyActivity?.aptitude_questions_attempted || 0,
         hr_questions_attempted: dailyActivity?.hr_questions_attempted || 0,
-        artificial_intelligence_topics_covered: dailyActivity?.artificial_intelligence_topics_covered || 0,
+        ai_ml_covered: dailyActivity?.ai_ml_covered || 0,
         system_design_covered: dailyActivity?.system_design_covered || 0,
         java_lang_covered: dailyActivity?.java_lang_covered || 0,
         python_lang_covered: dailyActivity?.python_lang_covered || 0,
@@ -352,7 +352,7 @@ async function fetchCatActivities(): Promise<CatActivity[]> {
       tech_topics_covered: 0,
       aptitude_questions_attempted: 0,
       hr_questions_attempted: 0,
-      artificial_intelligence_topics_covered: 0,
+      ai_ml_covered: 0,
       system_design_covered: 0,
       java_lang_covered: 0,
       python_lang_covered: 0,
@@ -387,7 +387,7 @@ async function generateBalancedCatMomMessage(catActivities: CatActivity[], topic
       { name: 'Python Topics', completed: cat.python_lang_covered, target: DAILY_GOALS.python },
       { name: 'SQL Topics', completed: cat.sql_lang_covered, target: DAILY_GOALS.sql },
       { name: 'HR Questions', completed: cat.hr_questions_attempted, target: DAILY_GOALS.hr },
-      { name: 'AI Topics', completed: cat.artificial_intelligence_topics_covered, target: DAILY_GOALS.ai },
+      { name: 'AI Topics', completed: cat.ai_ml_covered, target: DAILY_GOALS.ai },
       { name: 'System Design', completed: cat.system_design_covered, target: DAILY_GOALS.systemDesign }
     ];
     
