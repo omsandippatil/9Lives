@@ -390,6 +390,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('😺')
   const [currentQuote, setCurrentQuote] = useState('')
+  const [catClickCount, setCatClickCount] = useState(0)
   const router = useRouter()
 
   // Cat animation cycle
@@ -414,6 +415,16 @@ export default function HomePage() {
   useEffect(() => {
     loadUserProfile()
   }, [])
+
+  // Handle cat emoji click
+  const handleCatClick = () => {
+    const newClickCount = catClickCount + 1
+    setCatClickCount(newClickCount)
+    
+    if (newClickCount === 9) {
+      router.push('/about-us')
+    }
+  }
 
   const loadUserProfile = async () => {
     try {
@@ -659,7 +670,12 @@ export default function HomePage() {
       <main className="max-w-7xl mx-auto">
         {/* Welcome Section */}
         <div className="text-center py-8">
-          <div className="text-6xl mb-4 transition-all duration-500">{catAnimation}</div>
+          <div 
+            className="text-6xl mb-4 transition-all duration-500 cursor-pointer hover:scale-110" 
+            onClick={handleCatClick}
+          >
+            {catAnimation}
+          </div>
           <h2 className="text-3xl font-light mb-3">
             Welcome back, {displayName}!
           </h2>
