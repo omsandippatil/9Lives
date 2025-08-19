@@ -2,36 +2,36 @@ name: Momma Meow
 
 on:
   schedule:
-    # 6:30 AM UTC
-    - cron: "30 6 * * *"
-    # 6:00 PM UTC
-    - cron: "0 18 * * *"
-    # Every 15 minutes
-    - cron: "*/15 * * * *"
-    # 10:00 PM UTC
-    - cron: "0 22 * * *"
+    # 6:30 AM IST = 1:00 AM UTC
+    - cron: "0 1 * * *"
+    # 6:00 PM IST = 12:30 PM UTC
+    - cron: "30 12 * * *"
+    # Every 30 minutes
+    - cron: "*/30 * * * *"
+    # 10:00 PM IST = 4:30 PM UTC
+    - cron: "30 16 * * *"
   workflow_dispatch: # Allows manual trigger
 
 jobs:
   api-calls:
     runs-on: ubuntu-latest
     steps:
-      - name: Call Daily Topics API (6:30 AM)
-        if: github.event.schedule == '30 6 * * *'
+      - name: Call Daily Topics API (6:30 AM IST)
+        if: github.event.schedule == '0 1 * * *'
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/daily-topics?api_key=${{ secrets.API_KEY }}"
 
-      - name: Call Reminder API (6:00 PM)
-        if: github.event.schedule == '0 18 * * *'
+      - name: Call Reminder API (6:00 PM IST)
+        if: github.event.schedule == '30 12 * * *'
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/reminder?api_key=${{ secrets.API_KEY }}"
 
-      - name: Call Reply API (Every 15 mins)
-        if: github.event.schedule == '*/15 * * * *'
+      - name: Call Reply API (Every 30 mins)
+        if: github.event.schedule == '*/30 * * * *'
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/reply?api_key=${{ secrets.API_KEY }}"
 
-      - name: Call Roast API (10:00 PM)
-        if: github.event.schedule == '0 22 * * *'
+      - name: Call Roast API (10:00 PM IST)
+        if: github.event.schedule == '30 16 * * *'
         run: |
           curl -X GET "https://9-lives.vercel.app/api/send/roast?api_key=${{ secrets.API_KEY }}"
