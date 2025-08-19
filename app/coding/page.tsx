@@ -62,7 +62,7 @@ export default function NineLives() {
   const [isShuffling, setIsShuffling] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [catAnimation, setCatAnimation] = useState('😺');
-  const [userCodingProgress, setUserCodingProgress] = useState<number>(0);
+  const [userCodingProgress, setUserCodingProgress] = useState<number>(-1); // Initialize as -1 to indicate loading
   const router = useRouter();
 
   // Cat animation cycle
@@ -80,11 +80,14 @@ export default function NineLives() {
 
   // Fetch profile and coding progress on component mount
   useEffect(() => {
-    fetchUserCodingProgress();
-    fetchProfile();
+    const initializeData = async () => {
+      await fetchUserCodingProgress();
+      await fetchProfile();
+    };
+    initializeData();
   }, []);
 
-  // Fetch next question when coding progress is loaded
+  // Fetch next question when coding progress is loaded (and not -1)
   useEffect(() => {
     if (userCodingProgress >= 0) {
       fetchNextQuestion();
@@ -120,16 +123,17 @@ export default function NineLives() {
 
       if (userError || !userData) {
         console.error('Failed to fetch user coding progress:', userError)
-        setUserCodingProgress(0); // Default to 0 if error
+        setUserCodingProgress(0);
         return
       }
 
-      console.log('User coding progress loaded:', userData.coding_questions_attempted)
-      setUserCodingProgress(userData.coding_questions_attempted || 0);
+      const progress = userData.coding_questions_attempted || 0;
+      console.log('User coding progress loaded:', progress)
+      setUserCodingProgress(progress);
 
     } catch (err) {
       console.error('Error fetching coding progress:', err)
-      setUserCodingProgress(0); // Default to 0 if error
+      setUserCodingProgress(0);
     }
   };
 
@@ -159,16 +163,18 @@ export default function NineLives() {
       setLoading(true);
       setError(null);
       
-      // Calculate the next question ID based on user's progress
+      // Calculate the NEXT question ID (attempted + 1)
       const nextQuestionId = userCodingProgress + 1;
       
-      console.log('Fetching next question with ID:', nextQuestionId);
+      console.log(`Fetching next question: User has attempted ${userCodingProgress} questions, so next question should be #${nextQuestionId}`);
       
-      // Fetch the specific next question
+      // First, try to fetch the specific next question
       const response = await fetch(`/api/get/coding?type=specific&question_id=${nextQuestionId}`);
       const data: ApiResponse = await response.json();
       
       if (data.success && data.question) {
+        console.log(`Successfully fetched question #${data.question.sr_no}`);
+        
         // Add progress info to the question
         const questionWithProgress = {
           ...data.question,
@@ -179,11 +185,15 @@ export default function NineLives() {
         };
         setCurrentQuestion(questionWithProgress);
       } else {
+        console.log(`No specific question found for ID ${nextQuestionId}, trying fallback...`);
+        
         // If no specific question found, try the regular endpoint as fallback
         const fallbackResponse = await fetch('/api/get/coding');
         const fallbackData: ApiResponse = await fallbackResponse.json();
         
         if (fallbackData.success && fallbackData.question) {
+          console.log(`Fallback question fetched: #${fallbackData.question.sr_no}`);
+          
           const questionWithProgress = {
             ...fallbackData.question,
             progress: {
@@ -193,11 +203,16 @@ export default function NineLives() {
           };
           setCurrentQuestion(questionWithProgress);
         } else {
-          setError(data.message || data.error || 'No more questions available');
+          // If we've completed all questions, show completion message
+          if (userCodingProgress >= 200) {
+            setError('🎉 Congratulations! You\'ve completed all 200 questions! You can still review previous questions or shuffle for practice.');
+          } else {
+            setError(data.message || data.error || `Question #${nextQuestionId} not found. You may have reached the end of available questions.`);
+          }
         }
       }
     } catch (err) {
-      setError('Network error occurred');
+      setError('Network error occurred while fetching next question');
       console.error('Error fetching question:', err);
     } finally {
       setLoading(false);
@@ -223,7 +238,7 @@ export default function NineLives() {
         };
         setCurrentQuestion(questionWithProgress);
       } else {
-        setError(data.message || data.error || 'No solved questions available for shuffle');
+        setError(data.message || data.error || 'No questions available for shuffle');
       }
     } catch (err) {
       setError('Failed to shuffle question');
@@ -288,13 +303,15 @@ export default function NineLives() {
   const getQuestionStatusInfo = () => {
     if (!currentQuestion) return { status: '', color: 'text-gray-600', icon: '🎯' };
     
-    if (currentQuestion.sr_no <= userCodingProgress) {
+    const nextQuestionId = userCodingProgress + 1;
+    
+    if (currentQuestion.sr_no < nextQuestionId) {
       return { 
         status: 'COMPLETED - Review Mode', 
         color: 'text-green-600', 
         icon: '✅' 
       };
-    } else if (currentQuestion.sr_no === userCodingProgress + 1) {
+    } else if (currentQuestion.sr_no === nextQuestionId) {
       return { 
         status: 'NEXT CHALLENGE - Ready to Pounce!', 
         color: 'text-blue-600', 
@@ -302,14 +319,15 @@ export default function NineLives() {
       };
     } else {
       return { 
-        status: 'FUTURE QUESTION - Available Now', 
-        color: 'text-gray-600', 
-        icon: '😺' 
+        status: 'FUTURE QUESTION - Available for Practice', 
+        color: 'text-orange-600', 
+        icon: '🔮' 
       };
     }
   };
 
-  if (loading) {
+  // Show loading state while fetching user progress
+  if (loading || userCodingProgress === -1) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
@@ -333,7 +351,7 @@ export default function NineLives() {
         <div className="max-w-7xl mx-auto flex justify-between items-center px-6">
           <div className="flex items-center gap-3">
             <span className="text-2xl animate-pulse">🐾</span>
-            <h1 className="text-2xl font-light">9lives</h1>
+            <h1 className="text-2xl font-light"><a href='/home'>9lives</a></h1>
           </div>
           
           <div className="flex items-center gap-8">
@@ -387,16 +405,16 @@ export default function NineLives() {
             <div>
               <h2 className="text-xl font-light">Your Next Challenge</h2>
               <p className="text-sm text-gray-600 font-light">
-                {userCodingProgress > 0 ? `${userCodingProgress} questions conquered` : 'Ready to begin your coding journey'}
+                {userCodingProgress > 0 
+                  ? `${userCodingProgress} questions conquered • Next up: Question #${userCodingProgress + 1}` 
+                  : 'Ready to begin your coding journey with Question #1'}
               </p>
             </div>
           </div>
           
-          {currentQuestion?.progress && (
-            <div className="text-xs bg-gray-50 px-3 py-1 border border-gray-200 font-light">
-              Next: Question #{currentQuestion.progress.current_question} • {currentQuestion.progress.questions_completed} completed
-            </div>
-          )}
+          <div className="text-xs bg-gray-50 px-3 py-1 border border-gray-200 font-light">
+            Target: Question #{userCodingProgress + 1} • {userCodingProgress} completed
+          </div>
         </div>
 
         <div className="px-6">
@@ -427,6 +445,8 @@ export default function NineLives() {
                   ? 'border-green-500 bg-green-50' 
                   : statusInfo.color.includes('blue')
                   ? 'border-blue-500 bg-blue-50'
+                  : statusInfo.color.includes('orange')
+                  ? 'border-orange-500 bg-orange-50'
                   : 'border-gray-500 bg-gray-50'
               }`}>
                 <div className="flex items-center gap-3">
@@ -436,11 +456,11 @@ export default function NineLives() {
                       {statusInfo.status}
                     </p>
                     <p className="text-xs text-gray-600 font-light mt-1">
-                      {currentQuestion.sr_no <= userCodingProgress 
+                      {currentQuestion.sr_no < userCodingProgress + 1
                         ? "You've already solved this! Click to review your solution or practice again."
                         : currentQuestion.sr_no === userCodingProgress + 1
                         ? "This is your next challenge! Time to level up your skills."
-                        : "All questions are available to practice anytime!"}
+                        : "This is a future question available for practice!"}
                     </p>
                   </div>
                 </div>
@@ -455,11 +475,11 @@ export default function NineLives() {
                   <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className={`text-xs px-3 py-1 font-light uppercase tracking-wider ${
-                        currentQuestion.sr_no <= userCodingProgress
+                        currentQuestion.sr_no < userCodingProgress + 1
                           ? 'bg-green-600 text-white'
                           : currentQuestion.sr_no === userCodingProgress + 1
                           ? 'bg-blue-600 text-white'
-                          : 'bg-black text-white'
+                          : 'bg-orange-600 text-white'
                       }`}>
                         QUESTION #{currentQuestion.sr_no}
                       </span>
@@ -468,9 +488,14 @@ export default function NineLives() {
                           NEXT UP! 🎯
                         </span>
                       )}
-                      {currentQuestion.sr_no <= userCodingProgress && (
+                      {currentQuestion.sr_no < userCodingProgress + 1 && (
                         <span className="text-xs bg-green-100 text-green-600 px-2 py-1 font-light border border-green-200">
                           COMPLETED ✅
+                        </span>
+                      )}
+                      {currentQuestion.sr_no > userCodingProgress + 1 && (
+                        <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 font-light border border-orange-200">
+                          FUTURE 🔮
                         </span>
                       )}
                     </div>
@@ -490,9 +515,11 @@ export default function NineLives() {
                   
                   <div className="flex items-center justify-between text-xs text-gray-400 font-light">
                     <span>
-                      {currentQuestion.sr_no <= userCodingProgress 
+                      {currentQuestion.sr_no < userCodingProgress + 1
                         ? "Click to review and practice →"
-                        : "Click to start solving →"}
+                        : currentQuestion.sr_no === userCodingProgress + 1
+                        ? "Click to start solving →"
+                        : "Click to practice ahead →"}
                     </span>
                     <span>Added: {new Date(currentQuestion.created_at).toLocaleDateString()}</span>
                   </div>
@@ -524,7 +551,7 @@ export default function NineLives() {
                   <span className="text-xl">⏭️</span>
                   <div className="text-left">
                     <div className="font-light text-sm uppercase tracking-wider">NEXT CHALLENGE</div>
-                    <div className="text-xs opacity-70 font-light">Continue journey</div>
+                    <div className="text-xs opacity-70 font-light">Question #{userCodingProgress + 1}</div>
                   </div>
                 </button>
 
@@ -552,7 +579,7 @@ export default function NineLives() {
                     </div>
                     <div>
                       <div className="text-2xl font-light mb-1 text-blue-600">{userCodingProgress + 1}</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wider">Next</div>
+                      <div className="text-xs text-gray-500 uppercase tracking-wider">Next Target</div>
                     </div>
                     <div>
                       <div className="text-2xl font-light mb-1 text-gray-600">200</div>

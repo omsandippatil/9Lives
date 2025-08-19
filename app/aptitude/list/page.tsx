@@ -263,7 +263,7 @@ export default function AptitudeListPage() {
             >
               🐾
             </button>
-            <h1 className="text-xl font-light">9lives <span className="text-xs text-gray-400">topics</span></h1>
+            <h1 className="text-xl font-light"><a href='/home'>9lives</a> <span className="text-xs text-gray-400">topics</span></h1>
           </div>
           
           <div className="flex items-center gap-6">

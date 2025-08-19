@@ -326,7 +326,7 @@ export default function AptitudeNineLives() {
           <div className="flex items-center gap-3">
             <span className="text-2xl animate-pulse">🐾</span>
             <a href="/home">
-            <h1 className="text-2xl font-light">9lives <span className="text-sm text-gray-400">aptitude</span></h1>
+            <h1 className="text-2xl font-light"><a href='/home'>9lives</a> <span className="text-sm text-gray-400">aptitude</span></h1>
             </a>
           </div>
           

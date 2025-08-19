@@ -388,7 +388,7 @@ export default function ActualCoding({
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <span className="text-xl animate-pulse">🐾</span>
-            <h1 className="text-xl font-light">9lives</h1>
+            <h1 className="text-xl font-light"><a href='/home'>9lives</a></h1>
           </div>
           
           <div className="flex items-center gap-6">

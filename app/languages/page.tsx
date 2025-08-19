@@ -87,7 +87,7 @@ export default function LanguagesPage() {
             className="flex items-center gap-3 text-2xl"
           >
             <span className="animate-pulse">🐾</span>
-            <h1 className="font-light">9Lives</h1>
+            <h1 className="font-light"><a href='/home'>9lives</a></h1>
           </button>
         </div>
       </header>
