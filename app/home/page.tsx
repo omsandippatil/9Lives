@@ -538,20 +538,18 @@ export default function HomePage() {
            profile.system_design_covered
   }
 
-  // Updated progress card navigation with next question ID
+  // Updated progress card navigation to category pages only (no specific IDs)
   const handleProgressCardClick = (category: string) => {
-    if (!profile) return
-    
     const routes = {
-      coding: `/coding/${profile.coding_questions_attempted + 1}`,
-      aptitude: `/aptitude/${profile.aptitude_questions_attempted + 1}`,
-      languages: `/languages`,
-      technical: `/technical/${profile.technical_questions_attempted + 1}`,
-      hr: `/hr/${profile.hr_questions_attempted + 1}`,
-      fundamental: `/fundamental/${profile.fundamental_questions_attempted + 1}`,
-      ai_ml: `/ai-ml/${profile.ai_ml_covered + 1}`,
-      system_design: `/system-design/${profile.system_design_covered + 1}`,
-      tech_topics: `/tech-topic/${profile.tech_topics_covered + 1}`
+      coding: '/coding',
+      aptitude: '/aptitude',
+      languages: '/languages',
+      technical: '/technical',
+      hr: '/hr',
+      fundamental: '/fundamental',
+      ai_ml: '/ai-ml',
+      system_design: '/system-design',
+      tech_topics: '/tech-topic'
     }
     
     const route = routes[category as keyof typeof routes]

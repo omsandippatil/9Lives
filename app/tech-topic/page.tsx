@@ -117,7 +117,7 @@ export default function TechTopicsPage() {
 
   const handleTopicClick = (topicId: number) => {
     if (isTopicAccessible(topicId)) {
-      router.push(`/tech-topics/${topicId}`)
+      router.push(`/tech-topic/${topicId}`)
     }
   }
 

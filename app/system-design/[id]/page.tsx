@@ -656,7 +656,7 @@ export default function SystemDesignPage() {
       if (!hasAttempted) {
         updateUserProgress()
         // Call API directly when timer ends
-        fetch('/api/update/today?inc=system_designs_covered', {
+        fetch('/api/update/today?inc=system_design_covered', {
           method: 'POST',
           credentials: 'include'
         }).catch(console.error)
