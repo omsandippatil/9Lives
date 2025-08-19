@@ -15,7 +15,7 @@ interface UserProfile {
   python_lang_covered: number
   sql_lang_covered: number
   hr_questions_attempted: number
-  ai_ml: number
+  ai_ml_covered: number
   system_design_covered: number
   tech_topics_covered: number
   current_streak: [string, number] // [date, days] format
@@ -32,7 +32,7 @@ interface TodayProgress {
   tech_topics_covered: number
   aptitude_questions_attempted: number
   hr_questions_attempted: number
-  ai_ml: number
+  ai_ml_covered: number
   system_design_covered: number
   java_lang_covered: number
   python_lang_covered: number
@@ -46,6 +46,7 @@ interface TodoItem {
   target: number
   completed: number
   isCompleted: boolean
+  route: string
 }
 
 interface ProgressCardProps {
@@ -177,7 +178,7 @@ function OverallProgressBar({ profile }: { profile: UserProfile }) {
     Math.floor(profile.technical_questions_attempted / 50) +
     profile.hr_questions_attempted +
     Math.floor(profile.fundamental_questions_attempted / 50) +
-    profile.ai_ml +
+    profile.ai_ml_covered +
     profile.system_design_covered +
     profile.tech_topics_covered
   
@@ -223,7 +224,7 @@ function OverallProgressBar({ profile }: { profile: UserProfile }) {
   )
 }
 
-function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, todayProgress: TodayProgress | null }) {
+function DailyTodoList({ profile, todayProgress, router }: { profile: UserProfile, todayProgress: TodayProgress | null, router: any }) {
   const todoItems: TodoItem[] = [
     {
       id: 'coding',
@@ -231,7 +232,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '💻',
       target: 5,
       completed: todayProgress?.coding_questions_attempted || 0,
-      isCompleted: (todayProgress?.coding_questions_attempted || 0) >= 5
+      isCompleted: (todayProgress?.coding_questions_attempted || 0) >= 5,
+      route: `/coding/${profile.coding_questions_attempted + 1}`
     },
     {
       id: 'aptitude',
@@ -239,7 +241,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '🧮',
       target: 50,
       completed: todayProgress?.aptitude_questions_attempted || 0,
-      isCompleted: (todayProgress?.aptitude_questions_attempted || 0) >= 50
+      isCompleted: (todayProgress?.aptitude_questions_attempted || 0) >= 50,
+      route: `/aptitude/${profile.aptitude_questions_attempted + 1}`
     },
     {
       id: 'java',
@@ -247,7 +250,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '☕',
       target: 1,
       completed: todayProgress?.java_lang_covered || 0,
-      isCompleted: (todayProgress?.java_lang_covered || 0) >= 1
+      isCompleted: (todayProgress?.java_lang_covered || 0) >= 1,
+      route: `/languages/java/${profile.java_lang_covered + 1}`
     },
     {
       id: 'python',
@@ -255,7 +259,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '🐍',
       target: 1,
       completed: todayProgress?.python_lang_covered || 0,
-      isCompleted: (todayProgress?.python_lang_covered || 0) >= 1
+      isCompleted: (todayProgress?.python_lang_covered || 0) >= 1,
+      route: `/languages/python/${profile.python_lang_covered + 1}`
     },
     {
       id: 'sql',
@@ -263,7 +268,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '🗃️',
       target: 1,
       completed: todayProgress?.sql_lang_covered || 0,
-      isCompleted: (todayProgress?.sql_lang_covered || 0) >= 1
+      isCompleted: (todayProgress?.sql_lang_covered || 0) >= 1,
+      route: `/languages/sql/${profile.sql_lang_covered + 1}`
     },
     {
       id: 'hr',
@@ -271,15 +277,17 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '👥',
       target: 1,
       completed: todayProgress?.hr_questions_attempted || 0,
-      isCompleted: (todayProgress?.hr_questions_attempted || 0) >= 1
+      isCompleted: (todayProgress?.hr_questions_attempted || 0) >= 1,
+      route: `/hr/${profile.hr_questions_attempted + 1}`
     },
     {
       id: 'ai',
       title: 'AI/ML Topic',
       emoji: '🤖',
       target: 1,
-      completed: todayProgress?.ai_ml || 0,
-      isCompleted: (todayProgress?.ai_ml || 0) >= 1
+      completed: todayProgress?.ai_ml_covered || 0,
+      isCompleted: (todayProgress?.ai_ml_covered || 0) >= 1,
+      route: `/ai-ml/${profile.ai_ml_covered + 1}`
     },
     {
       id: 'system_design',
@@ -287,7 +295,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '📐',
       target: 1,
       completed: todayProgress?.system_design_covered || 0,
-      isCompleted: (todayProgress?.system_design_covered || 0) >= 1
+      isCompleted: (todayProgress?.system_design_covered || 0) >= 1,
+      route: `/system-design/${profile.system_design_covered + 1}`
     },
     {
       id: 'technical',
@@ -295,7 +304,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '⚙️',
       target: 50,
       completed: todayProgress?.technical_questions_attempted || 0,
-      isCompleted: (todayProgress?.technical_questions_attempted || 0) >= 50
+      isCompleted: (todayProgress?.technical_questions_attempted || 0) >= 50,
+      route: `/technical/${profile.technical_questions_attempted + 1}`
     },
     {
       id: 'fundamental',
@@ -303,7 +313,8 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
       emoji: '📚',
       target: 50,
       completed: todayProgress?.fundamental_questions_attempted || 0,
-      isCompleted: (todayProgress?.fundamental_questions_attempted || 0) >= 50
+      isCompleted: (todayProgress?.fundamental_questions_attempted || 0) >= 50,
+      route: `/fundamental/${profile.fundamental_questions_attempted + 1}`
     }
   ]
 
@@ -319,12 +330,12 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
             {completedCount}/{totalCount} completed • Keep those paws busy!
           </p>
         </div>
-
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {todoItems.map((item) => (
             <div
               key={item.id}
-              className={`p-4 bg-white border transition-all duration-300 hover:shadow-md ${
+              onClick={() => router.push(item.route)}
+              className={`p-4 bg-white border transition-all duration-300 hover:shadow-md cursor-pointer ${
                 item.isCompleted 
                   ? 'border-green-200 bg-green-50' 
                   : 'border-gray-200 hover:border-gray-300'
@@ -359,7 +370,6 @@ function DailyTodoList({ profile, todayProgress }: { profile: UserProfile, today
             </div>
           ))}
         </div>
-
         <div className="text-center mt-6">
           <p className="text-xs text-gray-400 font-mono">
             {completedCount === totalCount 
@@ -439,7 +449,7 @@ export default function HomePage() {
           python_lang_covered,
           sql_lang_covered,
           hr_questions_attempted,
-          ai_ml,
+          ai_ml_covered,
           system_design_covered,
           tech_topics_covered,
           current_streak,
@@ -472,7 +482,7 @@ export default function HomePage() {
           tech_topics_covered,
           aptitude_questions_attempted,
           hr_questions_attempted,
-          ai_ml,
+          ai_ml_covered,
           system_design_covered,
           java_lang_covered,
           python_lang_covered,
@@ -524,8 +534,30 @@ export default function HomePage() {
            Math.floor(profile.fundamental_questions_attempted / 50) +
            Math.floor(profile.aptitude_questions_attempted / 50) +
            profile.hr_questions_attempted +
-           profile.ai_ml +
+           profile.ai_ml_covered +
            profile.system_design_covered
+  }
+
+  // Updated progress card navigation with next question ID
+  const handleProgressCardClick = (category: string) => {
+    if (!profile) return
+    
+    const routes = {
+      coding: `/coding/${profile.coding_questions_attempted + 1}`,
+      aptitude: `/aptitude/${profile.aptitude_questions_attempted + 1}`,
+      languages: `/languages`,
+      technical: `/technical/${profile.technical_questions_attempted + 1}`,
+      hr: `/hr/${profile.hr_questions_attempted + 1}`,
+      fundamental: `/fundamental/${profile.fundamental_questions_attempted + 1}`,
+      ai_ml: `/ai-ml/${profile.ai_ml_covered + 1}`,
+      system_design: `/system-design/${profile.system_design_covered + 1}`,
+      tech_topics: `/tech-topic/${profile.tech_topics_covered + 1}`
+    }
+    
+    const route = routes[category as keyof typeof routes]
+    if (route) {
+      router.push(route)
+    }
   }
 
   if (loading) {
@@ -649,7 +681,7 @@ export default function HomePage() {
             current={profile.coding_questions_attempted}
             total={200}
             subtitle="Claw your way through algorithms"
-            onClick={() => router.push('/coding')}
+            onClick={() => handleProgressCardClick('coding')}
           />
           
           <ProgressCard
@@ -658,7 +690,7 @@ export default function HomePage() {
             current={Math.floor(profile.aptitude_questions_attempted / 50)}
             total={50}
             subtitle="Sharp as a cat's claw logic"
-            onClick={() => router.push('/aptitude')}
+            onClick={() => handleProgressCardClick('aptitude')}
           />
 
           <ProgressCard
@@ -667,7 +699,7 @@ export default function HomePage() {
             current={totalLanguagesCovered}
             total={150}
             subtitle="Java, Python & SQL mastery meow-nificent"
-            onClick={() => router.push('/languages')}
+            onClick={() => handleProgressCardClick('languages')}
           />
           
           <ProgressCard
@@ -676,7 +708,7 @@ export default function HomePage() {
             current={Math.floor(profile.technical_questions_attempted / 50)}
             total={50}
             subtitle="Technical prowess that's paw-some"
-            onClick={() => router.push('/technical')}
+            onClick={() => handleProgressCardClick('technical')}
           />
 
           <ProgressCard
@@ -685,7 +717,7 @@ export default function HomePage() {
             current={profile.hr_questions_attempted}
             total={50}
             subtitle="People skills with purr-sonality"
-            onClick={() => router.push('/hr')}
+            onClick={() => handleProgressCardClick('hr')}
           />
           
           <ProgressCard
@@ -694,16 +726,16 @@ export default function HomePage() {
             current={Math.floor(profile.fundamental_questions_attempted / 50)}
             total={50}
             subtitle="Master the cat-egories of knowledge"
-            onClick={() => router.push('/fundamental')}
+            onClick={() => handleProgressCardClick('fundamental')}
           />
 
           <ProgressCard
             title="AI & ML Topics"
             emoji="🤖"
-            current={profile.ai_ml}
+            current={profile.ai_ml_covered}
             total={75}
             subtitle="Artificial intelligence topics, real results"
-            onClick={() => router.push('/ai-ml')}
+            onClick={() => handleProgressCardClick('ai_ml')}
           />
 
           <ProgressCard
@@ -712,7 +744,7 @@ export default function HomePage() {
             current={profile.system_design_covered}
             total={60}
             subtitle="Architectural design that's claw-some"
-            onClick={() => router.push('/system-design')}
+            onClick={() => handleProgressCardClick('system_design')}
           />
 
           <ProgressCard
@@ -721,12 +753,12 @@ export default function HomePage() {
             current={profile.tech_topics_covered}
             total={50}
             subtitle="Curiosity didn't kill this cat"
-            onClick={() => router.push('/tech-topic')}
+            onClick={() => handleProgressCardClick('tech_topics')}
           />
         </div>
 
         {/* Daily Todo List */}
-        <DailyTodoList profile={profile} todayProgress={todayProgress} />
+        <DailyTodoList profile={profile} todayProgress={todayProgress} router={router} />
 
         {/* Overall Progress Bar */}
         <OverallProgressBar profile={profile} />
