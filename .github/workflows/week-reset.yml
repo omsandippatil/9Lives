@@ -1,0 +1,15 @@
+name: Weekly Reset API (Friday Midnight IST)
+
+on:
+  schedule:
+    # Runs every Thursday at 18:30 UTC = Friday 00:00 IST
+    - cron: "30 18 * * 4"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  reset-week:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Weekly Reset API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/update/week/reset?ap_key=${{ secrets.API_KEY }}"
