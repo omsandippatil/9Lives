@@ -232,7 +232,7 @@ export default function CatTriangle({
     }
   }, [checkAuthStatus])
 
-  // Keyboard shortcuts with hide/disconnect behavior
+  // Keyboard shortcuts and mobile gestures with hide/disconnect behavior
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && (event.key === 'o' || event.key === 'd')) {
@@ -249,8 +249,77 @@ export default function CatTriangle({
       }
     }
 
+    // Mobile gesture handling
+    let touchStartTime = 0
+    let touchCount = 0
+    let touchTimeout: NodeJS.Timeout
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 3) { // Three finger touch
+        touchStartTime = Date.now()
+        touchCount++
+        
+        // Clear existing timeout
+        if (touchTimeout) {
+          clearTimeout(touchTimeout)
+        }
+        
+        // Set timeout to reset touch count
+        touchTimeout = setTimeout(() => {
+          touchCount = 0
+        }, 1000) // Reset after 1 second
+        
+        // Double three-finger tap to toggle
+        if (touchCount === 2) {
+          event.preventDefault()
+          touchCount = 0
+          clearTimeout(touchTimeout)
+          
+          if (isVisible) {
+            setIsVisible(false)
+            if (isConnected || connectionStatus !== 'disconnected') {
+              cleanupConnection()
+            }
+          } else {
+            setIsVisible(true)
+          }
+        }
+      }
+    }
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      // Long press with two fingers (2+ seconds)
+      if (event.changedTouches.length === 2 && touchStartTime > 0) {
+        const touchDuration = Date.now() - touchStartTime
+        if (touchDuration > 2000) { // 2 second long press
+          event.preventDefault()
+          
+          if (isVisible) {
+            setIsVisible(false)
+            if (isConnected || connectionStatus !== 'disconnected') {
+              cleanupConnection()
+            }
+          } else {
+            setIsVisible(true)
+          }
+        }
+        touchStartTime = 0
+      }
+    }
+
+    // Add event listeners
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('touchstart', handleTouchStart, { passive: false })
+    window.addEventListener('touchend', handleTouchEnd, { passive: false })
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+      if (touchTimeout) {
+        clearTimeout(touchTimeout)
+      }
+    }
   }, [isVisible, isConnected, connectionStatus, cleanupConnection])
 
   // Initialize Supabase
@@ -754,8 +823,33 @@ export default function CatTriangle({
     }
   }, [cleanupConnection])
 
-  // Don't render anything if not visible
+  // Don't render anything if not visible, but show mobile hint on first load
   if (!isVisible) {
+    // Show a subtle hint for mobile users on first load
+    const hasSeenHint = typeof window !== 'undefined' && localStorage?.getItem?.('cat-triangle-hint-seen')
+    
+    if (!hasSeenHint && typeof window !== 'undefined') {
+      // Show hint for a few seconds then hide it
+      setTimeout(() => {
+        if (localStorage?.setItem) {
+          localStorage.setItem('cat-triangle-hint-seen', 'true')
+        }
+      }, 5000)
+      
+      return (
+        <div className="fixed bottom-4 right-4 z-50 max-w-xs">
+          <div className="bg-black bg-opacity-80 text-white text-xs p-3 rounded-lg shadow-lg animate-pulse">
+            <div className="text-center mb-2">🐱 Cat Triangle Audio</div>
+            <div className="space-y-1 text-xs">
+              <div>Desktop: Ctrl+O/Ctrl+D</div>
+              <div>Mobile: Triple tap (3 fingers) twice</div>
+              <div>Or: Long press (2 fingers, 2s)</div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    
     return null
   }
 
