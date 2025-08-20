@@ -784,28 +784,6 @@ export default function CatTriangle({
 
   // Don't render anything if not visible
   if (!isVisible) {
-    const hasSeenHint = typeof window !== 'undefined' && localStorage?.getItem?.('cat-triangle-hint-seen')
-    
-    if (!hasSeenHint && typeof window !== 'undefined') {
-      setTimeout(() => {
-        if (localStorage?.setItem) {
-          localStorage.setItem('cat-triangle-hint-seen', 'true')
-        }
-      }, 5000)
-      
-      return (
-        <div className="fixed bottom-4 right-4 z-50 max-w-xs">
-          <div className="bg-black bg-opacity-80 text-white text-xs p-3 rounded-lg shadow-lg animate-pulse">
-            <div className="text-center mb-2">🐱 Cat Triangle Audio</div>
-            <div className="space-y-1 text-xs">
-              <div>Show/Hide: Alt+O/Alt+D</div>
-              <div>Reactions: Alt+Y 👍 Alt+N 👎 Alt+L ❤️</div>
-            </div>
-          </div>
-        </div>
-      )
-    }
-    
     return null
   }
 
@@ -839,7 +817,7 @@ export default function CatTriangle({
           }
           hover:shadow-md disabled:cursor-not-allowed
         `}
-        title={`${connectedUsers.length} user(s) connected - Alt+O/Alt+D to hide/disconnect - Alt+Y/N/L for reactions`}
+        title={`${connectedUsers.length} user(s) connected`}
       >
         <span>{getCatEmoji()}</span>
       </button>
