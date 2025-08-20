@@ -256,12 +256,12 @@ export default function CatTriangle({
     }
   }, [getUserFromCookies, isConnected, connectionStatus, cleanupConnection])
 
-  // Add floating message
+  // Add floating message - animate to the left
   const addFloatingMessage = useCallback((text: string) => {
     const newMessage: FloatingMessage = {
       id: Math.random().toString(36).substr(2, 9),
       text,
-      x: Math.random() * 100 - 50,
+      x: -(Math.random() * 80 + 20), // Negative values to go left (-20 to -100)
       y: Math.random() * 60 - 30,
       delay: Math.random() * 300
     }
@@ -306,7 +306,7 @@ export default function CatTriangle({
     const newEmoji: FloatingEmoji = {
       id: Math.random().toString(36).substr(2, 9),
       emoji,
-      x: Math.random() * 120 - 60, // Increased spread
+      x: -(Math.random() * 100 + 20), // Negative values to go left (-20 to -120)
       y: Math.random() * 80 - 40,
       delay: Math.random() * 400
     }
@@ -868,10 +868,10 @@ export default function CatTriangle({
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
-      {/* Message Input with enhanced styling */}
+      {/* Message Input with minimal styling */}
       {showMessageInput && (
         <div className="absolute bottom-16 right-0 mb-2">
-          <div className="bg-white rounded-lg shadow-xl p-4 border-2 border-black">
+          <div className="bg-white shadow-lg p-2 border-2 border-black">
             <input
               id="cat-triangle-message-input"
               type="text"
@@ -886,17 +886,17 @@ export default function CatTriangle({
                   setMessageText('')
                 }
               }}
-              placeholder="Type message..."
-              className="w-52 px-4 py-3 text-sm border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 font-medium"
-              maxLength={50}
+              placeholder="Type..."
+              className="w-32 px-2 py-1 text-xs border-2 border-black focus:outline-none focus:border-gray-600 font-medium"
+              maxLength={30}
             />
-            <div className="flex justify-between items-center mt-3">
-              <span className="text-xs text-gray-700 font-medium">{messageText.length}/50</span>
-              <div className="flex gap-2">
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-xs text-gray-700 font-medium">{messageText.length}/30</span>
+              <div className="flex gap-1">
                 <button
                   onClick={sendMessage}
                   disabled={!messageText.trim()}
-                  className="px-4 py-2 text-xs font-bold bg-pink-500 text-white rounded-md border-2 border-black hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed shadow-md transition-all"
+                  className="px-2 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Send
                 </button>
@@ -905,9 +905,9 @@ export default function CatTriangle({
                     setShowMessageInput(false)
                     setMessageText('')
                   }}
-                  className="px-4 py-2 text-xs font-bold bg-gray-500 text-white rounded-md border-2 border-black hover:bg-gray-600 shadow-md transition-all"
+                  className="px-2 py-1 text-xs font-bold bg-gray-500 text-white border-2 border-black hover:bg-gray-600"
                 >
-                  Cancel
+                  X
                 </button>
               </div>
             </div>
@@ -915,19 +915,19 @@ export default function CatTriangle({
         </div>
       )}
 
-      {/* Floating Messages with enhanced styling */}
+      {/* Floating Messages with black borders and no rounded corners */}
       {floatingMessages.map((message) => (
         <div
           key={message.id}
-          className="absolute pointer-events-none text-sm font-bold select-none max-w-xs"
+          className="absolute pointer-events-none text-xs font-black select-none max-w-xs"
           style={{
             left: `${message.x}px`,
             top: `${message.y}px`,
             animationDelay: `${message.delay}ms`,
-            animation: 'float-up-text 5s ease-out forwards'
+            animation: 'float-left-text 5s ease-out forwards'
           }}
         >
-          <div className="bg-white px-4 py-2 rounded-full shadow-lg border-2 border-black text-black">
+          <div className="bg-white px-2 py-1 shadow-lg border-2 border-black text-black">
             {message.text}
           </div>
         </div>
@@ -942,7 +942,7 @@ export default function CatTriangle({
             left: `${emoji.x}px`,
             top: `${emoji.y}px`,
             animationDelay: `${emoji.delay}ms`,
-            animation: 'float-up-enhanced 4.5s ease-out forwards',
+            animation: 'float-left-enhanced 4.5s ease-out forwards',
             fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '24px' : '28px',
             textShadow: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') 
               ? '0 0 8px rgba(255, 192, 203, 0.6), 0 0 15px rgba(255, 192, 203, 0.4)'
@@ -956,10 +956,10 @@ export default function CatTriangle({
         </div>
       ))}
 
-      {/* Emoji shortcut indicators */}
-      <div className="absolute bottom-16 left-0 mb-2 text-xs text-gray-600 bg-white bg-opacity-90 rounded-lg px-3 py-2 border-2 border-black shadow-lg font-medium">
-        <div className="space-y-1">
-          <div><span className="font-bold">Tab:</span> Message</div>
+      {/* Emoji shortcut indicators - moved to left */}
+      <div className="absolute bottom-16 left-0 mb-2 ml-[-120px] text-xs text-gray-600 bg-white bg-opacity-95 px-2 py-1 border-2 border-black shadow-lg font-medium">
+        <div className="space-y-0.5">
+          <div><span className="font-bold">Tab:</span> Msg</div>
           <div><span className="font-bold">Alt+Y:</span> 👍</div>
           <div><span className="font-bold">Alt+N:</span> 👎</div>
           <div><span className="font-bold">Alt+L:</span> 💖</div>
@@ -974,7 +974,7 @@ export default function CatTriangle({
           border-2 border-black shadow-lg
           ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
           ${isConnected && connectedUsers.length > 1
-            ? 'bg-pink-500 shadow-pink-200' 
+            ? 'bg-green-500 shadow-green-200' 
             : 'bg-white shadow-gray-200'
           }
           hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed
@@ -984,69 +984,69 @@ export default function CatTriangle({
         <span>{getCatEmoji()}</span>
       </button>
       
-      {/* Enhanced CSS for floating animations */}
+      {/* Enhanced CSS for floating animations - all going left */}
       <style jsx>{`
-        @keyframes float-up-enhanced {
+        @keyframes float-left-enhanced {
           0% {
-            transform: translateY(0) scale(1) rotate(0deg);
+            transform: translateX(0) translateY(0) scale(1) rotate(0deg);
             opacity: 1;
           }
           15% {
-            transform: translateY(-12px) scale(1.1) rotate(3deg);
+            transform: translateX(-15px) translateY(-12px) scale(1.1) rotate(3deg);
             opacity: 0.95;
           }
           30% {
-            transform: translateY(-28px) scale(1.15) rotate(-2deg);
+            transform: translateX(-35px) translateY(-28px) scale(1.15) rotate(-2deg);
             opacity: 0.9;
           }
           50% {
-            transform: translateY(-50px) scale(1.2) rotate(1deg);
+            transform: translateX(-60px) translateY(-50px) scale(1.2) rotate(1deg);
             opacity: 0.8;
           }
           70% {
-            transform: translateY(-75px) scale(1.1) rotate(-1deg);
+            transform: translateX(-85px) translateY(-75px) scale(1.1) rotate(-1deg);
             opacity: 0.6;
           }
           85% {
-            transform: translateY(-95px) scale(1.05) rotate(0.5deg);
+            transform: translateX(-105px) translateY(-95px) scale(1.05) rotate(0.5deg);
             opacity: 0.3;
           }
           100% {
-            transform: translateY(-120px) scale(0.9) rotate(0deg);
+            transform: translateX(-130px) translateY(-120px) scale(0.9) rotate(0deg);
             opacity: 0;
           }
         }
         
-        @keyframes float-up-text {
+        @keyframes float-left-text {
           0% {
-            transform: translateY(0) scale(0.9);
+            transform: translateX(0) translateY(0) scale(0.9);
             opacity: 0;
           }
           10% {
-            transform: translateY(-8px) scale(1);
+            transform: translateX(-10px) translateY(-8px) scale(1);
             opacity: 1;
           }
           30% {
-            transform: translateY(-25px) scale(1);
+            transform: translateX(-30px) translateY(-25px) scale(1);
             opacity: 1;
           }
           60% {
-            transform: translateY(-45px) scale(1);
+            transform: translateX(-55px) translateY(-45px) scale(1);
             opacity: 0.9;
           }
           80% {
-            transform: translateY(-65px) scale(0.98);
+            transform: translateX(-75px) translateY(-65px) scale(0.98);
             opacity: 0.5;
           }
           100% {
-            transform: translateY(-85px) scale(0.95);
+            transform: translateX(-100px) translateY(-85px) scale(0.95);
             opacity: 0;
           }
         }
         
-        /* Refined pink glow effect for hearts with smaller size */
+        /* Refined pink glow effect for hearts with smaller size - moving left */
         div[style*="💖"], div[style*="💕"], div[style*="💗"], div[style*="🩷"] {
-          animation: float-up-enhanced 4.5s ease-out forwards, pink-pulse 1s ease-in-out infinite alternate;
+          animation: float-left-enhanced 4.5s ease-out forwards, pink-pulse 1s ease-in-out infinite alternate;
         }
         
         @keyframes pink-pulse {
