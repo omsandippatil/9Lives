@@ -319,6 +319,7 @@ export default function CatTriangle({
       // Add local stream tracks if available
       if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(track => {
+          console.log(`Adding local audio track to peer connection with ${userId}`)
           pc.addTrack(track, localStreamRef.current!)
         })
       }
@@ -344,20 +345,25 @@ export default function CatTriangle({
         }
       }
 
-      // Handle ICE candidates
+      // Handle ICE candidates with validation
       pc.onicecandidate = (event) => {
         if (event.candidate && channelRef.current && currentUser) {
-          console.log(`Sending ICE candidate to ${userId}`)
-          channelRef.current.send({
-            type: 'broadcast',
-            event: 'webrtc-signal',
-            payload: {
-              type: 'ice-candidate',
-              data: event.candidate,
-              from: currentUser.id,
-              to: userId
-            }
-          })
+          // Validate candidate before sending
+          if (event.candidate.candidate && event.candidate.candidate.trim() !== '') {
+            console.log(`Sending ICE candidate to ${userId}`)
+            channelRef.current.send({
+              type: 'broadcast',
+              event: 'webrtc-signal',
+              payload: {
+                type: 'ice-candidate',
+                data: event.candidate,
+                from: currentUser.id,
+                to: userId
+              }
+            })
+          }
+        } else if (!event.candidate) {
+          console.log(`ICE gathering complete for ${userId}`)
         }
       }
 
@@ -366,8 +372,13 @@ export default function CatTriangle({
         console.log(`Peer connection with ${userId}: ${pc.connectionState}`)
         if (pc.connectionState === 'connected') {
           console.log(`Successfully connected to ${userId}`)
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-          console.log(`Connection failed/closed with ${userId}`)
+          // Clear any pending candidates once connected
+          pendingIceCandidatesRef.current.delete(userId)
+        } else if (pc.connectionState === 'failed') {
+          console.log(`Connection failed with ${userId}`)
+          // Don't immediately clean up, let ICE restart attempt first
+        } else if (pc.connectionState === 'closed') {
+          console.log(`Connection closed with ${userId}`)
           peerConnectionsRef.current.delete(userId)
           remoteStreamsRef.current.delete(userId)
           pendingIceCandidatesRef.current.delete(userId)
@@ -377,15 +388,26 @@ export default function CatTriangle({
       // Handle ICE connection state
       pc.oniceconnectionstatechange = () => {
         console.log(`ICE connection with ${userId}: ${pc.iceConnectionState}`)
-        if (pc.iceConnectionState === 'failed') {
+        if (pc.iceConnectionState === 'failed' && pc.connectionState !== 'closed') {
           console.log(`ICE connection failed with ${userId}, attempting restart`)
-          pc.restartIce()
+          try {
+            pc.restartIce()
+          } catch (error) {
+            console.error(`Error restarting ICE for ${userId}:`, error)
+          }
+        } else if (pc.iceConnectionState === 'disconnected') {
+          console.log(`ICE disconnected with ${userId}, waiting for reconnection...`)
         }
       }
 
       // Handle signaling state changes
       pc.onsignalingstatechange = () => {
         console.log(`Signaling state with ${userId}: ${pc.signalingState}`)
+      }
+
+      // Handle ICE gathering state changes
+      pc.onicegatheringstatechange = () => {
+        console.log(`ICE gathering state with ${userId}: ${pc.iceGatheringState}`)
       }
 
       return pc
@@ -398,16 +420,33 @@ export default function CatTriangle({
   // Process pending ICE candidates
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
     const pendingCandidates = pendingIceCandidatesRef.current.get(userId) || []
-    if (pendingCandidates.length > 0 && pc.remoteDescription) {
+    if (pendingCandidates.length > 0 && pc.remoteDescription && pc.signalingState !== 'closed') {
       console.log(`Processing ${pendingCandidates.length} pending ICE candidates for ${userId}`)
-      for (const candidate of pendingCandidates) {
+      
+      // Process candidates one by one with error handling
+      for (let i = pendingCandidates.length - 1; i >= 0; i--) {
+        const candidate = pendingCandidates[i]
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate))
+          // Validate candidate before processing
+          if (candidate && typeof candidate === 'object' && candidate.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate))
+            console.log(`Processed pending ICE candidate ${i + 1}/${pendingCandidates.length} for ${userId}`)
+          } else {
+            console.warn(`Skipping invalid pending ICE candidate for ${userId}:`, candidate)
+          }
         } catch (error) {
-          console.error(`Error adding pending ICE candidate for ${userId}:`, error)
+          // Ignore errors for established connections
+          if (pc.connectionState === 'connected') {
+            console.warn(`Ignoring ICE candidate error for established connection with ${userId}:`, error)
+          } else {
+            console.error(`Error adding pending ICE candidate for ${userId}:`, error)
+          }
         }
       }
+      
+      // Clear processed candidates
       pendingIceCandidatesRef.current.delete(userId)
+      console.log(`Cleared pending ICE candidates for ${userId}`)
     }
   }, [])
 
@@ -419,65 +458,99 @@ export default function CatTriangle({
     let pc = peerConnectionsRef.current.get(from)
 
     try {
-      console.log(`Handling ${type} signal from ${from}`)
+      console.log(`Handling ${type} signal from ${from}, signaling state: ${pc?.signalingState || 'no-pc'}`)
       
       switch (type) {
         case 'offer':
           // Close existing connection if any
           if (pc && pc.connectionState !== 'closed') {
+            console.log(`Closing existing connection with ${from}`)
             pc.close()
+            // Clear any pending candidates for this peer
+            pendingIceCandidatesRef.current.delete(from)
           }
           
           pc = createPeerConnection(from)
           peerConnectionsRef.current.set(from, pc)
           
-          await pc.setRemoteDescription(new RTCSessionDescription(data))
-          console.log(`Set remote description for offer from ${from}`)
-          
-          // Process any pending ICE candidates
-          await processPendingIceCandidates(from, pc)
-          
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          console.log(`Created and set local answer for ${from}`)
-          
-          if (channelRef.current) {
-            channelRef.current.send({
-              type: 'broadcast',
-              event: 'webrtc-signal',
-              payload: {
-                type: 'answer',
-                data: answer,
-                from: currentUser.id,
-                to: from
-              }
-            })
-            console.log(`Sent answer to ${from}`)
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data))
+            console.log(`Set remote description for offer from ${from}`)
+            
+            // Process any pending ICE candidates after setting remote description
+            await processPendingIceCandidates(from, pc)
+            
+            const answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
+            console.log(`Created and set local answer for ${from}`)
+            
+            if (channelRef.current) {
+              channelRef.current.send({
+                type: 'broadcast',
+                event: 'webrtc-signal',
+                payload: {
+                  type: 'answer',
+                  data: answer,
+                  from: currentUser.id,
+                  to: from
+                }
+              })
+              console.log(`Sent answer to ${from}`)
+            }
+          } catch (offerError) {
+            console.error(`Error processing offer from ${from}:`, offerError)
+            throw offerError
           }
           break
 
         case 'answer':
           if (pc && pc.signalingState === 'have-local-offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data))
-            console.log(`Set remote description for answer from ${from}`)
-            
-            // Process any pending ICE candidates
-            await processPendingIceCandidates(from, pc)
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(data))
+              console.log(`Set remote description for answer from ${from}`)
+              
+              // Process any pending ICE candidates after setting remote description
+              await processPendingIceCandidates(from, pc)
+            } catch (answerError) {
+              console.error(`Error processing answer from ${from}:`, answerError)
+              throw answerError
+            }
           } else {
-            console.warn(`Received answer from ${from} but peer connection not in correct state`)
+            console.warn(`Received answer from ${from} but peer connection not in correct state: ${pc?.signalingState || 'no-pc'}`)
           }
           break
 
         case 'ice-candidate':
-          if (pc && pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(data))
-            console.log(`Added ICE candidate from ${from}`)
+          // More strict checking for ICE candidates
+          if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
+            try {
+              // Validate the candidate before adding
+              if (data && typeof data === 'object' && data.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(data))
+                console.log(`Added ICE candidate from ${from}`)
+              } else {
+                console.warn(`Invalid ICE candidate from ${from}:`, data)
+              }
+            } catch (iceError) {
+              // Ignore ICE candidate errors if connection is already established
+              if (pc.connectionState === 'connected') {
+                console.warn(`Ignoring ICE candidate error for established connection with ${from}:`, iceError)
+              } else {
+                console.error(`Error adding ICE candidate from ${from}:`, iceError)
+              }
+            }
+          } else if (pc && !pc.remoteDescription) {
+            // Store candidate for later processing only if we have a valid candidate
+            if (data && typeof data === 'object' && data.candidate) {
+              console.log(`Storing ICE candidate from ${from} for later processing`)
+              const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
+              pendingCandidates.push(data)
+              pendingIceCandidatesRef.current.set(from, pendingCandidates)
+            } else {
+              console.warn(`Ignoring invalid ICE candidate from ${from}:`, data)
+            }
           } else {
-            // Store candidate for later processing
-            console.log(`Storing ICE candidate from ${from} for later processing`)
-            const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
-            pendingCandidates.push(data)
-            pendingIceCandidatesRef.current.set(from, pendingCandidates)
+            console.warn(`Ignoring ICE candidate from ${from} - no valid peer connection or connection closed`)
           }
           break
       }
