@@ -61,16 +61,17 @@ export default function CatTriangle({
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [isVisible, setIsVisible] = useState(false)
   
-  // Refs
+  // Refs - using refs to avoid dependency issues
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map())
   const audioContextRef = useRef<AudioContext | null>(null)
-  const mixerRef = useRef<GainNode | null>(null)
+  const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const isCleaningUpRef = useRef(false)
   const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
+  const isInitializedRef = useRef(false)
 
   // Improved cookie parsing function
   const getUserFromCookies = useCallback(() => {
@@ -116,23 +117,6 @@ export default function CatTriangle({
         }
       }
 
-      // Method 3: Try secure cookies (if accessible via JS somehow)
-      const secureUserIdCookie = cookies.find(row => row.startsWith('supabase-user-id='))
-      const secureUserEmailCookie = cookies.find(row => row.startsWith('supabase-user-email='))
-      
-      if (secureUserIdCookie && secureUserEmailCookie) {
-        const userId = secureUserIdCookie.split('=')[1]
-        const userEmail = decodeURIComponent(secureUserEmailCookie.split('=')[1])
-        
-        if (userId && userEmail && userId !== 'undefined' && userEmail !== 'undefined') {
-          console.log('Found user from secure cookies')
-          return {
-            id: userId,
-            email: userEmail
-          }
-        }
-      }
-
       console.log('No valid user cookies found')
       return null
     } catch (error) {
@@ -140,21 +124,6 @@ export default function CatTriangle({
       return null
     }
   }, [])
-
-  // Check for authentication changes
-  const checkAuthStatus = useCallback(() => {
-    const user = getUserFromCookies()
-    setCurrentUser(user)
-    
-    if (!user) {
-      console.log('No authenticated user found')
-      if (isConnected || connectionStatus !== 'disconnected') {
-        cleanupConnection()
-      }
-    } else {
-      console.log('Authenticated user found:', user.email)
-    }
-  }, [getUserFromCookies])
 
   // Cleanup function
   const cleanupConnection = useCallback(async () => {
@@ -171,6 +140,15 @@ export default function CatTriangle({
         })
         localStreamRef.current = null
       }
+
+      // Remove and stop all remote audio elements
+      remoteAudioElementsRef.current.forEach((audio, userId) => {
+        audio.pause()
+        audio.srcObject = null
+        audio.remove()
+        console.log(`Removed audio element for ${userId}`)
+      })
+      remoteAudioElementsRef.current.clear()
 
       // Close all peer connections
       peerConnectionsRef.current.forEach((pc, userId) => {
@@ -191,7 +169,6 @@ export default function CatTriangle({
           console.warn('Error closing audio context:', error)
         }
         audioContextRef.current = null
-        mixerRef.current = null
       }
 
       // Untrack from channel
@@ -215,24 +192,50 @@ export default function CatTriangle({
     }
   }, [])
 
-  // Monitor cookie changes
+  // Initialize Supabase only once
   useEffect(() => {
-    checkAuthStatus()
-    const interval = setInterval(checkAuthStatus, 2000)
-    const handleStorageChange = () => checkAuthStatus()
-    const handleFocus = () => checkAuthStatus()
-    
-    window.addEventListener('storage', handleStorageChange)
-    window.addEventListener('focus', handleFocus)
+    if (!supabaseUrl || !supabaseAnonKey || isInitializedRef.current) return
 
+    try {
+      supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey)
+      isInitializedRef.current = true
+      console.log('Supabase initialized')
+    } catch (error) {
+      console.error('Error initializing Supabase:', error)
+    }
+  }, [supabaseUrl, supabaseAnonKey])
+
+  // Monitor cookie changes with stable intervals
+  useEffect(() => {
+    const checkAuthStatus = () => {
+      const user = getUserFromCookies()
+      setCurrentUser(prev => {
+        // Only update if actually different to prevent unnecessary re-renders
+        if (!prev && !user) return prev
+        if (prev && user && prev.id === user.id && prev.email === user.email) return prev
+        
+        if (!user) {
+          console.log('No authenticated user found')
+          if (isConnected || connectionStatus !== 'disconnected') {
+            cleanupConnection()
+          }
+        } else {
+          console.log('Authenticated user found:', user.email)
+        }
+        
+        return user
+      })
+    }
+
+    checkAuthStatus()
+    const interval = setInterval(checkAuthStatus, 5000) // Reduced frequency
+    
     return () => {
       clearInterval(interval)
-      window.removeEventListener('storage', handleStorageChange)
-      window.removeEventListener('focus', handleFocus)
     }
-  }, [checkAuthStatus])
+  }, [getUserFromCookies, isConnected, connectionStatus, cleanupConnection])
 
-  // Keyboard shortcuts and mobile gestures with hide/disconnect behavior
+  // Keyboard shortcuts and mobile gestures
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && (event.key === 'o' || event.key === 'd')) {
@@ -255,21 +258,18 @@ export default function CatTriangle({
     let touchTimeout: NodeJS.Timeout
 
     const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length === 3) { // Three finger touch
+      if (event.touches.length === 3) {
         touchStartTime = Date.now()
         touchCount++
         
-        // Clear existing timeout
         if (touchTimeout) {
           clearTimeout(touchTimeout)
         }
         
-        // Set timeout to reset touch count
         touchTimeout = setTimeout(() => {
           touchCount = 0
-        }, 1000) // Reset after 1 second
+        }, 1000)
         
-        // Double three-finger tap to toggle
         if (touchCount === 2) {
           event.preventDefault()
           touchCount = 0
@@ -288,10 +288,9 @@ export default function CatTriangle({
     }
 
     const handleTouchEnd = (event: TouchEvent) => {
-      // Long press with two fingers (2+ seconds)
       if (event.changedTouches.length === 2 && touchStartTime > 0) {
         const touchDuration = Date.now() - touchStartTime
-        if (touchDuration > 2000) { // 2 second long press
+        if (touchDuration > 2000) {
           event.preventDefault()
           
           if (isVisible) {
@@ -307,7 +306,6 @@ export default function CatTriangle({
       }
     }
 
-    // Add event listeners
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('touchstart', handleTouchStart, { passive: false })
     window.addEventListener('touchend', handleTouchEnd, { passive: false })
@@ -322,23 +320,8 @@ export default function CatTriangle({
     }
   }, [isVisible, isConnected, connectionStatus, cleanupConnection])
 
-  // Initialize Supabase
-  useEffect(() => {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Supabase URL or Anon Key missing')
-      return
-    }
-
-    try {
-      supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey)
-      console.log('Supabase initialized')
-    } catch (error) {
-      console.error('Error initializing Supabase:', error)
-    }
-  }, [supabaseUrl, supabaseAnonKey])
-
-  // Setup audio context and mixer
-  const setupAudioMixer = useCallback(async () => {
+  // Setup audio context
+  const setupAudioContext = useCallback(async () => {
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -347,13 +330,10 @@ export default function CatTriangle({
           await audioContextRef.current.resume()
         }
         
-        mixerRef.current = audioContextRef.current.createGain()
-        mixerRef.current.connect(audioContextRef.current.destination)
-        mixerRef.current.gain.setValueAtTime(0.7, audioContextRef.current.currentTime)
-        console.log('Audio mixer setup complete')
+        console.log('Audio context setup complete')
       }
     } catch (error) {
-      console.error('Error setting up audio mixer:', error)
+      console.error('Error setting up audio context:', error)
     }
   }, [])
 
@@ -379,7 +359,50 @@ export default function CatTriangle({
     }
   }, [])
 
-  // Create peer connection with improved error handling
+  // Create and manage remote audio element
+  const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
+    try {
+      // Remove existing audio element if any
+      const existingAudio = remoteAudioElementsRef.current.get(userId)
+      if (existingAudio) {
+        existingAudio.pause()
+        existingAudio.srcObject = null
+        existingAudio.remove()
+      }
+
+      // Create new audio element
+      const audio = document.createElement('audio')
+      audio.srcObject = stream
+      audio.autoplay = true
+      audio.setAttribute('playsinline', 'true') // For mobile Safari
+      audio.volume = 0.8
+      
+      // Add to DOM (hidden)
+      audio.style.display = 'none'
+      document.body.appendChild(audio)
+      
+      // Store reference
+      remoteAudioElementsRef.current.set(userId, audio)
+      
+      // Handle play promise
+      const playPromise = audio.play()
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            console.log(`Started playing audio from ${userId}`)
+          })
+          .catch((error) => {
+            console.error(`Error playing audio from ${userId}:`, error)
+          })
+      }
+
+      console.log(`Setup remote audio for ${userId}`)
+    } catch (error) {
+      console.error(`Error setting up remote audio for ${userId}:`, error)
+    }
+  }, [])
+
+  // Create peer connection
   const createPeerConnection = useCallback((userId: string) => {
     try {
       console.log(`Creating peer connection with ${userId}`)
@@ -393,31 +416,19 @@ export default function CatTriangle({
         })
       }
 
-      // Handle remote stream
+      // Handle remote stream - simplified approach using audio elements
       pc.ontrack = (event) => {
         console.log('Received remote stream from:', userId)
         const [remoteStream] = event.streams
         if (remoteStream) {
           remoteStreamsRef.current.set(userId, remoteStream)
-          
-          setupAudioMixer().then(() => {
-            if (audioContextRef.current && mixerRef.current) {
-              try {
-                const source = audioContextRef.current.createMediaStreamSource(remoteStream)
-                source.connect(mixerRef.current)
-                console.log(`Connected remote stream from ${userId} to mixer`)
-              } catch (error) {
-                console.error('Error connecting remote stream to mixer:', error)
-              }
-            }
-          })
+          setupRemoteAudio(userId, remoteStream)
         }
       }
 
-      // Handle ICE candidates with validation
+      // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && channelRef.current && currentUser) {
-          // Validate candidate before sending
           if (event.candidate.candidate && event.candidate.candidate.trim() !== '') {
             console.log(`Sending ICE candidate to ${userId}`)
             channelRef.current.send({
@@ -441,16 +452,28 @@ export default function CatTriangle({
         console.log(`Peer connection with ${userId}: ${pc.connectionState}`)
         if (pc.connectionState === 'connected') {
           console.log(`Successfully connected to ${userId}`)
-          // Clear any pending candidates once connected
           pendingIceCandidatesRef.current.delete(userId)
         } else if (pc.connectionState === 'failed') {
-          console.log(`Connection failed with ${userId}`)
-          // Don't immediately clean up, let ICE restart attempt first
+          console.log(`Connection failed with ${userId}, attempting restart`)
+          try {
+            pc.restartIce()
+          } catch (error) {
+            console.error(`Error restarting ICE for ${userId}:`, error)
+          }
         } else if (pc.connectionState === 'closed') {
           console.log(`Connection closed with ${userId}`)
           peerConnectionsRef.current.delete(userId)
           remoteStreamsRef.current.delete(userId)
           pendingIceCandidatesRef.current.delete(userId)
+          
+          // Clean up audio element
+          const audio = remoteAudioElementsRef.current.get(userId)
+          if (audio) {
+            audio.pause()
+            audio.srcObject = null
+            audio.remove()
+            remoteAudioElementsRef.current.delete(userId)
+          }
         }
       }
 
@@ -464,19 +487,7 @@ export default function CatTriangle({
           } catch (error) {
             console.error(`Error restarting ICE for ${userId}:`, error)
           }
-        } else if (pc.iceConnectionState === 'disconnected') {
-          console.log(`ICE disconnected with ${userId}, waiting for reconnection...`)
         }
-      }
-
-      // Handle signaling state changes
-      pc.onsignalingstatechange = () => {
-        console.log(`Signaling state with ${userId}: ${pc.signalingState}`)
-      }
-
-      // Handle ICE gathering state changes
-      pc.onicegatheringstatechange = () => {
-        console.log(`ICE gathering state with ${userId}: ${pc.iceGatheringState}`)
       }
 
       return pc
@@ -484,7 +495,7 @@ export default function CatTriangle({
       console.error('Error creating peer connection:', error)
       throw error
     }
-  }, [currentUser, setupAudioMixer])
+  }, [currentUser, setupRemoteAudio])
 
   // Process pending ICE candidates
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
@@ -492,34 +503,23 @@ export default function CatTriangle({
     if (pendingCandidates.length > 0 && pc.remoteDescription && pc.signalingState !== 'closed') {
       console.log(`Processing ${pendingCandidates.length} pending ICE candidates for ${userId}`)
       
-      // Process candidates one by one with error handling
-      for (let i = pendingCandidates.length - 1; i >= 0; i--) {
-        const candidate = pendingCandidates[i]
+      for (const candidate of pendingCandidates) {
         try {
-          // Validate candidate before processing
           if (candidate && typeof candidate === 'object' && candidate.candidate) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            console.log(`Processed pending ICE candidate ${i + 1}/${pendingCandidates.length} for ${userId}`)
-          } else {
-            console.warn(`Skipping invalid pending ICE candidate for ${userId}:`, candidate)
           }
         } catch (error) {
-          // Ignore errors for established connections
-          if (pc.connectionState === 'connected') {
-            console.warn(`Ignoring ICE candidate error for established connection with ${userId}:`, error)
-          } else {
-            console.error(`Error adding pending ICE candidate for ${userId}:`, error)
+          if (pc.connectionState !== 'connected') {
+            console.warn(`Error adding pending ICE candidate for ${userId}:`, error)
           }
         }
       }
       
-      // Clear processed candidates
       pendingIceCandidatesRef.current.delete(userId)
-      console.log(`Cleared pending ICE candidates for ${userId}`)
     }
   }, [])
 
-  // Handle WebRTC signaling with improved error handling
+  // Handle WebRTC signaling
   const handleSignaling = useCallback(async (signal: SignalData) => {
     if (!currentUser || signal.to !== currentUser.id) return
 
@@ -527,105 +527,67 @@ export default function CatTriangle({
     let pc = peerConnectionsRef.current.get(from)
 
     try {
-      console.log(`Handling ${type} signal from ${from}, signaling state: ${pc?.signalingState || 'no-pc'}`)
+      console.log(`Handling ${type} signal from ${from}`)
       
       switch (type) {
         case 'offer':
-          // Close existing connection if any
           if (pc && pc.connectionState !== 'closed') {
-            console.log(`Closing existing connection with ${from}`)
             pc.close()
-            // Clear any pending candidates for this peer
             pendingIceCandidatesRef.current.delete(from)
           }
           
           pc = createPeerConnection(from)
           peerConnectionsRef.current.set(from, pc)
           
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(data))
-            console.log(`Set remote description for offer from ${from}`)
-            
-            // Process any pending ICE candidates after setting remote description
-            await processPendingIceCandidates(from, pc)
-            
-            const answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-            console.log(`Created and set local answer for ${from}`)
-            
-            if (channelRef.current) {
-              channelRef.current.send({
-                type: 'broadcast',
-                event: 'webrtc-signal',
-                payload: {
-                  type: 'answer',
-                  data: answer,
-                  from: currentUser.id,
-                  to: from
-                }
-              })
-              console.log(`Sent answer to ${from}`)
-            }
-          } catch (offerError) {
-            console.error(`Error processing offer from ${from}:`, offerError)
-            throw offerError
+          await pc.setRemoteDescription(new RTCSessionDescription(data))
+          await processPendingIceCandidates(from, pc)
+          
+          const answer = await pc.createAnswer()
+          await pc.setLocalDescription(answer)
+          
+          if (channelRef.current) {
+            channelRef.current.send({
+              type: 'broadcast',
+              event: 'webrtc-signal',
+              payload: {
+                type: 'answer',
+                data: answer,
+                from: currentUser.id,
+                to: from
+              }
+            })
           }
           break
 
         case 'answer':
           if (pc && pc.signalingState === 'have-local-offer') {
-            try {
-              await pc.setRemoteDescription(new RTCSessionDescription(data))
-              console.log(`Set remote description for answer from ${from}`)
-              
-              // Process any pending ICE candidates after setting remote description
-              await processPendingIceCandidates(from, pc)
-            } catch (answerError) {
-              console.error(`Error processing answer from ${from}:`, answerError)
-              throw answerError
-            }
-          } else {
-            console.warn(`Received answer from ${from} but peer connection not in correct state: ${pc?.signalingState || 'no-pc'}`)
+            await pc.setRemoteDescription(new RTCSessionDescription(data))
+            await processPendingIceCandidates(from, pc)
           }
           break
 
         case 'ice-candidate':
-          // More strict checking for ICE candidates
           if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
             try {
-              // Validate the candidate before adding
               if (data && typeof data === 'object' && data.candidate) {
                 await pc.addIceCandidate(new RTCIceCandidate(data))
-                console.log(`Added ICE candidate from ${from}`)
-              } else {
-                console.warn(`Invalid ICE candidate from ${from}:`, data)
               }
-            } catch (iceError) {
-              // Ignore ICE candidate errors if connection is already established
-              if (pc.connectionState === 'connected') {
-                console.warn(`Ignoring ICE candidate error for established connection with ${from}:`, iceError)
-              } else {
-                console.error(`Error adding ICE candidate from ${from}:`, iceError)
+            } catch (error) {
+              if (pc.connectionState !== 'connected') {
+                console.warn(`Error adding ICE candidate from ${from}:`, error)
               }
             }
           } else if (pc && !pc.remoteDescription) {
-            // Store candidate for later processing only if we have a valid candidate
             if (data && typeof data === 'object' && data.candidate) {
-              console.log(`Storing ICE candidate from ${from} for later processing`)
               const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
               pendingCandidates.push(data)
               pendingIceCandidatesRef.current.set(from, pendingCandidates)
-            } else {
-              console.warn(`Ignoring invalid ICE candidate from ${from}:`, data)
             }
-          } else {
-            console.warn(`Ignoring ICE candidate from ${from} - no valid peer connection or connection closed`)
           }
           break
       }
     } catch (error) {
       console.error(`Error handling ${type} signal from ${from}:`, error)
-      // Clean up failed peer connection
       if (pc && pc.connectionState !== 'closed') {
         pc.close()
       }
@@ -635,14 +597,13 @@ export default function CatTriangle({
     }
   }, [currentUser, createPeerConnection, processPendingIceCandidates])
 
-  // Create offer for new peer with improved error handling
+  // Create offer for new peer
   const createOffer = useCallback(async (targetUserId: string) => {
     if (!currentUser || !isVisible || !localStreamRef.current) return
 
     try {
       console.log(`Creating offer for ${targetUserId}`)
       
-      // Close existing connection if it exists
       const existingPc = peerConnectionsRef.current.get(targetUserId)
       if (existingPc && existingPc.connectionState !== 'closed') {
         existingPc.close()
@@ -656,7 +617,6 @@ export default function CatTriangle({
         offerToReceiveVideo: false
       })
       await pc.setLocalDescription(offer)
-      console.log(`Created and set local offer for ${targetUserId}`)
 
       if (channelRef.current) {
         channelRef.current.send({
@@ -669,7 +629,6 @@ export default function CatTriangle({
             to: targetUserId
           }
         })
-        console.log(`Sent offer to ${targetUserId}`)
       }
     } catch (error) {
       console.error(`Error creating offer for ${targetUserId}:`, error)
@@ -677,11 +636,13 @@ export default function CatTriangle({
     }
   }, [currentUser, createPeerConnection, isVisible])
 
-  // Setup Supabase realtime channel with better error handling
+  // Setup Supabase realtime channel - separate effect to avoid constant re-initialization
   useEffect(() => {
-    if (!supabaseRef.current || !currentUser || !isVisible) return
+    if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) {
+      return
+    }
 
-    console.log('Setting up Supabase channel')
+    console.log('Setting up Supabase channel for:', currentUser.email)
     const channel = supabaseRef.current.channel('cat-triangle-audio', {
       config: { 
         presence: { key: currentUser.id },
@@ -717,7 +678,6 @@ export default function CatTriangle({
       newPresences?.forEach((presence: PresenceData) => {
         console.log(`User joined: ${presence.email}`)
         if (presence.id !== currentUser.id && isAudioEnabled) {
-          // Add delay to ensure both sides are ready
           setTimeout(() => createOffer(presence.id), 2000)
         }
       })
@@ -734,6 +694,15 @@ export default function CatTriangle({
         peerConnectionsRef.current.delete(presence.id)
         remoteStreamsRef.current.delete(presence.id)
         pendingIceCandidatesRef.current.delete(presence.id)
+        
+        // Clean up audio element
+        const audio = remoteAudioElementsRef.current.get(presence.id)
+        if (audio) {
+          audio.pause()
+          audio.srcObject = null
+          audio.remove()
+          remoteAudioElementsRef.current.delete(presence.id)
+        }
       })
     })
 
@@ -760,9 +729,9 @@ export default function CatTriangle({
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [currentUser, handleSignaling, createOffer, isVisible, isAudioEnabled])
+  }, [currentUser?.id, currentUser?.email, isVisible]) // Stable dependencies
 
-  // Handle circle click with improved error handling
+  // Handle circle click
   const handleCircleClick = useCallback(async () => {
     if (!currentUser) {
       alert('Please log in to connect!')
@@ -776,9 +745,8 @@ export default function CatTriangle({
         console.log('Starting connection...')
         setConnectionStatus('connecting')
         
-        // Get user media and setup audio mixer
         await getUserMedia()
-        await setupAudioMixer()
+        await setupAudioContext()
 
         setConnectionStatus('connected')
         console.log('Connection established')
@@ -800,7 +768,7 @@ export default function CatTriangle({
       setConnectionStatus('disconnected')
       alert('Error accessing microphone. Please allow microphone access and try again.')
     }
-  }, [currentUser, isConnected, getUserMedia, setupAudioMixer, connectedUsers, createOffer, connectionStatus, cleanupConnection])
+  }, [currentUser, isConnected, getUserMedia, setupAudioContext, connectedUsers, createOffer, connectionStatus, cleanupConnection])
 
   // Get cat emoji based on connection state
   const getCatEmoji = () => {
@@ -823,13 +791,11 @@ export default function CatTriangle({
     }
   }, [cleanupConnection])
 
-  // Don't render anything if not visible, but show mobile hint on first load
+  // Don't render anything if not visible
   if (!isVisible) {
-    // Show a subtle hint for mobile users on first load
     const hasSeenHint = typeof window !== 'undefined' && localStorage?.getItem?.('cat-triangle-hint-seen')
     
     if (!hasSeenHint && typeof window !== 'undefined') {
-      // Show hint for a few seconds then hide it
       setTimeout(() => {
         if (localStorage?.setItem) {
           localStorage.setItem('cat-triangle-hint-seen', 'true')
