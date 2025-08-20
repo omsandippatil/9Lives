@@ -5,24 +5,30 @@ import { useRouter } from 'next/navigation'
 const libraryTopics = [
   {
     id: 1,
-    name: 'Data Structures & Algorithms',
-    emoji: '🧮',
-    path: 'data-structures-algorithms'
+    name: 'Data Structures',
+    emoji: '🏗️',
+    path: 'data-structures'
   },
   {
     id: 2,
+    name: 'Algorithms',
+    emoji: '🧮',
+    path: 'algorithms'
+  },
+  {
+    id: 3,
     name: 'Python',
     emoji: '🐍',
     path: 'python'
   },
   {
-    id: 3,
+    id: 4,
     name: 'Java',
     emoji: '☕',
     path: 'java'
   },
   {
-    id: 4,
+    id: 5,
     name: 'SQL',
     emoji: '🗃️',
     path: 'sql'
@@ -89,7 +95,7 @@ export default function LibraryPage() {
       <main className="px-4 pb-32">
         {/* Topics Row */}
         <div className="max-w-7xl mx-auto mt-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {libraryTopics.map((topic) => (
               <div
                 key={topic.id}
@@ -112,48 +118,15 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        {/* Welcome Section */}
-        <div className="max-w-4xl mx-auto mt-16">
-          <div className="bg-gray-50 border border-gray-200 p-8">
-            <div className="text-center mb-6">
-              <div className="text-3xl mb-4">{catAnimation}</div>
-              <h3 className="font-mono text-lg mb-2">Your Learning Library</h3>
-              <p className="text-gray-600 text-sm">Master the fundamentals of programming and data management!</p>
-            </div>
-
-            {/* Featured Topics */}
-            <div className="grid grid-cols-4 gap-4 mt-8">
-              <div className="text-center">
-                <div className="text-2xl mb-2">🧮</div>
-                <div className="text-xs font-mono text-gray-600">DSA</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-2">🐍</div>
-                <div className="text-xs font-mono text-gray-600">Python</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-2">☕</div>
-                <div className="text-xs font-mono text-gray-600">Java</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-2">🗃️</div>
-                <div className="text-xs font-mono text-gray-600">SQL</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer section */}
-        <div className="text-center py-16 border-t border-gray-100 mt-12">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-4xl mb-6">{catAnimation}</div>
-            <p className="font-mono text-gray-500 mb-4">
-              Ready to dive into the world of programming?
-            </p>
-            <div className="text-sm text-gray-400 font-mono">
-              4 essential topics • Unlimited learning possibilities
-            </div>
-          </div>
+        {/* Cat Language Description */}
+        <div className="max-w-4xl mx-auto mt-12 text-center">
+          <div className="text-2xl mb-4">{catAnimation}</div>
+          <p className="font-mono text-gray-600 text-sm mb-2">
+            Meow meow purr-gramming! 🐱 Time to learn the paw-some fundamentals!
+          </p>
+          <p className="font-mono text-gray-500 text-xs">
+            Whiskers say: "Master these fur-tastic coding skills!" 😸
+          </p>
         </div>
       </main>
     </div>
