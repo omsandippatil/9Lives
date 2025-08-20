@@ -261,7 +261,7 @@ export default function CatTriangle({
     const newMessage: FloatingMessage = {
       id: Math.random().toString(36).substr(2, 9),
       text,
-      x: Math.random() * 60 - 30,
+      x: Math.random() * 100 - 50,
       y: Math.random() * 60 - 30,
       delay: Math.random() * 300
     }
@@ -301,22 +301,17 @@ export default function CatTriangle({
       console.error('Error sending message:', error)
     }
   }, [messageText, currentUser, addFloatingMessage])
+  
   const addFloatingEmoji = useCallback((emoji: string) => {
     const newEmoji: FloatingEmoji = {
       id: Math.random().toString(36).substr(2, 9),
       emoji,
-      x: Math.random() * 60 - 30, // Increased range for better spread
-      y: Math.random() * 60 - 30,
-      delay: Math.random() * 300
+      x: Math.random() * 120 - 60, // Increased spread
+      y: Math.random() * 80 - 40,
+      delay: Math.random() * 400
     }
     
     setFloatingEmojis(prev => [...prev, newEmoji])
-    
-    // Show temporary emoji on button for thumbs up/down
-    if (emoji === '👍' || emoji === '👎') {
-      setTemporaryEmoji(emoji)
-      setTimeout(() => setTemporaryEmoji(null), 1500)
-    }
     
     // Remove emoji after longer animation
     setTimeout(() => {
@@ -324,16 +319,16 @@ export default function CatTriangle({
     }, 4500 + newEmoji.delay)
   }, [])
 
-  // Create multiple hearts for Alt+L with pink aesthetic
+  // Create multiple hearts for Alt+L with pink aesthetic and better spacing
   const createHeartShower = useCallback(() => {
-    const heartCount = 6 + Math.floor(Math.random() * 4) // 6-9 hearts
+    const heartCount = 4 + Math.floor(Math.random() * 3) // 4-6 hearts (reduced)
     const hearts = ['💖', '💕', '💗', '🩷'] // Pink heart variations
     
     for (let i = 0; i < heartCount; i++) {
       setTimeout(() => {
         const heartEmoji = hearts[Math.floor(Math.random() * hearts.length)]
         addFloatingEmoji(heartEmoji)
-      }, i * 150) // Slightly faster stagger
+      }, i * 200) // Increased delay for better spacing
     }
   }, [addFloatingEmoji])
 
@@ -873,10 +868,10 @@ export default function CatTriangle({
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
-      {/* Message Input */}
+      {/* Message Input with enhanced styling */}
       {showMessageInput && (
         <div className="absolute bottom-16 right-0 mb-2">
-          <div className="bg-white bg-opacity-95 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200">
+          <div className="bg-white rounded-lg shadow-xl p-4 border-2 border-black">
             <input
               id="cat-triangle-message-input"
               type="text"
@@ -892,16 +887,16 @@ export default function CatTriangle({
                 }
               }}
               placeholder="Type message..."
-              className="w-48 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              className="w-52 px-4 py-3 text-sm border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 font-medium"
               maxLength={50}
             />
-            <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-gray-500">{messageText.length}/50</span>
-              <div className="flex gap-1">
+            <div className="flex justify-between items-center mt-3">
+              <span className="text-xs text-gray-700 font-medium">{messageText.length}/50</span>
+              <div className="flex gap-2">
                 <button
                   onClick={sendMessage}
                   disabled={!messageText.trim()}
-                  className="px-3 py-1 text-xs bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-xs font-bold bg-pink-500 text-white rounded-md border-2 border-black hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed shadow-md transition-all"
                 >
                   Send
                 </button>
@@ -910,7 +905,7 @@ export default function CatTriangle({
                     setShowMessageInput(false)
                     setMessageText('')
                   }}
-                  className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
+                  className="px-4 py-2 text-xs font-bold bg-gray-500 text-white rounded-md border-2 border-black hover:bg-gray-600 shadow-md transition-all"
                 >
                   Cancel
                 </button>
@@ -920,11 +915,11 @@ export default function CatTriangle({
         </div>
       )}
 
-      {/* Floating Messages */}
+      {/* Floating Messages with enhanced styling */}
       {floatingMessages.map((message) => (
         <div
           key={message.id}
-          className="absolute pointer-events-none text-sm font-medium select-none max-w-xs"
+          className="absolute pointer-events-none text-sm font-bold select-none max-w-xs"
           style={{
             left: `${message.x}px`,
             top: `${message.y}px`,
@@ -932,48 +927,64 @@ export default function CatTriangle({
             animation: 'float-up-text 5s ease-out forwards'
           }}
         >
-          <div className="bg-white bg-opacity-90 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg border border-gray-200">
+          <div className="bg-white px-4 py-2 rounded-full shadow-lg border-2 border-black text-black">
             {message.text}
           </div>
         </div>
       ))}
 
-      {/* Floating Emojis */}
+      {/* Floating Emojis with improved spacing and smaller hearts */}
       {floatingEmojis.map((emoji) => (
         <div
           key={emoji.id}
-          className="absolute pointer-events-none text-3xl select-none"
+          className="absolute pointer-events-none select-none"
           style={{
             left: `${emoji.x}px`,
             top: `${emoji.y}px`,
             animationDelay: `${emoji.delay}ms`,
             animation: 'float-up-enhanced 4.5s ease-out forwards',
-            textShadow: '0 0 10px rgba(255, 192, 203, 0.6), 0 0 20px rgba(255, 192, 203, 0.4)',
-            filter: 'drop-shadow(0 0 8px rgba(255, 192, 203, 0.8))'
+            fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '24px' : '28px',
+            textShadow: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') 
+              ? '0 0 8px rgba(255, 192, 203, 0.6), 0 0 15px rgba(255, 192, 203, 0.4)'
+              : '0 2px 4px rgba(0,0,0,0.3)',
+            filter: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷')
+              ? 'drop-shadow(0 0 6px rgba(255, 192, 203, 0.7))'
+              : 'drop-shadow(0 2px 3px rgba(0,0,0,0.2))'
           }}
         >
           {emoji.emoji}
         </div>
       ))}
+
+      {/* Emoji shortcut indicators */}
+      <div className="absolute bottom-16 left-0 mb-2 text-xs text-gray-600 bg-white bg-opacity-90 rounded-lg px-3 py-2 border-2 border-black shadow-lg font-medium">
+        <div className="space-y-1">
+          <div><span className="font-bold">Tab:</span> Message</div>
+          <div><span className="font-bold">Alt+Y:</span> 👍</div>
+          <div><span className="font-bold">Alt+N:</span> 👎</div>
+          <div><span className="font-bold">Alt+L:</span> 💖</div>
+        </div>
+      </div>
       
       <button
         onClick={handleCircleClick}
         disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
         className={`
           w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
+          border-2 border-black shadow-lg
           ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
           ${isConnected && connectedUsers.length > 1
-            ? 'bg-pink-500 shadow-lg shadow-pink-200 border-2 border-pink-400' 
-            : 'bg-white shadow-sm border-2 border-gray-200'
+            ? 'bg-pink-500 shadow-pink-200' 
+            : 'bg-white shadow-gray-200'
           }
-          hover:shadow-md disabled:cursor-not-allowed
+          hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed
         `}
         title={`${connectedUsers.length} user(s) connected`}
       >
         <span>{getCatEmoji()}</span>
       </button>
       
-      {/* CSS for floating animation */}
+      {/* Enhanced CSS for floating animations */}
       <style jsx>{`
         @keyframes float-up-enhanced {
           0% {
@@ -981,69 +992,69 @@ export default function CatTriangle({
             opacity: 1;
           }
           15% {
-            transform: translateY(-10px) scale(1.1) rotate(5deg);
+            transform: translateY(-12px) scale(1.1) rotate(3deg);
             opacity: 0.95;
           }
           30% {
-            transform: translateY(-25px) scale(1.2) rotate(-3deg);
+            transform: translateY(-28px) scale(1.15) rotate(-2deg);
             opacity: 0.9;
           }
           50% {
-            transform: translateY(-45px) scale(1.3) rotate(2deg);
+            transform: translateY(-50px) scale(1.2) rotate(1deg);
             opacity: 0.8;
           }
           70% {
-            transform: translateY(-70px) scale(1.2) rotate(-1deg);
+            transform: translateY(-75px) scale(1.1) rotate(-1deg);
             opacity: 0.6;
           }
           85% {
-            transform: translateY(-90px) scale(1.1) rotate(1deg);
+            transform: translateY(-95px) scale(1.05) rotate(0.5deg);
             opacity: 0.3;
           }
           100% {
-            transform: translateY(-120px) scale(0.8) rotate(0deg);
+            transform: translateY(-120px) scale(0.9) rotate(0deg);
             opacity: 0;
           }
         }
         
         @keyframes float-up-text {
           0% {
-            transform: translateY(0) scale(0.8);
+            transform: translateY(0) scale(0.9);
             opacity: 0;
           }
           10% {
-            transform: translateY(-5px) scale(1);
+            transform: translateY(-8px) scale(1);
             opacity: 1;
           }
           30% {
-            transform: translateY(-20px) scale(1);
+            transform: translateY(-25px) scale(1);
             opacity: 1;
           }
           60% {
-            transform: translateY(-40px) scale(1);
+            transform: translateY(-45px) scale(1);
             opacity: 0.9;
           }
           80% {
-            transform: translateY(-60px) scale(0.95);
+            transform: translateY(-65px) scale(0.98);
             opacity: 0.5;
           }
           100% {
-            transform: translateY(-80px) scale(0.9);
+            transform: translateY(-85px) scale(0.95);
             opacity: 0;
           }
         }
         
-        /* Pink glow effect for hearts */
+        /* Refined pink glow effect for hearts with smaller size */
         div[style*="💖"], div[style*="💕"], div[style*="💗"], div[style*="🩷"] {
-          animation: float-up-enhanced 4.5s ease-out forwards, pink-pulse 0.8s ease-in-out infinite alternate;
+          animation: float-up-enhanced 4.5s ease-out forwards, pink-pulse 1s ease-in-out infinite alternate;
         }
         
         @keyframes pink-pulse {
           0% {
-            filter: drop-shadow(0 0 8px rgba(255, 192, 203, 0.8)) drop-shadow(0 0 15px rgba(255, 105, 180, 0.6));
+            filter: drop-shadow(0 0 6px rgba(255, 192, 203, 0.7)) drop-shadow(0 0 12px rgba(255, 105, 180, 0.5));
           }
           100% {
-            filter: drop-shadow(0 0 12px rgba(255, 192, 203, 1)) drop-shadow(0 0 25px rgba(255, 105, 180, 0.8));
+            filter: drop-shadow(0 0 10px rgba(255, 192, 203, 0.9)) drop-shadow(0 0 20px rgba(255, 105, 180, 0.7));
           }
         }
       `}</style>
