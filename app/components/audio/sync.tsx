@@ -46,6 +46,14 @@ interface FloatingEmoji {
   delay: number
 }
 
+interface FloatingMessage {
+  id: string
+  text: string
+  x: number
+  y: number
+  delay: number
+}
+
 // WebRTC configuration with more STUN servers
 const rtcConfiguration = {
   iceServers: [
@@ -70,6 +78,9 @@ export default function CatTriangle({
   const [isVisible, setIsVisible] = useState(false)
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([])
   const [temporaryEmoji, setTemporaryEmoji] = useState<string | null>(null)
+  const [showMessageInput, setShowMessageInput] = useState(false)
+  const [messageText, setMessageText] = useState('')
+  const [floatingMessages, setFloatingMessages] = useState<FloatingMessage[]>([])
   
   // Refs - using refs to avoid dependency issues
   const supabaseRef = useRef<any>(null)
@@ -245,7 +256,51 @@ export default function CatTriangle({
     }
   }, [getUserFromCookies, isConnected, connectionStatus, cleanupConnection])
 
-  // Add floating emoji with temporary button change
+  // Add floating message
+  const addFloatingMessage = useCallback((text: string) => {
+    const newMessage: FloatingMessage = {
+      id: Math.random().toString(36).substr(2, 9),
+      text,
+      x: Math.random() * 60 - 30,
+      y: Math.random() * 60 - 30,
+      delay: Math.random() * 300
+    }
+    
+    setFloatingMessages(prev => [...prev, newMessage])
+    
+    // Remove message after animation
+    setTimeout(() => {
+      setFloatingMessages(prev => prev.filter(m => m.id !== newMessage.id))
+    }, 5000 + newMessage.delay)
+  }, [])
+
+  // Send message via broadcast
+  const sendMessage = useCallback(async () => {
+    if (!messageText.trim() || !channelRef.current || !currentUser) return
+
+    try {
+      // Send message to other users
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'text-message',
+        payload: {
+          text: messageText.trim(),
+          from: currentUser.id,
+          fromEmail: currentUser.email,
+          timestamp: Date.now()
+        }
+      })
+
+      // Show locally
+      addFloatingMessage(messageText.trim())
+      
+      // Clear input
+      setMessageText('')
+      setShowMessageInput(false)
+    } catch (error) {
+      console.error('Error sending message:', error)
+    }
+  }, [messageText, currentUser, addFloatingMessage])
   const addFloatingEmoji = useCallback((emoji: string) => {
     const newEmoji: FloatingEmoji = {
       id: Math.random().toString(36).substr(2, 9),
@@ -291,6 +346,7 @@ export default function CatTriangle({
         
         if (isVisible) {
           setIsVisible(false)
+          setShowMessageInput(false)
           if (isConnected || connectionStatus !== 'disconnected') {
             cleanupConnection()
           }
@@ -299,8 +355,18 @@ export default function CatTriangle({
         }
       }
       
-      // Emoji shortcuts - only work when visible
-      if (isVisible && event.altKey) {
+      // Message input with Tab
+      if (isVisible && event.key === 'Tab' && !event.altKey && !event.ctrlKey) {
+        event.preventDefault()
+        setShowMessageInput(true)
+        setTimeout(() => {
+          const input = document.getElementById('cat-triangle-message-input')
+          if (input) input.focus()
+        }, 10)
+      }
+      
+      // Emoji shortcuts - only work when visible and not typing
+      if (isVisible && event.altKey && !showMessageInput) {
         if (event.key === 'y') {
           event.preventDefault()
           addFloatingEmoji('👍')
@@ -319,7 +385,7 @@ export default function CatTriangle({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isVisible, isConnected, connectionStatus, cleanupConnection, addFloatingEmoji, createHeartShower])
+  }, [isVisible, isConnected, connectionStatus, cleanupConnection, addFloatingEmoji, createHeartShower, showMessageInput])
 
   // Setup audio context
   const setupAudioContext = useCallback(async () => {
@@ -712,6 +778,13 @@ export default function CatTriangle({
       handleSignaling(payload)
     })
 
+    // Handle text messages
+    channel.on('broadcast', { event: 'text-message' }, ({ payload }: any) => {
+      if (payload.from !== currentUser.id) {
+        addFloatingMessage(payload.text)
+      }
+    })
+
     // Subscribe to channel
     channel.subscribe(async (status: string) => {
       console.log(`Channel subscription status: ${status}`)
@@ -800,6 +873,71 @@ export default function CatTriangle({
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
+      {/* Message Input */}
+      {showMessageInput && (
+        <div className="absolute bottom-16 right-0 mb-2">
+          <div className="bg-white bg-opacity-95 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200">
+            <input
+              id="cat-triangle-message-input"
+              type="text"
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && messageText.trim()) {
+                  e.preventDefault()
+                  sendMessage()
+                } else if (e.key === 'Escape') {
+                  setShowMessageInput(false)
+                  setMessageText('')
+                }
+              }}
+              placeholder="Type message..."
+              className="w-48 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              maxLength={50}
+            />
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-xs text-gray-500">{messageText.length}/50</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={sendMessage}
+                  disabled={!messageText.trim()}
+                  className="px-3 py-1 text-xs bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Send
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMessageInput(false)
+                    setMessageText('')
+                  }}
+                  className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Messages */}
+      {floatingMessages.map((message) => (
+        <div
+          key={message.id}
+          className="absolute pointer-events-none text-sm font-medium select-none max-w-xs"
+          style={{
+            left: `${message.x}px`,
+            top: `${message.y}px`,
+            animationDelay: `${message.delay}ms`,
+            animation: 'float-up-text 5s ease-out forwards'
+          }}
+        >
+          <div className="bg-white bg-opacity-90 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg border border-gray-200">
+            {message.text}
+          </div>
+        </div>
+      ))}
+
       {/* Floating Emojis */}
       {floatingEmojis.map((emoji) => (
         <div
@@ -864,6 +1002,33 @@ export default function CatTriangle({
           }
           100% {
             transform: translateY(-120px) scale(0.8) rotate(0deg);
+            opacity: 0;
+          }
+        }
+        
+        @keyframes float-up-text {
+          0% {
+            transform: translateY(0) scale(0.8);
+            opacity: 0;
+          }
+          10% {
+            transform: translateY(-5px) scale(1);
+            opacity: 1;
+          }
+          30% {
+            transform: translateY(-20px) scale(1);
+            opacity: 1;
+          }
+          60% {
+            transform: translateY(-40px) scale(1);
+            opacity: 0.9;
+          }
+          80% {
+            transform: translateY(-60px) scale(0.95);
+            opacity: 0.5;
+          }
+          100% {
+            transform: translateY(-80px) scale(0.9);
             opacity: 0;
           }
         }
