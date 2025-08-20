@@ -38,6 +38,14 @@ interface BroadcastEvent {
   payload: SignalData
 }
 
+interface FloatingEmoji {
+  id: string
+  emoji: string
+  x: number
+  y: number
+  delay: number
+}
+
 // WebRTC configuration with more STUN servers
 const rtcConfiguration = {
   iceServers: [
@@ -60,6 +68,7 @@ export default function CatTriangle({
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [isVisible, setIsVisible] = useState(false)
+  const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([])
   
   // Refs - using refs to avoid dependency issues
   const supabaseRef = useRef<any>(null)
@@ -235,10 +244,39 @@ export default function CatTriangle({
     }
   }, [getUserFromCookies, isConnected, connectionStatus, cleanupConnection])
 
-  // Keyboard shortcuts and mobile gestures
+  // Add floating emoji
+  const addFloatingEmoji = useCallback((emoji: string) => {
+    const newEmoji: FloatingEmoji = {
+      id: Math.random().toString(36).substr(2, 9),
+      emoji,
+      x: Math.random() * 40 - 20, // Random offset from center
+      y: Math.random() * 40 - 20,
+      delay: Math.random() * 500
+    }
+    
+    setFloatingEmojis(prev => [...prev, newEmoji])
+    
+    // Remove emoji after animation
+    setTimeout(() => {
+      setFloatingEmojis(prev => prev.filter(e => e.id !== newEmoji.id))
+    }, 3000 + newEmoji.delay)
+  }, [])
+
+  // Create multiple hearts for Alt+L
+  const createHeartShower = useCallback(() => {
+    const heartCount = 5 + Math.floor(Math.random() * 3) // 5-7 hearts
+    for (let i = 0; i < heartCount; i++) {
+      setTimeout(() => {
+        addFloatingEmoji('❤️')
+      }, i * 200) // Stagger the hearts
+    }
+  }, [addFloatingEmoji])
+
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && (event.key === 'o' || event.key === 'd')) {
+      // Toggle visibility with Alt+O or Alt+D
+      if (event.altKey && (event.key === 'o' || event.key === 'd')) {
         event.preventDefault()
         
         if (isVisible) {
@@ -250,75 +288,28 @@ export default function CatTriangle({
           setIsVisible(true)
         }
       }
-    }
-
-    // Mobile gesture handling
-    let touchStartTime = 0
-    let touchCount = 0
-    let touchTimeout: NodeJS.Timeout
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length === 3) {
-        touchStartTime = Date.now()
-        touchCount++
-        
-        if (touchTimeout) {
-          clearTimeout(touchTimeout)
-        }
-        
-        touchTimeout = setTimeout(() => {
-          touchCount = 0
-        }, 1000)
-        
-        if (touchCount === 2) {
+      
+      // Emoji shortcuts - only work when visible
+      if (isVisible && event.altKey) {
+        if (event.key === 'y') {
           event.preventDefault()
-          touchCount = 0
-          clearTimeout(touchTimeout)
-          
-          if (isVisible) {
-            setIsVisible(false)
-            if (isConnected || connectionStatus !== 'disconnected') {
-              cleanupConnection()
-            }
-          } else {
-            setIsVisible(true)
-          }
-        }
-      }
-    }
-
-    const handleTouchEnd = (event: TouchEvent) => {
-      if (event.changedTouches.length === 2 && touchStartTime > 0) {
-        const touchDuration = Date.now() - touchStartTime
-        if (touchDuration > 2000) {
+          addFloatingEmoji('👍')
+        } else if (event.key === 'n') {
           event.preventDefault()
-          
-          if (isVisible) {
-            setIsVisible(false)
-            if (isConnected || connectionStatus !== 'disconnected') {
-              cleanupConnection()
-            }
-          } else {
-            setIsVisible(true)
-          }
+          addFloatingEmoji('👎')
+        } else if (event.key === 'l') {
+          event.preventDefault()
+          createHeartShower()
         }
-        touchStartTime = 0
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('touchstart', handleTouchStart, { passive: false })
-    window.addEventListener('touchend', handleTouchEnd, { passive: false })
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('touchstart', handleTouchStart)
-      window.removeEventListener('touchend', handleTouchEnd)
-      if (touchTimeout) {
-        clearTimeout(touchTimeout)
-      }
     }
-  }, [isVisible, isConnected, connectionStatus, cleanupConnection])
+  }, [isVisible, isConnected, connectionStatus, cleanupConnection, addFloatingEmoji, createHeartShower])
 
   // Setup audio context
   const setupAudioContext = useCallback(async () => {
@@ -807,9 +798,8 @@ export default function CatTriangle({
           <div className="bg-black bg-opacity-80 text-white text-xs p-3 rounded-lg shadow-lg animate-pulse">
             <div className="text-center mb-2">🐱 Cat Triangle Audio</div>
             <div className="space-y-1 text-xs">
-              <div>Desktop: Ctrl+O/Ctrl+D</div>
-              <div>Mobile: Triple tap (3 fingers) twice</div>
-              <div>Or: Long press (2 fingers, 2s)</div>
+              <div>Show/Hide: Alt+O/Alt+D</div>
+              <div>Reactions: Alt+Y 👍 Alt+N 👎 Alt+L ❤️</div>
             </div>
           </div>
         </div>
@@ -821,11 +811,27 @@ export default function CatTriangle({
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
+      {/* Floating Emojis */}
+      {floatingEmojis.map((emoji) => (
+        <div
+          key={emoji.id}
+          className="absolute pointer-events-none text-2xl"
+          style={{
+            left: `${emoji.x}px`,
+            top: `${emoji.y}px`,
+            animationDelay: `${emoji.delay}ms`,
+            animation: 'float-up 3s ease-out forwards'
+          }}
+        >
+          {emoji.emoji}
+        </div>
+      ))}
+      
       <button
         onClick={handleCircleClick}
         disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
         className={`
-          w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300
+          w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
           ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
           ${isConnected && connectedUsers.length > 1
             ? 'bg-pink-500 shadow-lg shadow-pink-200 border-2 border-pink-400' 
@@ -833,10 +839,28 @@ export default function CatTriangle({
           }
           hover:shadow-md disabled:cursor-not-allowed
         `}
-        title={`${connectedUsers.length} user(s) connected - Press Ctrl+O/Ctrl+D to hide/disconnect`}
+        title={`${connectedUsers.length} user(s) connected - Alt+O/Alt+D to hide/disconnect - Alt+Y/N/L for reactions`}
       >
         <span>{getCatEmoji()}</span>
       </button>
+      
+      {/* CSS for floating animation */}
+      <style jsx>{`
+        @keyframes float-up {
+          0% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translateY(-30px) scale(1.2);
+            opacity: 0.8;
+          }
+          100% {
+            transform: translateY(-60px) scale(0.8);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   )
 }
