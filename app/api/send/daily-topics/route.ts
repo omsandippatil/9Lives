@@ -258,7 +258,7 @@ async function handleDailyTopics() {
   const links = [
     { text: 'Technical', url: `https://9-lives.vercel.app/technical/${questionNumber}` },
     { text: 'Fundamental', url: `https://9-lives.vercel.app/fundamental/${questionNumber}` },
-    { text: 'Tech Topics', url: `https://9-lives.vercel.app/tech-topics/${dayNumber}` },
+    { text: 'Tech Topics', url: `https://9-lives.vercel.app/tech-topic/${dayNumber}` },
     { text: 'System Design', url: `https://9-lives.vercel.app/system-design/${dayNumber}` }
   ];
 
