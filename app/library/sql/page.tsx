@@ -18,7 +18,7 @@ const sqlSections = [
     title: 'Basics',
     icon: '🐱',
     description: 'Fundamental SQL keywords and operators - start here',
-    count: 5
+    count: 7
   },
   {
     id: 'objects', 
@@ -81,72 +81,73 @@ const sqlSections = [
 // Mock data for each section
 const mockSqlData: Record<string, Topic[]> = {
   basics: [
-    { id: 1, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
-    { id: 2, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
-    { id: 3, name: 'Data Types', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
-    { id: 4, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
-    { id: 5, name: 'Operators (Arithmetic, Comparison, Logical)', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
+    { id: 1, name: 'Basics', emoji: '🔢', category: 'Fundamentals', difficulty: 'basics' as const },
+    { id: 2, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
+    { id: 3, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
+    { id: 4, name: 'Data Types', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
+    { id: 5, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
+    { id: 6, name: 'Operators (Arithmetic, Comparison, Logical)', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
   ],
   objects: [
-    { id: 6, name: 'Database', emoji: '🗃️', category: 'Structure', difficulty: 'basics' as const },
-    { id: 7, name: 'Schema', emoji: '📋', category: 'Structure', difficulty: 'basics' as const },
-    { id: 8, name: 'Table', emoji: '📊', category: 'Structure', difficulty: 'basics' as const },
-    { id: 9, name: 'Column', emoji: '📏', category: 'Structure', difficulty: 'basics' as const },
-    { id: 10, name: 'Row', emoji: '📝', category: 'Structure', difficulty: 'basics' as const },
-    { id: 11, name: 'View', emoji: '👁️', category: 'Virtual', difficulty: 'intermediate' as const },
-    { id: 12, name: 'Index', emoji: '📇', category: 'Performance', difficulty: 'intermediate' as const },
-    { id: 13, name: 'Sequence', emoji: '🔢', category: 'Generator', difficulty: 'intermediate' as const },
-    { id: 14, name: 'Synonym', emoji: '🔄', category: 'Alias', difficulty: 'intermediate' as const },
-    { id: 15, name: 'Stored Procedure', emoji: '⚙️', category: 'Procedure', difficulty: 'advanced' as const },
-    { id: 16, name: 'Function', emoji: '🔧', category: 'Procedure', difficulty: 'advanced' as const },
-    { id: 17, name: 'Trigger', emoji: '⚡', category: 'Event', difficulty: 'advanced' as const },
-    { id: 18, name: 'Cursor', emoji: '👆', category: 'Navigation', difficulty: 'advanced' as const }
+    { id: 7, name: 'Database', emoji: '🗃️', category: 'Structure', difficulty: 'basics' as const },
+    { id: 8, name: 'Schema', emoji: '📋', category: 'Structure', difficulty: 'basics' as const },
+    { id: 9, name: 'Table', emoji: '📊', category: 'Structure', difficulty: 'basics' as const },
+    { id: 10, name: 'Column', emoji: '📏', category: 'Structure', difficulty: 'basics' as const },
+    { id: 11, name: 'Row', emoji: '📝', category: 'Structure', difficulty: 'basics' as const },
+    { id: 12, name: 'View', emoji: '👁️', category: 'Virtual', difficulty: 'intermediate' as const },
+    { id: 13, name: 'Index', emoji: '📇', category: 'Performance', difficulty: 'intermediate' as const },
+    { id: 14, name: 'Sequence', emoji: '🔢', category: 'Generator', difficulty: 'intermediate' as const },
+    { id: 15, name: 'Synonym', emoji: '🔄', category: 'Alias', difficulty: 'intermediate' as const },
+    { id: 16, name: 'Stored Procedure', emoji: '⚙️', category: 'Procedure', difficulty: 'advanced' as const },
+    { id: 17, name: 'Function', emoji: '🔧', category: 'Procedure', difficulty: 'advanced' as const },
+    { id: 18, name: 'Trigger', emoji: '⚡', category: 'Event', difficulty: 'advanced' as const },
+    { id: 19, name: 'Cursor', emoji: '👆', category: 'Navigation', difficulty: 'advanced' as const }
   ],
   constraints: [
-    { id: 19, name: 'Primary Key', emoji: '🗝️', category: 'Key', difficulty: 'basics' as const },
-    { id: 20, name: 'Foreign Key', emoji: '🔗', category: 'Key', difficulty: 'intermediate' as const },
-    { id: 21, name: 'Unique Constraint', emoji: '⭐', category: 'Constraint', difficulty: 'basics' as const },
-    { id: 22, name: 'Not Null Constraint', emoji: '❌', category: 'Constraint', difficulty: 'basics' as const },
-    { id: 23, name: 'Check Constraint', emoji: '✅', category: 'Constraint', difficulty: 'intermediate' as const },
-    { id: 24, name: 'Default Constraint', emoji: '🎯', category: 'Constraint', difficulty: 'basics' as const }
+    { id: 20, name: 'Primary Key', emoji: '🗝️', category: 'Key', difficulty: 'basics' as const },
+    { id: 21, name: 'Foreign Key', emoji: '🔗', category: 'Key', difficulty: 'intermediate' as const },
+    { id: 22, name: 'Unique Constraint', emoji: '⭐', category: 'Constraint', difficulty: 'basics' as const },
+    { id: 23, name: 'Not Null Constraint', emoji: '❌', category: 'Constraint', difficulty: 'basics' as const },
+    { id: 24, name: 'Check Constraint', emoji: '✅', category: 'Constraint', difficulty: 'intermediate' as const },
+    { id: 25, name: 'Default Constraint', emoji: '🎯', category: 'Constraint', difficulty: 'basics' as const }
   ],
   ddl: [
-    { id: 25, name: 'CREATE', emoji: '🏗️', category: 'DDL', difficulty: 'basics' as const },
-    { id: 26, name: 'ALTER', emoji: '🔧', category: 'DDL', difficulty: 'intermediate' as const },
-    { id: 27, name: 'DROP', emoji: '🗑️', category: 'DDL', difficulty: 'basics' as const },
-    { id: 28, name: 'TRUNCATE', emoji: '🧹', category: 'DDL', difficulty: 'intermediate' as const }
+    { id: 26, name: 'CREATE', emoji: '🏗️', category: 'DDL', difficulty: 'basics' as const },
+    { id: 27, name: 'ALTER', emoji: '🔧', category: 'DDL', difficulty: 'intermediate' as const },
+    { id: 28, name: 'DROP', emoji: '🗑️', category: 'DDL', difficulty: 'basics' as const },
+    { id: 29, name: 'TRUNCATE', emoji: '🧹', category: 'DDL', difficulty: 'intermediate' as const }
   ],
   dml: [
-    { id: 29, name: 'INSERT', emoji: '➕', category: 'DML', difficulty: 'basics' as const },
-    { id: 30, name: 'UPDATE', emoji: '✏️', category: 'DML', difficulty: 'basics' as const },
-    { id: 31, name: 'DELETE', emoji: '❌', category: 'DML', difficulty: 'basics' as const },
-    { id: 32, name: 'MERGE', emoji: '🔄', category: 'DML', difficulty: 'advanced' as const }
+    { id: 30, name: 'INSERT', emoji: '➕', category: 'DML', difficulty: 'basics' as const },
+    { id: 31, name: 'UPDATE', emoji: '✏️', category: 'DML', difficulty: 'basics' as const },
+    { id: 32, name: 'DELETE', emoji: '❌', category: 'DML', difficulty: 'basics' as const },
+    { id: 33, name: 'MERGE', emoji: '🔄', category: 'DML', difficulty: 'advanced' as const }
   ],
   dql: [
-    { id: 33, name: 'SELECT', emoji: '🔍', category: 'Query', difficulty: 'basics' as const },
-    { id: 34, name: 'WHERE', emoji: '🎯', category: 'Filter', difficulty: 'basics' as const },
-    { id: 35, name: 'ORDER BY', emoji: '📊', category: 'Sort', difficulty: 'basics' as const },
-    { id: 36, name: 'GROUP BY', emoji: '📦', category: 'Aggregate', difficulty: 'intermediate' as const },
-    { id: 37, name: 'HAVING', emoji: '🔎', category: 'Aggregate', difficulty: 'intermediate' as const },
-    { id: 38, name: 'DISTINCT', emoji: '⭐', category: 'Unique', difficulty: 'basics' as const },
-    { id: 39, name: 'LIMIT / TOP / FETCH', emoji: '🎪', category: 'Limit', difficulty: 'intermediate' as const }
+    { id: 34, name: 'SELECT', emoji: '🔍', category: 'Query', difficulty: 'basics' as const },
+    { id: 35, name: 'WHERE', emoji: '🎯', category: 'Filter', difficulty: 'basics' as const },
+    { id: 36, name: 'ORDER BY', emoji: '📊', category: 'Sort', difficulty: 'basics' as const },
+    { id: 37, name: 'GROUP BY', emoji: '📦', category: 'Aggregate', difficulty: 'intermediate' as const },
+    { id: 38, name: 'HAVING', emoji: '🔎', category: 'Aggregate', difficulty: 'intermediate' as const },
+    { id: 39, name: 'DISTINCT', emoji: '⭐', category: 'Unique', difficulty: 'basics' as const },
+    { id: 40, name: 'LIMIT / TOP / FETCH', emoji: '🎪', category: 'Limit', difficulty: 'intermediate' as const }
   ],
   joins: [
-    { id: 40, name: 'INNER JOIN', emoji: '🤝', category: 'Join', difficulty: 'basics' as const },
-    { id: 41, name: 'LEFT JOIN', emoji: '⬅️', category: 'Join', difficulty: 'intermediate' as const },
-    { id: 42, name: 'RIGHT JOIN', emoji: '➡️', category: 'Join', difficulty: 'intermediate' as const },
-    { id: 43, name: 'FULL OUTER JOIN', emoji: '↔️', category: 'Join', difficulty: 'intermediate' as const },
-    { id: 44, name: 'CROSS JOIN', emoji: '❌', category: 'Join', difficulty: 'advanced' as const },
-    { id: 45, name: 'SELF JOIN', emoji: '🪞', category: 'Join', difficulty: 'advanced' as const },
-    { id: 46, name: 'Subqueries', emoji: '🎭', category: 'Query', difficulty: 'intermediate' as const }
+    { id: 41, name: 'INNER JOIN', emoji: '🤝', category: 'Join', difficulty: 'basics' as const },
+    { id: 42, name: 'LEFT JOIN', emoji: '⬅️', category: 'Join', difficulty: 'intermediate' as const },
+    { id: 43, name: 'RIGHT JOIN', emoji: '➡️', category: 'Join', difficulty: 'intermediate' as const },
+    { id: 44, name: 'FULL OUTER JOIN', emoji: '↔️', category: 'Join', difficulty: 'intermediate' as const },
+    { id: 45, name: 'CROSS JOIN', emoji: '❌', category: 'Join', difficulty: 'advanced' as const },
+    { id: 46, name: 'SELF JOIN', emoji: '🪞', category: 'Join', difficulty: 'advanced' as const },
+    { id: 47, name: 'Subqueries', emoji: '🎭', category: 'Query', difficulty: 'intermediate' as const }
   ],
   transactions: [
-    { id: 47, name: 'Transactions (BEGIN, COMMIT, ROLLBACK, SAVEPOINT)', emoji: '🔄', category: 'Control', difficulty: 'intermediate' as const },
-    { id: 48, name: 'Constraints & Referential Integrity', emoji: '🔐', category: 'Integrity', difficulty: 'advanced' as const },
-    { id: 49, name: 'Locks & Isolation Levels', emoji: '🔒', category: 'Concurrency', difficulty: 'expert' as const }
+    { id: 48, name: 'Transactions (BEGIN, COMMIT, ROLLBACK, SAVEPOINT)', emoji: '🔄', category: 'Control', difficulty: 'intermediate' as const },
+    { id: 49, name: 'Constraints & Referential Integrity', emoji: '🔐', category: 'Integrity', difficulty: 'advanced' as const },
+    { id: 50, name: 'Locks & Isolation Levels', emoji: '🔒', category: 'Concurrency', difficulty: 'expert' as const }
   ],
   advanced: [
-    { id: 50, name: 'Window Functions (RANK, ROW_NUMBER, LEAD, LAG, PARTITION BY)', emoji: '🪟', category: 'Analytics', difficulty: 'expert' as const }
+    { id: 51, name: 'Window Functions (RANK, ROW_NUMBER, LEAD, LAG, PARTITION BY)', emoji: '🪟', category: 'Analytics', difficulty: 'expert' as const }
   ]
 }
 
@@ -218,7 +219,7 @@ export default function SqlSyntaxPage() {
   }
 
   const handleTopicClick = (topicId: number) => {
-    router.push(`/sql/${topicId}`)
+    router.push(`/library/sql/${topicId}`)
   }
 
   const handleBack = () => {

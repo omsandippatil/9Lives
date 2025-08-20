@@ -18,7 +18,7 @@ const pythonSections = [
     title: 'Basics & Operators',
     icon: '🐱',
     description: 'Fundamental Python syntax and operators - start here',
-    count: 8
+    count: 9
   },
   {
     id: 'structures', 
@@ -71,73 +71,73 @@ const pythonSections = [
   }
 ]
 
-// Mock data for each section
 const mockPythonData: Record<string, Topic[]> = {
   basics: [
-    { id: 1, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
-    { id: 2, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
-    { id: 3, name: 'Variables', emoji: '📦', category: 'Data', difficulty: 'basics' as const },
-    { id: 4, name: 'Data Types', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
-    { id: 5, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
-    { id: 6, name: 'Indentation', emoji: '📏', category: 'Syntax', difficulty: 'basics' as const },
-    { id: 7, name: 'Input & Output', emoji: '⌨️', category: 'I/O', difficulty: 'basics' as const },
-    { id: 8, name: 'Operators', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
+    { id: 1, name: 'Basic & Operators', emoji: '🔢', category: 'Fundamentals', difficulty: 'basics' as const },
+    { id: 2, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
+    { id: 3, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
+    { id: 4, name: 'Variables', emoji: '📦', category: 'Data', difficulty: 'basics' as const },
+    { id: 5, name: 'Data Types', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
+    { id: 6, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
+    { id: 7, name: 'Indentation', emoji: '📏', category: 'Syntax', difficulty: 'basics' as const },
+    { id: 8, name: 'Input & Output', emoji: '⌨️', category: 'I/O', difficulty: 'basics' as const },
+    { id: 9, name: 'Operators', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
   ],
   structures: [
-    { id: 9, name: 'String', emoji: '🔤', category: 'Sequence', difficulty: 'basics' as const },
-    { id: 10, name: 'List', emoji: '📝', category: 'Sequence', difficulty: 'basics' as const },
-    { id: 11, name: 'Tuple', emoji: '🎯', category: 'Sequence', difficulty: 'basics' as const },
-    { id: 12, name: 'Dictionary', emoji: '📖', category: 'Mapping', difficulty: 'basics' as const },
-    { id: 13, name: 'Set', emoji: '🎲', category: 'Collection', difficulty: 'basics' as const },
-    { id: 14, name: 'Frozenset', emoji: '❄️', category: 'Collection', difficulty: 'intermediate' as const },
-    { id: 15, name: 'Range', emoji: '📊', category: 'Sequence', difficulty: 'basics' as const },
-    { id: 16, name: 'Array', emoji: '🗂️', category: 'Numeric', difficulty: 'intermediate' as const },
-    { id: 17, name: 'Bytes', emoji: '🔢', category: 'Binary', difficulty: 'intermediate' as const },
-    { id: 18, name: 'Bytearray', emoji: '🔄', category: 'Binary', difficulty: 'intermediate' as const },
-    { id: 19, name: 'Memoryview', emoji: '🔍', category: 'Binary', difficulty: 'advanced' as const },
-    { id: 20, name: 'Deque', emoji: '⚖️', category: 'Collections', difficulty: 'intermediate' as const },
-    { id: 21, name: 'NamedTuple', emoji: '🏷️', category: 'Collections', difficulty: 'intermediate' as const },
-    { id: 22, name: 'DefaultDict', emoji: '🎯', category: 'Collections', difficulty: 'intermediate' as const },
-    { id: 23, name: 'OrderedDict', emoji: '📋', category: 'Collections', difficulty: 'intermediate' as const },
-    { id: 24, name: 'Counter', emoji: '🔢', category: 'Collections', difficulty: 'intermediate' as const },
-    { id: 25, name: 'ChainMap', emoji: '🔗', category: 'Collections', difficulty: 'advanced' as const },
-    { id: 26, name: 'UserDict', emoji: '👤', category: 'Collections', difficulty: 'advanced' as const },
-    { id: 27, name: 'UserList', emoji: '📋', category: 'Collections', difficulty: 'advanced' as const },
-    { id: 28, name: 'UserString', emoji: '📝', category: 'Collections', difficulty: 'advanced' as const },
-    { id: 29, name: 'Heap', emoji: '🏔️', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 30, name: 'Queue', emoji: '🚶', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 31, name: 'LifoQueue', emoji: '📚', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 32, name: 'PriorityQueue', emoji: '🎖️', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 33, name: 'Multiprocessing Queue', emoji: '🔄', category: 'Queue', difficulty: 'advanced' as const },
-    { id: 34, name: 'MappingProxyType', emoji: '🔒', category: 'Collections', difficulty: 'advanced' as const }
+    { id: 10, name: 'String', emoji: '🔤', category: 'Sequence', difficulty: 'basics' as const },
+    { id: 11, name: 'List', emoji: '📝', category: 'Sequence', difficulty: 'basics' as const },
+    { id: 12, name: 'Tuple', emoji: '🎯', category: 'Sequence', difficulty: 'basics' as const },
+    { id: 13, name: 'Dictionary', emoji: '📖', category: 'Mapping', difficulty: 'basics' as const },
+    { id: 14, name: 'Set', emoji: '🎲', category: 'Collection', difficulty: 'basics' as const },
+    { id: 15, name: 'Frozenset', emoji: '❄️', category: 'Collection', difficulty: 'intermediate' as const },
+    { id: 16, name: 'Range', emoji: '📊', category: 'Sequence', difficulty: 'basics' as const },
+    { id: 17, name: 'Array', emoji: '🗂️', category: 'Numeric', difficulty: 'intermediate' as const },
+    { id: 18, name: 'Bytes', emoji: '🔢', category: 'Binary', difficulty: 'intermediate' as const },
+    { id: 19, name: 'Bytearray', emoji: '🔄', category: 'Binary', difficulty: 'intermediate' as const },
+    { id: 20, name: 'Memoryview', emoji: '🔍', category: 'Binary', difficulty: 'advanced' as const },
+    { id: 21, name: 'Deque', emoji: '⚖️', category: 'Collections', difficulty: 'intermediate' as const },
+    { id: 22, name: 'NamedTuple', emoji: '🏷️', category: 'Collections', difficulty: 'intermediate' as const },
+    { id: 23, name: 'DefaultDict', emoji: '🎯', category: 'Collections', difficulty: 'intermediate' as const },
+    { id: 24, name: 'OrderedDict', emoji: '📋', category: 'Collections', difficulty: 'intermediate' as const },
+    { id: 25, name: 'Counter', emoji: '🔢', category: 'Collections', difficulty: 'intermediate' as const },
+    { id: 26, name: 'ChainMap', emoji: '🔗', category: 'Collections', difficulty: 'advanced' as const },
+    { id: 27, name: 'UserDict', emoji: '👤', category: 'Collections', difficulty: 'advanced' as const },
+    { id: 28, name: 'UserList', emoji: '📋', category: 'Collections', difficulty: 'advanced' as const },
+    { id: 29, name: 'UserString', emoji: '📝', category: 'Collections', difficulty: 'advanced' as const },
+    { id: 30, name: 'Heap', emoji: '🏔️', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 31, name: 'Queue', emoji: '🚶', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 32, name: 'LifoQueue', emoji: '📚', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 33, name: 'PriorityQueue', emoji: '🎖️', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 34, name: 'Multiprocessing Queue', emoji: '🔄', category: 'Queue', difficulty: 'advanced' as const },
+    { id: 35, name: 'MappingProxyType', emoji: '🔒', category: 'Collections', difficulty: 'advanced' as const }
   ],
   control: [
-    { id: 35, name: 'Control Flow', emoji: '🔀', category: 'Flow Control', difficulty: 'basics' as const },
-    { id: 36, name: 'Functions', emoji: '⚙️', category: 'Functions', difficulty: 'basics' as const },
-    { id: 37, name: 'Lambda & Decorators', emoji: '✨', category: 'Functions', difficulty: 'intermediate' as const },
-    { id: 38, name: 'Recursion & Closures', emoji: '🔄', category: 'Functions', difficulty: 'advanced' as const }
+    { id: 36, name: 'Control Flow', emoji: '🔀', category: 'Flow Control', difficulty: 'basics' as const },
+    { id: 37, name: 'Functions', emoji: '⚙️', category: 'Functions', difficulty: 'basics' as const },
+    { id: 38, name: 'Lambda & Decorators', emoji: '✨', category: 'Functions', difficulty: 'intermediate' as const },
+    { id: 39, name: 'Recursion & Closures', emoji: '🔄', category: 'Functions', difficulty: 'advanced' as const }
   ],
   modules: [
-    { id: 39, name: 'Modules & Packages', emoji: '📦', category: 'Organization', difficulty: 'intermediate' as const },
-    { id: 40, name: 'Object-Oriented Programming', emoji: '🏗️', category: 'OOP', difficulty: 'intermediate' as const },
-    { id: 41, name: 'Exceptions & Error Handling', emoji: '🚨', category: 'Error Handling', difficulty: 'intermediate' as const }
+    { id: 40, name: 'Modules & Packages', emoji: '📦', category: 'Organization', difficulty: 'intermediate' as const },
+    { id: 41, name: 'Object-Oriented Programming', emoji: '🏗️', category: 'OOP', difficulty: 'intermediate' as const },
+    { id: 42, name: 'Exceptions & Error Handling', emoji: '🚨', category: 'Error Handling', difficulty: 'intermediate' as const }
   ],
   files: [
-    { id: 42, name: 'File Handling', emoji: '📁', category: 'I/O', difficulty: 'intermediate' as const },
-    { id: 43, name: 'Comprehensions', emoji: '🎯', category: 'Syntax', difficulty: 'intermediate' as const },
-    { id: 44, name: 'Iterators & Generators', emoji: '♻️', category: 'Iteration', difficulty: 'advanced' as const }
+    { id: 43, name: 'File Handling', emoji: '📁', category: 'I/O', difficulty: 'intermediate' as const },
+    { id: 44, name: 'Comprehensions', emoji: '🎯', category: 'Syntax', difficulty: 'intermediate' as const },
+    { id: 45, name: 'Iterators & Generators', emoji: '♻️', category: 'Iteration', difficulty: 'advanced' as const }
   ],
   typing: [
-    { id: 45, name: 'Typing & Annotations', emoji: '🏷️', category: 'Types', difficulty: 'advanced' as const },
-    { id: 46, name: 'Functional Programming', emoji: '⚡', category: 'Paradigm', difficulty: 'advanced' as const }
+    { id: 46, name: 'Typing & Annotations', emoji: '🏷️', category: 'Types', difficulty: 'advanced' as const },
+    { id: 47, name: 'Functional Programming', emoji: '⚡', category: 'Paradigm', difficulty: 'advanced' as const }
   ],
   advanced: [
-    { id: 47, name: 'Advanced Python', emoji: '🚀', category: 'Advanced', difficulty: 'expert' as const },
-    { id: 48, name: 'Concurrency & Parallelism', emoji: '🔄', category: 'Threading', difficulty: 'expert' as const }
+    { id: 48, name: 'Advanced Python', emoji: '🚀', category: 'Advanced', difficulty: 'expert' as const },
+    { id: 49, name: 'Concurrency & Parallelism', emoji: '🔄', category: 'Threading', difficulty: 'expert' as const }
   ],
   libraries: [
-    { id: 49, name: 'Built-in Functions & Standard Library', emoji: '🧰', category: 'Standard Lib', difficulty: 'intermediate' as const },
-    { id: 50, name: 'Testing & Debugging', emoji: '🧪', category: 'Quality', difficulty: 'intermediate' as const }
+    { id: 50, name: 'Built-in Functions & Standard Library', emoji: '🧰', category: 'Standard Lib', difficulty: 'intermediate' as const },
+    { id: 51, name: 'Testing & Debugging', emoji: '🧪', category: 'Quality', difficulty: 'intermediate' as const }
   ]
 }
 
@@ -209,7 +209,7 @@ export default function PythonSyntaxPage() {
   }
 
   const handleTopicClick = (topicId: number) => {
-    router.push(`/python/${topicId}`)
+    router.push(`/library/python/${topicId}`)
   }
 
   const handleBack = () => {

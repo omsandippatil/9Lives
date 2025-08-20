@@ -18,14 +18,14 @@ const javaSections = [
     title: 'Basics & Syntax',
     icon: '🐱',
     description: 'Fundamental Java syntax and operators - start here',
-    count: 7
+    count: 8
   },
   {
     id: 'structures', 
     title: 'Data Structures',
     icon: '📦',
     description: 'Built-in data types and advanced collections',
-    count: 21
+    count: 19
   },
   {
     id: 'control',
@@ -67,68 +67,69 @@ const javaSections = [
 // Mock data for each section
 const mockJavaData: Record<string, Topic[]> = {
   basics: [
-    { id: 1, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
-    { id: 2, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
-    { id: 3, name: 'Variables', emoji: '📦', category: 'Data', difficulty: 'basics' as const },
-    { id: 4, name: 'Data Types (Primitive & Non-Primitive)', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
-    { id: 5, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
-    { id: 6, name: 'Input & Output (Scanner, System.out)', emoji: '⌨️', category: 'I/O', difficulty: 'basics' as const },
-    { id: 7, name: 'Operators', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
+    { id: 1, name: 'Basics & Syntax', emoji: '🔢', category: 'Fundamentals', difficulty: 'basics' as const },
+    { id: 2, name: 'Keywords', emoji: '🔑', category: 'Language', difficulty: 'basics' as const },
+    { id: 3, name: 'Identifiers', emoji: '🏷️', category: 'Language', difficulty: 'basics' as const },
+    { id: 4, name: 'Variables', emoji: '📦', category: 'Data', difficulty: 'basics' as const },
+    { id: 5, name: 'Data Types (Primitive & Non-Primitive)', emoji: '🎭', category: 'Types', difficulty: 'basics' as const },
+    { id: 6, name: 'Comments', emoji: '💬', category: 'Documentation', difficulty: 'basics' as const },
+    { id: 7, name: 'Input & Output (Scanner, System.out)', emoji: '⌨️', category: 'I/O', difficulty: 'basics' as const },
+    { id: 8, name: 'Operators', emoji: '➕', category: 'Operations', difficulty: 'basics' as const }
   ],
   structures: [
-    { id: 8, name: 'String', emoji: '🔤', category: 'Object', difficulty: 'basics' as const },
-    { id: 9, name: 'Array', emoji: '🗂️', category: 'Structure', difficulty: 'basics' as const },
-    { id: 10, name: 'ArrayList', emoji: '📝', category: 'List', difficulty: 'basics' as const },
-    { id: 11, name: 'LinkedList', emoji: '🔗', category: 'List', difficulty: 'intermediate' as const },
-    { id: 12, name: 'Vector', emoji: '📊', category: 'List', difficulty: 'intermediate' as const },
-    { id: 13, name: 'Stack', emoji: '📚', category: 'Stack', difficulty: 'intermediate' as const },
-    { id: 14, name: 'Queue', emoji: '🚶', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 15, name: 'PriorityQueue', emoji: '🎖️', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 16, name: 'Deque', emoji: '⚖️', category: 'Queue', difficulty: 'intermediate' as const },
-    { id: 17, name: 'HashSet', emoji: '🎲', category: 'Set', difficulty: 'intermediate' as const },
-    { id: 18, name: 'LinkedHashSet', emoji: '🔗', category: 'Set', difficulty: 'intermediate' as const },
-    { id: 19, name: 'TreeSet', emoji: '🌳', category: 'Set', difficulty: 'intermediate' as const },
-    { id: 20, name: 'EnumSet', emoji: '📋', category: 'Set', difficulty: 'advanced' as const },
-    { id: 21, name: 'HashMap', emoji: '🗺️', category: 'Map', difficulty: 'intermediate' as const },
-    { id: 22, name: 'LinkedHashMap', emoji: '🔗', category: 'Map', difficulty: 'intermediate' as const },
-    { id: 23, name: 'TreeMap', emoji: '🌳', category: 'Map', difficulty: 'intermediate' as const },
-    { id: 24, name: 'Hashtable', emoji: '📖', category: 'Map', difficulty: 'advanced' as const },
-    { id: 25, name: 'WeakHashMap', emoji: '🪶', category: 'Map', difficulty: 'advanced' as const },
-    { id: 26, name: 'IdentityHashMap', emoji: '🆔', category: 'Map', difficulty: 'advanced' as const }
+    { id: 9, name: 'String', emoji: '🔤', category: 'Object', difficulty: 'basics' as const },
+    { id: 10, name: 'Array', emoji: '🗂️', category: 'Structure', difficulty: 'basics' as const },
+    { id: 11, name: 'ArrayList', emoji: '📝', category: 'List', difficulty: 'basics' as const },
+    { id: 12, name: 'LinkedList', emoji: '🔗', category: 'List', difficulty: 'intermediate' as const },
+    { id: 13, name: 'Vector', emoji: '📊', category: 'List', difficulty: 'intermediate' as const },
+    { id: 14, name: 'Stack', emoji: '📚', category: 'Stack', difficulty: 'intermediate' as const },
+    { id: 15, name: 'Queue', emoji: '🚶', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 16, name: 'PriorityQueue', emoji: '🎖️', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 17, name: 'Deque', emoji: '⚖️', category: 'Queue', difficulty: 'intermediate' as const },
+    { id: 18, name: 'HashSet', emoji: '🎲', category: 'Set', difficulty: 'intermediate' as const },
+    { id: 19, name: 'LinkedHashSet', emoji: '🔗', category: 'Set', difficulty: 'intermediate' as const },
+    { id: 20, name: 'TreeSet', emoji: '🌳', category: 'Set', difficulty: 'intermediate' as const },
+    { id: 21, name: 'EnumSet', emoji: '📋', category: 'Set', difficulty: 'advanced' as const },
+    { id: 22, name: 'HashMap', emoji: '🗺️', category: 'Map', difficulty: 'intermediate' as const },
+    { id: 23, name: 'LinkedHashMap', emoji: '🔗', category: 'Map', difficulty: 'intermediate' as const },
+    { id: 24, name: 'TreeMap', emoji: '🌳', category: 'Map', difficulty: 'intermediate' as const },
+    { id: 25, name: 'Hashtable', emoji: '📖', category: 'Map', difficulty: 'advanced' as const },
+    { id: 26, name: 'WeakHashMap', emoji: '🪶', category: 'Map', difficulty: 'advanced' as const },
+    { id: 27, name: 'IdentityHashMap', emoji: '🆔', category: 'Map', difficulty: 'advanced' as const }
   ],
   control: [
-    { id: 27, name: 'Control Flow (if, else, switch, loops, break, continue)', emoji: '🔀', category: 'Flow Control', difficulty: 'basics' as const },
-    { id: 28, name: 'Methods (Definition, Parameters, Return, Scope)', emoji: '⚙️', category: 'Methods', difficulty: 'basics' as const },
-    { id: 29, name: 'Method Overloading & Varargs', emoji: '🔄', category: 'Methods', difficulty: 'intermediate' as const },
-    { id: 30, name: 'Recursion & Anonymous Methods (Lambdas)', emoji: '♻️', category: 'Methods', difficulty: 'advanced' as const }
+    { id: 28, name: 'Control Flow (if, else, switch, loops, break, continue)', emoji: '🔀', category: 'Flow Control', difficulty: 'basics' as const },
+    { id: 29, name: 'Methods (Definition, Parameters, Return, Scope)', emoji: '⚙️', category: 'Methods', difficulty: 'basics' as const },
+    { id: 30, name: 'Method Overloading & Varargs', emoji: '🔄', category: 'Methods', difficulty: 'intermediate' as const },
+    { id: 31, name: 'Recursion & Anonymous Methods (Lambdas)', emoji: '♻️', category: 'Methods', difficulty: 'advanced' as const }
   ],
   oop: [
-    { id: 31, name: 'Classes & Objects', emoji: '🏗️', category: 'OOP', difficulty: 'basics' as const },
-    { id: 32, name: 'Constructors', emoji: '🔨', category: 'OOP', difficulty: 'basics' as const },
-    { id: 33, name: 'Inheritance', emoji: '👪', category: 'OOP', difficulty: 'intermediate' as const },
-    { id: 34, name: 'Interfaces & Abstract Classes', emoji: '📋', category: 'OOP', difficulty: 'intermediate' as const },
-    { id: 35, name: 'Polymorphism & Overriding', emoji: '🎭', category: 'OOP', difficulty: 'intermediate' as const },
-    { id: 36, name: 'Encapsulation & Access Modifiers', emoji: '🔒', category: 'OOP', difficulty: 'intermediate' as const },
-    { id: 37, name: 'Inner Classes (Static, Local, Anonymous)', emoji: '📦', category: 'OOP', difficulty: 'advanced' as const },
-    { id: 38, name: 'Exceptions & Error Handling (try, catch, finally, throw, throws)', emoji: '🚨', category: 'Error Handling', difficulty: 'intermediate' as const }
+    { id: 32, name: 'Classes & Objects', emoji: '🏗️', category: 'OOP', difficulty: 'basics' as const },
+    { id: 33, name: 'Constructors', emoji: '🔨', category: 'OOP', difficulty: 'basics' as const },
+    { id: 34, name: 'Inheritance', emoji: '👪', category: 'OOP', difficulty: 'intermediate' as const },
+    { id: 35, name: 'Interfaces & Abstract Classes', emoji: '📋', category: 'OOP', difficulty: 'intermediate' as const },
+    { id: 36, name: 'Polymorphism & Overriding', emoji: '🎭', category: 'OOP', difficulty: 'intermediate' as const },
+    { id: 37, name: 'Encapsulation & Access Modifiers', emoji: '🔒', category: 'OOP', difficulty: 'intermediate' as const },
+    { id: 38, name: 'Inner Classes (Static, Local, Anonymous)', emoji: '📦', category: 'OOP', difficulty: 'advanced' as const },
+    { id: 39, name: 'Exceptions & Error Handling (try, catch, finally, throw, throws)', emoji: '🚨', category: 'Error Handling', difficulty: 'intermediate' as const }
   ],
   packages: [
-    { id: 39, name: 'Packages & Import', emoji: '📦', category: 'Organization', difficulty: 'intermediate' as const },
-    { id: 40, name: 'File Handling (File, FileReader, FileWriter, BufferedReader, Scanner)', emoji: '📁', category: 'I/O', difficulty: 'intermediate' as const }
+    { id: 40, name: 'Packages & Import', emoji: '📦', category: 'Organization', difficulty: 'intermediate' as const },
+    { id: 41, name: 'File Handling (File, FileReader, FileWriter, BufferedReader, Scanner)', emoji: '📁', category: 'I/O', difficulty: 'intermediate' as const }
   ],
   advanced: [
-    { id: 41, name: 'Generics', emoji: '🎯', category: 'Types', difficulty: 'advanced' as const },
-    { id: 42, name: 'Collections Framework (Collections, Comparator, Iterable, Iterator, Spliterator)', emoji: '🧰', category: 'Collections', difficulty: 'advanced' as const },
-    { id: 43, name: 'Streams API', emoji: '🌊', category: 'Functional', difficulty: 'advanced' as const },
-    { id: 44, name: 'Multithreading (Thread, Runnable, Executors, Synchronization)', emoji: '🔄', category: 'Threading', difficulty: 'expert' as const },
-    { id: 45, name: 'Concurrency Utilities (Locks, Atomic, Concurrent Collections, ForkJoinPool)', emoji: '⚡', category: 'Threading', difficulty: 'expert' as const },
-    { id: 46, name: 'Reflection API', emoji: '🪞', category: 'Reflection', difficulty: 'expert' as const },
-    { id: 47, name: 'Annotations', emoji: '🏷️', category: 'Metadata', difficulty: 'advanced' as const }
+    { id: 42, name: 'Generics', emoji: '🎯', category: 'Types', difficulty: 'advanced' as const },
+    { id: 43, name: 'Collections Framework (Collections, Comparator, Iterable, Iterator, Spliterator)', emoji: '🧰', category: 'Collections', difficulty: 'advanced' as const },
+    { id: 44, name: 'Streams API', emoji: '🌊', category: 'Functional', difficulty: 'advanced' as const },
+    { id: 45, name: 'Multithreading (Thread, Runnable, Executors, Synchronization)', emoji: '🔄', category: 'Threading', difficulty: 'expert' as const },
+    { id: 46, name: 'Concurrency Utilities (Locks, Atomic, Concurrent Collections, ForkJoinPool)', emoji: '⚡', category: 'Threading', difficulty: 'expert' as const },
+    { id: 47, name: 'Reflection API', emoji: '🪞', category: 'Reflection', difficulty: 'expert' as const },
+    { id: 48, name: 'Annotations', emoji: '🏷️', category: 'Metadata', difficulty: 'advanced' as const }
   ],
   utilities: [
-    { id: 48, name: 'Built-in Classes (Math, Objects, Arrays, Collections, Date/Time API, Random)', emoji: '🔧', category: 'Utilities', difficulty: 'intermediate' as const },
-    { id: 49, name: 'JDBC (Java Database Connectivity)', emoji: '🗄️', category: 'Database', difficulty: 'advanced' as const },
-    { id: 50, name: 'Testing & Debugging (JUnit, Assertions, Logging)', emoji: '🧪', category: 'Quality', difficulty: 'intermediate' as const }
+    { id: 49, name: 'Built-in Classes (Math, Objects, Arrays, Collections, Date/Time API, Random)', emoji: '🔧', category: 'Utilities', difficulty: 'intermediate' as const },
+    { id: 50, name: 'JDBC (Java Database Connectivity)', emoji: '🗄️', category: 'Database', difficulty: 'advanced' as const },
+    { id: 51, name: 'Testing & Debugging (JUnit, Assertions, Logging)', emoji: '🧪', category: 'Quality', difficulty: 'intermediate' as const }
   ]
 }
 
@@ -200,7 +201,7 @@ export default function JavaSyntaxPage() {
   }
 
   const handleTopicClick = (topicId: number) => {
-    router.push(`/java/${topicId}`)
+    router.push(`/library/java/${topicId}`)
   }
 
   const handleBack = () => {

@@ -178,7 +178,7 @@ export default function AlgorithmsPage() {
   }
 
   const handleTopicClick = (topicId: number) => {
-    router.push(`/algorithms/${topicId}`)
+    router.push(`/library/algorithms/${topicId}`)
   }
 
   const handleBack = () => {

@@ -377,7 +377,7 @@ export default function DataStructuresPage() {
   }
 
   const handleTopicClick = (topicId: number) => {
-    router.push(`/data-structures/${topicId}`)
+    router.push(`/library/data-structures/${topicId}`)
   }
 
   const handleBack = () => {
