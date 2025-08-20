@@ -302,33 +302,43 @@ export default function CatTriangle({
     }
   }, [messageText, currentUser, addFloatingMessage])
   
+  // Enhanced floating emoji with better spacing and flow
   const addFloatingEmoji = useCallback((emoji: string) => {
     const newEmoji: FloatingEmoji = {
       id: Math.random().toString(36).substr(2, 9),
       emoji,
-      x: -(Math.random() * 100 + 20), // Negative values to go left (-20 to -120)
-      y: Math.random() * 80 - 40,
-      delay: Math.random() * 400
+      x: -(Math.random() * 120 + 30), // More spread: -30 to -150
+      y: Math.random() * 100 - 50, // More vertical spread: -50 to +50
+      delay: Math.random() * 600 // Longer delays for better spacing
     }
     
     setFloatingEmojis(prev => [...prev, newEmoji])
     
-    // Remove emoji after longer animation
+    // Longer animation duration for hearts
+    const duration = emoji.includes('💖') || emoji.includes('💕') || emoji.includes('💗') || emoji.includes('🩷') ? 7000 : 5000
     setTimeout(() => {
       setFloatingEmojis(prev => prev.filter(e => e.id !== newEmoji.id))
-    }, 4500 + newEmoji.delay)
+    }, duration + newEmoji.delay)
   }, [])
 
-  // Create multiple hearts for Alt+L with pink aesthetic and better spacing
+  // Show temporary emoji on cat button
+  const showTemporaryEmoji = useCallback((emoji: string, duration: number = 1500) => {
+    setTemporaryEmoji(emoji)
+    setTimeout(() => {
+      setTemporaryEmoji(null)
+    }, duration)
+  }, [])
+
+  // Create multiple hearts with better spacing and smaller size
   const createHeartShower = useCallback(() => {
-    const heartCount = 4 + Math.floor(Math.random() * 3) // 4-6 hearts (reduced)
+    const heartCount = 3 + Math.floor(Math.random() * 2) // 3-4 hearts (reduced for better aesthetics)
     const hearts = ['💖', '💕', '💗', '🩷'] // Pink heart variations
     
     for (let i = 0; i < heartCount; i++) {
       setTimeout(() => {
         const heartEmoji = hearts[Math.floor(Math.random() * hearts.length)]
         addFloatingEmoji(heartEmoji)
-      }, i * 200) // Increased delay for better spacing
+      }, i * 400) // Increased spacing between hearts (400ms)
     }
   }, [addFloatingEmoji])
 
@@ -364,10 +374,10 @@ export default function CatTriangle({
       if (isVisible && event.altKey && !showMessageInput) {
         if (event.key === 'y') {
           event.preventDefault()
-          addFloatingEmoji('👍')
+          showTemporaryEmoji('👍') // Show on cat button instead of floating
         } else if (event.key === 'n') {
           event.preventDefault()
-          addFloatingEmoji('👎')
+          showTemporaryEmoji('👎') // Show on cat button instead of floating
         } else if (event.key === 'l') {
           event.preventDefault()
           createHeartShower()
@@ -380,7 +390,7 @@ export default function CatTriangle({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isVisible, isConnected, connectionStatus, cleanupConnection, addFloatingEmoji, createHeartShower, showMessageInput])
+  }, [isVisible, isConnected, connectionStatus, cleanupConnection, createHeartShower, showMessageInput, showTemporaryEmoji])
 
   // Setup audio context
   const setupAudioContext = useCallback(async () => {
@@ -933,7 +943,7 @@ export default function CatTriangle({
         </div>
       ))}
 
-      {/* Floating Emojis with improved spacing and smaller hearts */}
+      {/* Enhanced Floating Emojis with better spacing, smaller hearts, and longer flow */}
       {floatingEmojis.map((emoji) => (
         <div
           key={emoji.id}
@@ -942,29 +952,19 @@ export default function CatTriangle({
             left: `${emoji.x}px`,
             top: `${emoji.y}px`,
             animationDelay: `${emoji.delay}ms`,
-            animation: 'float-left-enhanced 4.5s ease-out forwards',
-            fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '24px' : '28px',
+            animation: 'float-left-hearts 7s ease-out forwards',
+            fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '18px' : '28px', // Smaller hearts
             textShadow: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') 
-              ? '0 0 8px rgba(255, 192, 203, 0.6), 0 0 15px rgba(255, 192, 203, 0.4)'
+              ? '0 0 12px rgba(255, 192, 203, 0.8), 0 0 20px rgba(255, 182, 193, 0.6)'
               : '0 2px 4px rgba(0,0,0,0.3)',
             filter: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷')
-              ? 'drop-shadow(0 0 6px rgba(255, 192, 203, 0.7))'
+              ? 'drop-shadow(0 0 8px rgba(255, 192, 203, 0.9))'
               : 'drop-shadow(0 2px 3px rgba(0,0,0,0.2))'
           }}
         >
           {emoji.emoji}
         </div>
       ))}
-
-      {/* Emoji shortcut indicators - moved to left */}
-      <div className="absolute bottom-16 left-0 mb-2 ml-[-120px] text-xs text-gray-600 bg-white bg-opacity-95 px-2 py-1 border-2 border-black shadow-lg font-medium">
-        <div className="space-y-0.5">
-          <div><span className="font-bold">Tab:</span> Msg</div>
-          <div><span className="font-bold">Alt+Y:</span> 👍</div>
-          <div><span className="font-bold">Alt+N:</span> 👎</div>
-          <div><span className="font-bold">Alt+L:</span> 💖</div>
-        </div>
-      </div>
       
       <button
         onClick={handleCircleClick}
@@ -984,7 +984,7 @@ export default function CatTriangle({
         <span>{getCatEmoji()}</span>
       </button>
       
-      {/* Enhanced CSS for floating animations - all going left */}
+      {/* Enhanced CSS for floating animations - improved heart flow */}
       <style jsx>{`
         @keyframes float-left-enhanced {
           0% {
@@ -1016,6 +1016,49 @@ export default function CatTriangle({
             opacity: 0;
           }
         }
+
+        @keyframes float-left-hearts {
+          0% {
+            transform: translateX(0) translateY(0) scale(0.8) rotate(0deg);
+            opacity: 0;
+          }
+          8% {
+            transform: translateX(-12px) translateY(-10px) scale(1) rotate(2deg);
+            opacity: 1;
+          }
+          20% {
+            transform: translateX(-30px) translateY(-25px) scale(1.1) rotate(-1deg);
+            opacity: 1;
+          }
+          35% {
+            transform: translateX(-55px) translateY(-45px) scale(1.15) rotate(1.5deg);
+            opacity: 0.95;
+          }
+          50% {
+            transform: translateX(-80px) translateY(-65px) scale(1.2) rotate(-0.5deg);
+            opacity: 0.9;
+          }
+          65% {
+            transform: translateX(-110px) translateY(-85px) scale(1.15) rotate(1deg);
+            opacity: 0.8;
+          }
+          78% {
+            transform: translateX(-140px) translateY(-105px) scale(1.1) rotate(-0.8deg);
+            opacity: 0.6;
+          }
+          88% {
+            transform: translateX(-170px) translateY(-125px) scale(1.05) rotate(0.3deg);
+            opacity: 0.4;
+          }
+          95% {
+            transform: translateX(-195px) translateY(-145px) scale(1) rotate(-0.2deg);
+            opacity: 0.2;
+          }
+          100% {
+            transform: translateX(-220px) translateY(-165px) scale(0.95) rotate(0deg);
+            opacity: 0;
+          }
+        }
         
         @keyframes float-left-text {
           0% {
@@ -1044,17 +1087,17 @@ export default function CatTriangle({
           }
         }
         
-        /* Refined pink glow effect for hearts with smaller size - moving left */
+        /* Enhanced pink glow effect for smaller hearts with longer, more aesthetic flow */
         div[style*="💖"], div[style*="💕"], div[style*="💗"], div[style*="🩷"] {
-          animation: float-left-enhanced 4.5s ease-out forwards, pink-pulse 1s ease-in-out infinite alternate;
+          animation: float-left-hearts 7s ease-out forwards, pink-pulse 2s ease-in-out infinite alternate;
         }
         
         @keyframes pink-pulse {
           0% {
-            filter: drop-shadow(0 0 6px rgba(255, 192, 203, 0.7)) drop-shadow(0 0 12px rgba(255, 105, 180, 0.5));
+            filter: drop-shadow(0 0 8px rgba(255, 192, 203, 0.9)) drop-shadow(0 0 16px rgba(255, 105, 180, 0.6));
           }
           100% {
-            filter: drop-shadow(0 0 10px rgba(255, 192, 203, 0.9)) drop-shadow(0 0 20px rgba(255, 105, 180, 0.7));
+            filter: drop-shadow(0 0 12px rgba(255, 192, 203, 1)) drop-shadow(0 0 24px rgba(255, 105, 180, 0.8));
           }
         }
       `}</style>
