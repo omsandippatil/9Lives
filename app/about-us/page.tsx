@@ -124,7 +124,7 @@ export default function AboutUsPage() {
                     "Code is poetry written in logic, and bugs are just plot twists waiting to be resolved. Every semicolon is a pause for dramatic effect."
                   </blockquote>
                   <div className="flex justify-center gap-4">
-                    <a href="https://www.linkedin.com/in/durva24/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
+                    <a href="https://www.linkedin.com/in/durva-dongre/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
                       🔗 LinkedIn
                     </a>
                     <a href="https://github.com/durva24" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
@@ -152,7 +152,7 @@ export default function AboutUsPage() {
                     "Architecture is the art of making complexity look simple. I build bridges between ideas and reality, one elegant solution at a time."
                   </blockquote>
                   <div className="flex justify-center gap-4">
-                    <a href="https://www.linkedin.com/in/omsandippatil/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
+                    <a href="https://www.linkedin.com/in/omsandeeppatil/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
                       🔗 LinkedIn
                     </a>
                     <a href="https://github.com/omsandippatil" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-black transition-colors duration-300">
