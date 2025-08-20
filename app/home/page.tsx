@@ -391,9 +391,13 @@ export default function HomePage() {
   const [catAnimation, setCatAnimation] = useState('😺')
   const [currentQuote, setCurrentQuote] = useState('')
   const [catClickCount, setCatClickCount] = useState(0)
+  const [welcomeCatIndex, setWelcomeCatIndex] = useState(0)
   const router = useRouter()
 
-  // Cat animation cycle
+  // Different cat emojis for welcome section
+  const welcomeCats = ['😺', '😸', '😻', '🐱', '😽', '😾', '🙀', '😿', '😹', '🐈', '🐈‍⬛']
+
+  // Cat animation cycle for header
   useEffect(() => {
     const cats = ['😺', '😸', '😻', '🐱', '😽']
     let index = 0
@@ -416,11 +420,13 @@ export default function HomePage() {
     loadUserProfile()
   }, [])
 
-  // Handle cat emoji click
-  const handleCatClick = () => {
+  // Handle welcome cat click - this is the main cat that users will tap 9 times
+  const handleWelcomeCatClick = () => {
     const newClickCount = catClickCount + 1
     setCatClickCount(newClickCount)
+    setWelcomeCatIndex((prevIndex) => (prevIndex + 1) % welcomeCats.length)
     
+    // Redirect to about-us page after 9 clicks
     if (newClickCount === 9) {
       router.push('/about-us')
     }
@@ -646,6 +652,13 @@ export default function HomePage() {
               <p className="text-lg font-light">{profile.total_points} 🐟</p>
             </div>
             <button 
+              onClick={() => router.push('/library')}
+              className="text-center hover:scale-105 transition-transform duration-300 cursor-pointer"
+            >
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Library</p>
+              <p className="text-lg font-light">📚</p>
+            </button>
+            <button 
               onClick={() => router.push('/leaderboard')}
               className="text-center hover:scale-105 transition-transform duration-300 cursor-pointer"
             >
@@ -671,10 +684,11 @@ export default function HomePage() {
         {/* Welcome Section */}
         <div className="text-center py-8">
           <div 
-            className="text-6xl mb-4 transition-all duration-500 cursor-pointer hover:scale-110" 
-            onClick={handleCatClick}
+            className="text-6xl mb-4 transition-all duration-500 cursor-pointer hover:scale-110 select-none" 
+            onClick={handleWelcomeCatClick}
+            title={`Tap me! (${catClickCount}/9)`}
           >
-            {catAnimation}
+            {welcomeCats[welcomeCatIndex]}
           </div>
           <h2 className="text-3xl font-light mb-3">
             Welcome back, {displayName}!
