@@ -69,6 +69,7 @@ export default function CatTriangle({
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [isVisible, setIsVisible] = useState(false)
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([])
+  const [temporaryEmoji, setTemporaryEmoji] = useState<string | null>(null)
   
   // Refs - using refs to avoid dependency issues
   const supabaseRef = useRef<any>(null)
@@ -244,31 +245,40 @@ export default function CatTriangle({
     }
   }, [getUserFromCookies, isConnected, connectionStatus, cleanupConnection])
 
-  // Add floating emoji
+  // Add floating emoji with temporary button change
   const addFloatingEmoji = useCallback((emoji: string) => {
     const newEmoji: FloatingEmoji = {
       id: Math.random().toString(36).substr(2, 9),
       emoji,
-      x: Math.random() * 40 - 20, // Random offset from center
-      y: Math.random() * 40 - 20,
-      delay: Math.random() * 500
+      x: Math.random() * 60 - 30, // Increased range for better spread
+      y: Math.random() * 60 - 30,
+      delay: Math.random() * 300
     }
     
     setFloatingEmojis(prev => [...prev, newEmoji])
     
-    // Remove emoji after animation
+    // Show temporary emoji on button for thumbs up/down
+    if (emoji === '👍' || emoji === '👎') {
+      setTemporaryEmoji(emoji)
+      setTimeout(() => setTemporaryEmoji(null), 1500)
+    }
+    
+    // Remove emoji after longer animation
     setTimeout(() => {
       setFloatingEmojis(prev => prev.filter(e => e.id !== newEmoji.id))
-    }, 3000 + newEmoji.delay)
+    }, 4500 + newEmoji.delay)
   }, [])
 
-  // Create multiple hearts for Alt+L
+  // Create multiple hearts for Alt+L with pink aesthetic
   const createHeartShower = useCallback(() => {
-    const heartCount = 5 + Math.floor(Math.random() * 3) // 5-7 hearts
+    const heartCount = 6 + Math.floor(Math.random() * 4) // 6-9 hearts
+    const hearts = ['💖', '💕', '💗', '🩷'] // Pink heart variations
+    
     for (let i = 0; i < heartCount; i++) {
       setTimeout(() => {
-        addFloatingEmoji('❤️')
-      }, i * 200) // Stagger the hearts
+        const heartEmoji = hearts[Math.floor(Math.random() * hearts.length)]
+        addFloatingEmoji(heartEmoji)
+      }, i * 150) // Slightly faster stagger
     }
   }, [addFloatingEmoji])
 
@@ -761,8 +771,9 @@ export default function CatTriangle({
     }
   }, [currentUser, isConnected, getUserMedia, setupAudioContext, connectedUsers, createOffer, connectionStatus, cleanupConnection])
 
-  // Get cat emoji based on connection state
+  // Get cat emoji based on connection state (with temporary emoji override)
   const getCatEmoji = () => {
+    if (temporaryEmoji) return temporaryEmoji
     if (connectionStatus === 'connecting') return '🙀'
     if (isConnected && connectedUsers.length > 1) return '😻'
     return '😿'
@@ -793,12 +804,14 @@ export default function CatTriangle({
       {floatingEmojis.map((emoji) => (
         <div
           key={emoji.id}
-          className="absolute pointer-events-none text-2xl"
+          className="absolute pointer-events-none text-3xl select-none"
           style={{
             left: `${emoji.x}px`,
             top: `${emoji.y}px`,
             animationDelay: `${emoji.delay}ms`,
-            animation: 'float-up 3s ease-out forwards'
+            animation: 'float-up-enhanced 4.5s ease-out forwards',
+            textShadow: '0 0 10px rgba(255, 192, 203, 0.6), 0 0 20px rgba(255, 192, 203, 0.4)',
+            filter: 'drop-shadow(0 0 8px rgba(255, 192, 203, 0.8))'
           }}
         >
           {emoji.emoji}
@@ -824,18 +837,48 @@ export default function CatTriangle({
       
       {/* CSS for floating animation */}
       <style jsx>{`
-        @keyframes float-up {
+        @keyframes float-up-enhanced {
           0% {
-            transform: translateY(0) scale(1);
+            transform: translateY(0) scale(1) rotate(0deg);
             opacity: 1;
           }
+          15% {
+            transform: translateY(-10px) scale(1.1) rotate(5deg);
+            opacity: 0.95;
+          }
+          30% {
+            transform: translateY(-25px) scale(1.2) rotate(-3deg);
+            opacity: 0.9;
+          }
           50% {
-            transform: translateY(-30px) scale(1.2);
+            transform: translateY(-45px) scale(1.3) rotate(2deg);
             opacity: 0.8;
           }
+          70% {
+            transform: translateY(-70px) scale(1.2) rotate(-1deg);
+            opacity: 0.6;
+          }
+          85% {
+            transform: translateY(-90px) scale(1.1) rotate(1deg);
+            opacity: 0.3;
+          }
           100% {
-            transform: translateY(-60px) scale(0.8);
+            transform: translateY(-120px) scale(0.8) rotate(0deg);
             opacity: 0;
+          }
+        }
+        
+        /* Pink glow effect for hearts */
+        div[style*="💖"], div[style*="💕"], div[style*="💗"], div[style*="🩷"] {
+          animation: float-up-enhanced 4.5s ease-out forwards, pink-pulse 0.8s ease-in-out infinite alternate;
+        }
+        
+        @keyframes pink-pulse {
+          0% {
+            filter: drop-shadow(0 0 8px rgba(255, 192, 203, 0.8)) drop-shadow(0 0 15px rgba(255, 105, 180, 0.6));
+          }
+          100% {
+            filter: drop-shadow(0 0 12px rgba(255, 192, 203, 1)) drop-shadow(0 0 25px rgba(255, 105, 180, 0.8));
           }
         }
       `}</style>
