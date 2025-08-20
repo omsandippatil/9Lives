@@ -39,7 +39,9 @@ export default function LoginPage() {
         // Success! Trigger happy cat animation
         setCatMeow(true)
         setTimeout(() => {
-          router.push('/home')
+          // Redirect to home or dashboard after successful login
+          router.push('/')
+          router.refresh() // Refresh to trigger auth check
         }, 800)
       }
     } catch (err) {
