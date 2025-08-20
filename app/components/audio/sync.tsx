@@ -68,6 +68,119 @@ export default function CatTriangle({
   const mixerRef = useRef<GainNode | null>(null)
   const isCleaningUpRef = useRef(false)
 
+  // Improved cookie parsing function
+  const getUserFromCookies = useCallback(() => {
+    if (typeof document === 'undefined') return null
+
+    try {
+      // Try multiple cookie sources for better compatibility
+      const cookies = document.cookie.split('; ')
+      
+      // Method 1: Try auth-session cookie (JSON)
+      const authSessionCookie = cookies.find(row => row.startsWith('auth-session='))
+      if (authSessionCookie) {
+        try {
+          const sessionValue = authSessionCookie.split('=')[1]
+          if (sessionValue && sessionValue !== 'undefined' && sessionValue !== 'null') {
+            const session = JSON.parse(decodeURIComponent(sessionValue))
+            if (session && session.user_id && session.email) {
+              console.log('Found user from auth-session cookie')
+              return {
+                id: session.user_id,
+                email: session.email
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to parse auth-session cookie:', error)
+        }
+      }
+
+      // Method 2: Try individual client cookies (fallback)
+      const userIdCookie = cookies.find(row => row.startsWith('client-user-id='))
+      const userEmailCookie = cookies.find(row => row.startsWith('client-user-email='))
+      
+      if (userIdCookie && userEmailCookie) {
+        const userId = userIdCookie.split('=')[1]
+        const userEmail = decodeURIComponent(userEmailCookie.split('=')[1])
+        
+        if (userId && userEmail && userId !== 'undefined' && userEmail !== 'undefined') {
+          console.log('Found user from individual client cookies')
+          return {
+            id: userId,
+            email: userEmail
+          }
+        }
+      }
+
+      // Method 3: Try secure cookies (if accessible via JS somehow)
+      const secureUserIdCookie = cookies.find(row => row.startsWith('supabase-user-id='))
+      const secureUserEmailCookie = cookies.find(row => row.startsWith('supabase-user-email='))
+      
+      if (secureUserIdCookie && secureUserEmailCookie) {
+        const userId = secureUserIdCookie.split('=')[1]
+        const userEmail = decodeURIComponent(secureUserEmailCookie.split('=')[1])
+        
+        if (userId && userEmail && userId !== 'undefined' && userEmail !== 'undefined') {
+          console.log('Found user from secure cookies')
+          return {
+            id: userId,
+            email: userEmail
+          }
+        }
+      }
+
+      console.log('No valid user cookies found')
+      return null
+    } catch (error) {
+      console.error('Error parsing user cookies:', error)
+      return null
+    }
+  }, [])
+
+  // Check for authentication changes
+  const checkAuthStatus = useCallback(() => {
+    const user = getUserFromCookies()
+    setCurrentUser(user)
+    
+    if (!user) {
+      console.log('No authenticated user found')
+      // Clean up if user is logged out
+      if (isConnected || connectionStatus !== 'disconnected') {
+        cleanupConnection()
+      }
+    } else {
+      console.log('Authenticated user found:', user.email)
+    }
+  }, [getUserFromCookies])
+
+  // Monitor cookie changes (for when user logs in/out in another tab)
+  useEffect(() => {
+    // Initial check
+    checkAuthStatus()
+
+    // Set up periodic check for cookie changes
+    const interval = setInterval(checkAuthStatus, 2000) // Check every 2 seconds
+
+    // Also listen for storage events (though cookies don't trigger this)
+    const handleStorageChange = () => {
+      checkAuthStatus()
+    }
+    window.addEventListener('storage', handleStorageChange)
+
+    // Listen for focus events to check when user returns to tab
+    const handleFocus = () => {
+      checkAuthStatus()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [checkAuthStatus])
+
   // Cleanup function
   const cleanupConnection = useCallback(async () => {
     if (isCleaningUpRef.current) return
@@ -153,34 +266,6 @@ export default function CatTriangle({
 
     try {
       supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey)
-
-      // Get current user from cookies
-      const getUserFromCookies = () => {
-        if (typeof document !== 'undefined') {
-          try {
-            const authSession = document.cookie
-              .split('; ')
-              .find(row => row.startsWith('auth-session='))
-              ?.split('=')[1]
-
-            if (authSession) {
-              const session = JSON.parse(decodeURIComponent(authSession))
-              return {
-                id: session.user_id,
-                email: session.email
-              }
-            }
-          } catch (error) {
-            console.error('Error parsing auth session:', error)
-          }
-        }
-        return null
-      }
-
-      const user = getUserFromCookies()
-      if (user) {
-        setCurrentUser(user)
-      }
     } catch (error) {
       console.error('Error initializing Supabase:', error)
     }
