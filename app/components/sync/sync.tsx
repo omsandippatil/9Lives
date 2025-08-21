@@ -1483,7 +1483,7 @@ export default function CatTriangle({
 
       {/* Main UI Container */}
       <div className="fixed bottom-4 right-4 pointer-events-auto">
-       {showMessageInput && (
+        {showMessageInput && (
           <div className="absolute bottom-20 right-0 mb-2">
             <div className="bg-white shadow-lg border-2 border-black p-3">
               <input
@@ -1510,7 +1510,7 @@ export default function CatTriangle({
                   <button
                     onClick={handleSendMessage}
                     disabled={!messageText.trim()}
-                    className="px-3 py-1 text-xs font-bold bg-pink-500 text-white border-2 border-black hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1 text-xs font-bold bg-black text-white border-2 border-pink-400 hover:bg-gray-800 disabled:bg-gray-300 disabled:border-gray-400 disabled:cursor-not-allowed transition-colors"
                   >
                     Send
                   </button>
@@ -1519,7 +1519,7 @@ export default function CatTriangle({
                       setShowMessageInput(false)
                       setMessageText('')
                     }}
-                    className="px-2 py-1 text-xs font-bold bg-gray-400 text-white border-2 border-black hover:bg-gray-500 transition-colors"
+                    className="px-2 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 transition-colors"
                   >
                     ✕
                   </button>
