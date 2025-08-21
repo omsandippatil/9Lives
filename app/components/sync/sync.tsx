@@ -512,87 +512,167 @@ export default function CatTriangle({
     }
   }, [])
 
-  // Enhanced user media with better constraints (removed invalid 'volume' property)
+  // Enhanced user media with better constraints and audio fixes
   const getUserMedia = useCallback(async () => {
     try {
+      // First check if we already have a stream
+      if (localStreamRef.current) {
+        console.log('🎤 Reusing existing media stream')
+        setIsAudioEnabled(true)
+        return localStreamRef.current
+      }
+
+      console.log('🎤 Requesting microphone access...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 48000,
-          channelCount: 1
-        }
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 1 }
+        },
+        video: false
       })
+      
       localStreamRef.current = stream
       setIsAudioEnabled(true)
-      console.log('🎤 Got user media stream with tracks:', stream.getAudioTracks().length)
+      
+      // Log audio track details
+      const audioTracks = stream.getAudioTracks()
+      console.log('🎤 Got user media stream:', {
+        tracks: audioTracks.length,
+        settings: audioTracks[0]?.getSettings(),
+        constraints: audioTracks[0]?.getConstraints()
+      })
+      
       return stream
     } catch (error) {
-      console.error('Error accessing microphone:', error)
+      console.error('❌ Error accessing microphone:', error)
       setIsAudioEnabled(false)
-      throw error
+      
+      // Provide more specific error messages
+      if (error.name === 'NotAllowedError') {
+        throw new Error('Microphone permission denied. Please allow microphone access.')
+      } else if (error.name === 'NotFoundError') {
+        throw new Error('No microphone found. Please connect a microphone.')
+      } else if (error.name === 'NotReadableError') {
+        throw new Error('Microphone is being used by another application.')
+      } else {
+        throw new Error('Failed to access microphone: ' + error.message)
+      }
     }
   }, [])
 
-  // Enhanced remote audio setup with better handling
+  // Enhanced remote audio setup with better handling and autoplay fixes
   const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
     try {
+      console.log(`🔊 Setting up remote audio for ${userId}`)
+      
+      // Clean up existing audio element
       const existingAudio = remoteAudioElementsRef.current.get(userId)
       if (existingAudio) {
         existingAudio.pause()
         existingAudio.srcObject = null
         existingAudio.remove()
+        remoteAudioElementsRef.current.delete(userId)
       }
 
       const audio = document.createElement('audio')
       audio.srcObject = stream
       audio.autoplay = true
       audio.setAttribute('playsinline', 'true')
-      audio.volume = 0.9
+      audio.volume = 1.0
       audio.muted = false
-      audio.preload = 'none'
+      audio.preload = 'metadata'
       audio.controls = false
       
-      audio.style.display = 'none'
-      audio.style.position = 'absolute'
+      // Make audio element invisible but keep it in DOM
+      audio.style.position = 'fixed'
       audio.style.left = '-9999px'
-      document.body.appendChild(audio)
+      audio.style.top = '-9999px'
+      audio.style.width = '1px'
+      audio.style.height = '1px'
+      audio.style.opacity = '0'
+      audio.style.pointerEvents = 'none'
       
+      document.body.appendChild(audio)
       remoteAudioElementsRef.current.set(userId, audio)
       
+      // Enhanced play attempt with user interaction handling
       const attemptPlay = async () => {
         try {
-          await audio.play()
-          console.log(`🔊 Successfully started playing audio from ${userId}`)
-        } catch (error) {
-          console.warn(`Audio play failed for ${userId}, will retry on user interaction:`, error)
+          console.log(`🔊 Attempting to play audio from ${userId}`)
           
-          const retryPlay = async () => {
+          // Wait for audio to be ready
+          if (audio.readyState < 2) {
+            await new Promise((resolve) => {
+              audio.oncanplay = resolve
+              audio.onloadeddata = resolve
+              setTimeout(resolve, 1000) // Fallback timeout
+            })
+          }
+          
+          const playPromise = audio.play()
+          
+          if (playPromise !== undefined) {
+            await playPromise
+            console.log(`✅ Successfully playing audio from ${userId}`)
+          }
+        } catch (error) {
+          console.warn(`⚠️ Audio autoplay blocked for ${userId}, setting up click handler:`, error)
+          
+          // Set up one-time user interaction handler
+          const enableAudio = async (event: Event) => {
             try {
+              console.log(`🔊 User interaction detected, playing audio from ${userId}`)
               await audio.play()
-              console.log(`🔊 Audio play retry successful for ${userId}`)
-              document.removeEventListener('click', retryPlay)
-              document.removeEventListener('keydown', retryPlay)
+              console.log(`✅ Audio enabled for ${userId} after user interaction`)
+              
+              // Remove listeners after successful play
+              document.removeEventListener('click', enableAudio)
+              document.removeEventListener('keydown', enableAudio)
+              document.removeEventListener('touchstart', enableAudio)
             } catch (retryError) {
-              console.error(`Audio play retry failed for ${userId}:`, retryError)
+              console.error(`❌ Failed to play audio for ${userId} after interaction:`, retryError)
             }
           }
           
-          document.addEventListener('click', retryPlay, { once: true })
-          document.addEventListener('keydown', retryPlay, { once: true })
+          // Listen for any user interaction
+          document.addEventListener('click', enableAudio, { once: true, passive: true })
+          document.addEventListener('keydown', enableAudio, { once: true, passive: true })
+          document.addEventListener('touchstart', enableAudio, { once: true, passive: true })
+          
+          // Auto-remove listeners after 30 seconds
+          setTimeout(() => {
+            document.removeEventListener('click', enableAudio)
+            document.removeEventListener('keydown', enableAudio)
+            document.removeEventListener('touchstart', enableAudio)
+          }, 30000)
         }
       }
 
-      audio.onloadstart = () => console.log(`Audio loading started for ${userId}`)
-      audio.oncanplay = () => console.log(`Audio can play for ${userId}`)
-      audio.onplaying = () => console.log(`Audio playing for ${userId}`)
-      audio.onerror = (e) => console.error(`Audio error for ${userId}:`, e)
+      // Set up audio event listeners
+      audio.onloadstart = () => console.log(`🔊 Audio loading started for ${userId}`)
+      audio.oncanplay = () => {
+        console.log(`🔊 Audio can play for ${userId}`)
+        attemptPlay()
+      }
+      audio.onplaying = () => console.log(`▶️ Audio playing for ${userId}`)
+      audio.onended = () => console.log(`⏹️ Audio ended for ${userId}`)
+      audio.onerror = (e) => console.error(`❌ Audio error for ${userId}:`, e)
+      audio.onstalled = () => console.warn(`⏸️ Audio stalled for ${userId}`)
+      audio.onwaiting = () => console.warn(`⏳ Audio waiting for ${userId}`)
 
-      attemptPlay()
+      // Start loading/playing
+      if (stream.getAudioTracks().length > 0) {
+        console.log(`🎵 Remote stream has ${stream.getAudioTracks().length} audio tracks`)
+        attemptPlay()
+      } else {
+        console.warn(`⚠️ No audio tracks in remote stream from ${userId}`)
+      }
 
     } catch (error) {
-      console.error(`Error setting up remote audio for ${userId}:`, error)
+      console.error(`❌ Error setting up remote audio for ${userId}:`, error)
     }
   }, [])
 
@@ -1153,7 +1233,7 @@ export default function CatTriangle({
     }
   }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage])
 
-  // Enhanced circle click handler with better user feedback
+  // Enhanced circle click handler with better audio handling and user feedback
   const handleCircleClick = useCallback(async () => {
     if (!currentUser) {
       alert('Please log in to connect!')
@@ -1168,10 +1248,20 @@ export default function CatTriangle({
         setConnectionStatus('connecting')
         setConnectionInfo('Initializing audio...')
         
-        // Setup audio first
+        // Setup audio context first
         await setupAudioContext()
-        setConnectionInfo('Accessing microphone...')
-        await getUserMedia()
+        
+        setConnectionInfo('Requesting microphone access...')
+        try {
+          await getUserMedia()
+          console.log('✅ Microphone access granted')
+        } catch (error) {
+          console.error('❌ Microphone access failed:', error)
+          setConnectionStatus('disconnected')
+          setConnectionInfo('')
+          alert(error.message || 'Failed to access microphone')
+          return
+        }
 
         setConnectionStatus('connected')
         setConnectionInfo('Connected! Waiting for others...')
@@ -1181,15 +1271,15 @@ export default function CatTriangle({
         setTimeout(() => {
           if (connectedUsers.length > 1) {
             setConnectionInfo(`Connecting to ${connectedUsers.length - 1} user(s)...`)
+            connectedUsers.forEach((user, index) => {
+              if (user.id !== currentUser.id) {
+                setTimeout(() => {
+                  createOffer(user.id)
+                }, index * 2000) // Longer stagger for better connection
+              }
+            })
           }
-          connectedUsers.forEach((user, index) => {
-            if (user.id !== currentUser.id) {
-              setTimeout(() => {
-                createOffer(user.id)
-              }, index * 1000) // Stagger connections
-            }
-          })
-        }, 2000)
+        }, 1000)
       } else {
         console.log('🔌 Disconnecting...')
         setConnectionInfo('Disconnecting...')
@@ -1198,8 +1288,8 @@ export default function CatTriangle({
     } catch (error) {
       console.error('❌ Error toggling connection:', error)
       setConnectionStatus('disconnected')
-      setConnectionInfo('Microphone access denied')
-      alert('Error accessing microphone. Please allow microphone access and try again.')
+      setConnectionInfo('')
+      alert('Error: ' + (error.message || 'Unknown error occurred'))
     }
   }, [currentUser, isConnected, getUserMedia, setupAudioContext, connectedUsers, createOffer, connectionStatus, cleanupConnection])
 
@@ -1235,7 +1325,7 @@ export default function CatTriangle({
       {/* Connection Status Display */}
       {connectionInfo && (
         <div className="absolute bottom-16 right-0 mb-2">
-          <div className="bg-black text-white px-3 py-1 text-xs font-bold border-2 border-black shadow-lg max-w-xs">
+          <div className="bg-pink-100 text-pink-800 px-3 py-1 text-xs font-bold shadow-lg max-w-xs rounded">
             {connectionInfo}
           </div>
         </div>
@@ -1244,7 +1334,7 @@ export default function CatTriangle({
       {/* Message Input */}
       {showMessageInput && (
         <div className="absolute bottom-20 right-0 mb-2">
-          <div className="bg-white shadow-lg p-2 border-2 border-black">
+          <div className="bg-white shadow-lg p-2 rounded-lg">
             <input
               id="cat-triangle-message-input"
               type="text"
@@ -1260,16 +1350,16 @@ export default function CatTriangle({
                 }
               }}
               placeholder="Type message..."
-              className="w-40 px-2 py-1 text-xs border-2 border-black focus:outline-none focus:border-gray-600 font-medium text-black bg-white placeholder-gray-500"
+              className="w-40 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300 font-medium text-gray-800 bg-white placeholder-gray-500 rounded"
               maxLength={50}
             />
             <div className="flex justify-between items-center mt-1">
-              <span className="text-xs text-gray-700 font-medium">{messageText.length}/50</span>
+              <span className="text-xs text-gray-600 font-medium">{messageText.length}/50</span>
               <div className="flex gap-1">
                 <button
                   onClick={handleSendMessage}
                   disabled={!messageText.trim()}
-                  className="px-2 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="px-2 py-1 text-xs font-bold bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Send
                 </button>
@@ -1278,7 +1368,7 @@ export default function CatTriangle({
                     setShowMessageInput(false)
                     setMessageText('')
                   }}
-                  className="px-2 py-1 text-xs font-bold bg-gray-500 text-white border-2 border-black hover:bg-gray-600"
+                  className="px-2 py-1 text-xs font-bold bg-gray-400 text-white rounded hover:bg-gray-500"
                 >
                   ✕
                 </button>
@@ -1300,7 +1390,7 @@ export default function CatTriangle({
             animation: 'float-left-text 6s ease-out forwards'
           }}
         >
-          <div className="bg-white px-2 py-1 shadow-lg border-2 border-black text-black">
+          <div className="bg-white px-2 py-1 shadow-lg rounded text-gray-800">
             {message.text}
           </div>
         </div>
@@ -1335,11 +1425,11 @@ export default function CatTriangle({
         disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
         className={`
           w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
-          border-2 border-black shadow-lg
+          shadow-lg
           ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
           ${isConnected && connectedUsers.length > 1
-            ? 'bg-pink-400 shadow-pink-200' 
-            : 'bg-white shadow-gray-200'
+            ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
+            : 'bg-white shadow-gray-200 hover:bg-gray-50'
           }
           hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed
         `}
