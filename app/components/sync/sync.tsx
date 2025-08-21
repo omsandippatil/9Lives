@@ -1483,7 +1483,7 @@ export default function CatTriangle({
 
       {/* Main UI Container */}
       <div className="fixed bottom-4 right-4 pointer-events-auto">
-        {showMessageInput && (
+       {showMessageInput && (
           <div className="absolute bottom-20 right-0 mb-2">
             <div className="bg-white shadow-lg border-2 border-black p-3">
               <input
@@ -1501,7 +1501,7 @@ export default function CatTriangle({
                   }
                 }}
                 placeholder="Type message..."
-                className="w-40 px-2 py-2 text-xs border-2 border-black focus:outline-none focus:ring-0 focus:border-pink-400 font-medium text-gray-800 bg-white placeholder-gray-500"
+                className="w-40 px-2 py-2 text-xs border-2 border-black focus:outline-none focus:ring-0 focus:border-black font-medium text-gray-800 bg-white placeholder-gray-500"
                 maxLength={50}
               />
               <div className="flex justify-between items-center mt-2">
@@ -1510,7 +1510,7 @@ export default function CatTriangle({
                   <button
                     onClick={handleSendMessage}
                     disabled={!messageText.trim()}
-                    className="px-3 py-1 text-xs font-bold bg-black text-white border-2 border-pink-400 hover:bg-gray-800 disabled:bg-gray-300 disabled:border-gray-400 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 disabled:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     Send
                   </button>
