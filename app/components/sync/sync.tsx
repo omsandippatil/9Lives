@@ -512,7 +512,7 @@ export default function CatTriangle({
     }
   }, [])
 
-  // Enhanced user media with better constraints
+  // Enhanced user media with better constraints (removed invalid 'volume' property)
   const getUserMedia = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -521,8 +521,7 @@ export default function CatTriangle({
           noiseSuppression: true,
           autoGainControl: true,
           sampleRate: 48000,
-          channelCount: 1,
-          volume: 1.0
+          channelCount: 1
         }
       })
       localStreamRef.current = stream
