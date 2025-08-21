@@ -1465,18 +1465,18 @@ export default function CatTriangle({
     <div className="fixed inset-0 z-50 pointer-events-none">
       {/* Whiteboard */}
       {showWhiteboard && (
-        <div className={`fixed bg-white shadow-2xl border border-gray-300 transition-all duration-300 pointer-events-auto ${
+        <div className={`fixed bg-white shadow-2xl border border-black transition-all duration-300 pointer-events-auto ${
           isWhiteboardMinimized 
             ? 'bottom-20 right-4 w-80 h-12' 
             : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 min-w-96 min-h-96'
-        } rounded-lg overflow-hidden`}>
+        } overflow-hidden`}>
           
           {/* Whiteboard Header */}
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 flex justify-between items-center">
+          <div className="bg-black text-white p-3 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <span className="font-bold text-lg">📝 Collaborative Whiteboard</span>
               {connectedUsers.length > 1 && (
-                <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                <span className="text-xs bg-white text-black px-2 py-1">
                   {connectedUsers.length} users
                 </span>
               )}
@@ -1484,14 +1484,14 @@ export default function CatTriangle({
             <div className="flex gap-2">
               <button
                 onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
-                className="w-6 h-6 bg-white/20 hover:bg-white/30 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                className="w-6 h-6 bg-white text-black hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
                 title={isWhiteboardMinimized ? 'Expand' : 'Minimize'}
               >
                 {isWhiteboardMinimized ? '⬆' : '⬇'}
               </button>
               <button
                 onClick={() => setShowWhiteboard(false)}
-                className="w-6 h-6 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                className="w-6 h-6 bg-white text-black hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
                 title="Close whiteboard"
               >
                 ✕
@@ -1502,19 +1502,19 @@ export default function CatTriangle({
           {!isWhiteboardMinimized && (
             <>
               {/* Whiteboard Controls */}
-              <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-gray-200">
+              <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-black">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700">Color:</label>
+                  <label className="text-sm font-medium text-black">Color:</label>
                   <input
                     type="color"
                     value={drawColor}
                     onChange={(e) => setDrawColor(e.target.value)}
-                    className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                    className="w-8 h-8 border border-black cursor-pointer"
                   />
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700">Size:</label>
+                  <label className="text-sm font-medium text-black">Size:</label>
                   <input
                     type="range"
                     min="1"
@@ -1523,14 +1523,14 @@ export default function CatTriangle({
                     onChange={(e) => setDrawThickness(parseInt(e.target.value))}
                     className="w-20"
                   />
-                  <span className="text-sm text-gray-600 w-8">{drawThickness}px</span>
+                  <span className="text-sm text-black w-8">{drawThickness}px</span>
                 </div>
                 
                 <div className="flex gap-2 ml-auto">
                   <button
                     onClick={undoLastStroke}
                     disabled={whiteboardStrokes.length === 0}
-                    className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 text-white text-sm rounded font-medium transition-colors"
+                    className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
                     title="Undo last stroke (Ctrl+Z)"
                   >
                     ↶ Undo
@@ -1538,7 +1538,7 @@ export default function CatTriangle({
                   <button
                     onClick={clearWhiteboard}
                     disabled={whiteboardStrokes.length === 0}
-                    className="px-3 py-1 bg-red-500 hover:bg-red-600 disabled:bg-gray-300 text-white text-sm rounded font-medium transition-colors"
+                    className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
                     title="Clear whiteboard (Ctrl+Delete)"
                   >
                     🗑️ Clear
@@ -1562,7 +1562,7 @@ export default function CatTriangle({
                 
                 {whiteboardStrokes.length === 0 && !isDrawing && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center text-gray-400">
+                    <div className="text-center text-gray-500">
                       <div className="text-4xl mb-2">🎨</div>
                       <div className="text-lg font-medium">Start drawing to collaborate!</div>
                       <div className="text-sm mt-2">
