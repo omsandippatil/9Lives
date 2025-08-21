@@ -1483,9 +1483,9 @@ export default function CatTriangle({
 
       {/* Main UI Container */}
       <div className="fixed bottom-4 right-4 pointer-events-auto">
-        {showMessageInput && (
+       {showMessageInput && (
           <div className="absolute bottom-20 right-0 mb-2">
-            <div className="bg-white shadow-lg p-2 rounded-lg">
+            <div className="bg-white shadow-lg border-2 border-black p-3">
               <input
                 id="cat-triangle-message-input"
                 type="text"
@@ -1501,16 +1501,16 @@ export default function CatTriangle({
                   }
                 }}
                 placeholder="Type message..."
-                className="w-40 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300 font-medium text-gray-800 bg-white placeholder-gray-500 rounded"
+                className="w-40 px-2 py-2 text-xs border-2 border-black focus:outline-none focus:ring-0 focus:border-pink-400 font-medium text-gray-800 bg-white placeholder-gray-500"
                 maxLength={50}
               />
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-xs text-gray-600 font-medium">{messageText.length}/50</span>
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-gray-700 font-bold">{messageText.length}/50</span>
                 <div className="flex gap-1">
                   <button
                     onClick={handleSendMessage}
                     disabled={!messageText.trim()}
-                    className="px-2 py-1 text-xs font-bold bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-xs font-bold bg-pink-500 text-white border-2 border-black hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                   >
                     Send
                   </button>
@@ -1519,7 +1519,7 @@ export default function CatTriangle({
                       setShowMessageInput(false)
                       setMessageText('')
                     }}
-                    className="px-2 py-1 text-xs font-bold bg-gray-400 text-white rounded hover:bg-gray-500"
+                    className="px-2 py-1 text-xs font-bold bg-gray-400 text-white border-2 border-black hover:bg-gray-500 transition-colors"
                   >
                     ✕
                   </button>
