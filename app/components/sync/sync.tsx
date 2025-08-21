@@ -207,7 +207,7 @@ export default function CatTriangle({
     return Math.floor(Math.random() * totalLanes)
   }, [usedLanes])
 
-  // Whiteboard functions
+  // Fixed whiteboard functions
   const broadcastWhiteboardData = useCallback((data: WhiteboardData) => {
     if (!currentUser) return
 
@@ -224,10 +224,7 @@ export default function CatTriangle({
     dataChannelRef.current.forEach((channel, userId) => {
       if (channel.readyState === 'open') {
         try {
-          channel.send(JSON.stringify({
-            ...data,
-            type: 'whiteboard-data'
-          }))
+          channel.send(JSON.stringify(data))
         } catch (sendError) {
           console.warn(`Failed to send whiteboard data via data channel to ${userId}:`, sendError)
         }
@@ -235,11 +232,11 @@ export default function CatTriangle({
     })
   }, [currentUser])
 
-  const drawStroke = useCallback((stroke: WhiteboardStroke, canvas?: HTMLCanvasElement) => {
-    const targetCanvas = canvas || whiteboardCanvasRef.current
-    if (!targetCanvas) return
+  const drawStroke = useCallback((stroke: WhiteboardStroke) => {
+    const canvas = whiteboardCanvasRef.current
+    if (!canvas) return
 
-    const ctx = targetCanvas.getContext('2d')
+    const ctx = canvas.getContext('2d')
     if (!ctx || stroke.points.length < 2) return
 
     ctx.strokeStyle = stroke.color
@@ -269,7 +266,7 @@ export default function CatTriangle({
     
     // Redraw all strokes
     whiteboardStrokes.forEach(stroke => {
-      drawStroke(stroke, canvas)
+      drawStroke(stroke)
     })
   }, [whiteboardStrokes, drawStroke])
 
@@ -289,19 +286,36 @@ export default function CatTriangle({
         }
       }
     } else if (data.type === 'undo') {
-      setWhiteboardStrokes(prev => prev.slice(0, -1))
-      setTimeout(() => redrawWhiteboard(), 10)
+      setWhiteboardStrokes(prev => {
+        const newStrokes = prev.slice(0, -1)
+        setTimeout(() => {
+          const canvas = whiteboardCanvasRef.current
+          if (canvas) {
+            const ctx = canvas.getContext('2d')
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height)
+              newStrokes.forEach(stroke => {
+                drawStroke(stroke)
+              })
+            }
+          }
+        }, 0)
+        return newStrokes
+      })
     }
-  }, [currentUser, drawStroke, redrawWhiteboard])
+  }, [currentUser, drawStroke])
 
   const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = whiteboardCanvasRef.current
     if (!canvas) return { x: 0, y: 0 }
 
     const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
     }
   }, [])
 
@@ -392,8 +406,11 @@ export default function CatTriangle({
   const undoLastStroke = useCallback(() => {
     if (!currentUser || whiteboardStrokes.length === 0) return
 
-    setWhiteboardStrokes(prev => prev.slice(0, -1))
-    setTimeout(() => redrawWhiteboard(), 10)
+    setWhiteboardStrokes(prev => {
+      const newStrokes = prev.slice(0, -1)
+      setTimeout(() => redrawWhiteboard(), 0)
+      return newStrokes
+    })
 
     broadcastWhiteboardData({
       type: 'undo',
@@ -402,12 +419,34 @@ export default function CatTriangle({
     })
   }, [currentUser, whiteboardStrokes.length, redrawWhiteboard, broadcastWhiteboardData])
 
+  // Initialize canvas size properly
+  useEffect(() => {
+    const canvas = whiteboardCanvasRef.current
+    if (canvas && showWhiteboard && !isWhiteboardMinimized) {
+      const resizeCanvas = () => {
+        const rect = canvas.getBoundingClientRect()
+        canvas.width = Math.floor(rect.width * window.devicePixelRatio)
+        canvas.height = Math.floor(rect.height * window.devicePixelRatio)
+        
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+          redrawWhiteboard()
+        }
+      }
+      
+      setTimeout(resizeCanvas, 100)
+      window.addEventListener('resize', resizeCanvas)
+      return () => window.removeEventListener('resize', resizeCanvas)
+    }
+  }, [showWhiteboard, isWhiteboardMinimized, redrawWhiteboard])
+
   const cleanupConnection = useCallback(async () => {
     if (isCleaningUpRef.current) return
     isCleaningUpRef.current = true
 
     try {
-      console.log('🧹 Starting enhanced cleanup...')
+      console.log('Cleaning up connections...')
       
       connectionTimeoutRef.current.forEach((timeout) => {
         clearTimeout(timeout)
@@ -418,7 +457,6 @@ export default function CatTriangle({
         if (channel.readyState === 'open') {
           channel.close()
         }
-        console.log(`Closed data channel with ${userId}`)
       })
       dataChannelRef.current.clear()
 
@@ -433,7 +471,6 @@ export default function CatTriangle({
         audio.pause()
         audio.srcObject = null
         audio.remove()
-        console.log(`Removed audio element for ${userId}`)
       })
       remoteAudioElementsRef.current.clear()
 
@@ -449,7 +486,6 @@ export default function CatTriangle({
           
           pc.close()
         }
-        console.log(`Closed peer connection with ${userId}`)
       })
       peerConnectionsRef.current.clear()
       remoteStreamsRef.current.clear()
@@ -468,7 +504,6 @@ export default function CatTriangle({
       if (channelRef.current) {
         try {
           await channelRef.current.untrack()
-          console.log('Untracked from channel')
         } catch (untrackError) {
           console.warn('Error untracking from channel:', untrackError)
         }
@@ -477,7 +512,6 @@ export default function CatTriangle({
       setIsAudioEnabled(false)
       setIsConnected(false)
       setConnectionStatus('disconnected')
-      console.log('✅ Enhanced cleanup completed')
     } catch (cleanupError) {
       console.error('Error during cleanup:', cleanupError)
     } finally {
@@ -705,8 +739,6 @@ export default function CatTriangle({
         if (audioContextRef.current.state === 'suspended') {
           await audioContextRef.current.resume()
         }
-        
-        console.log('🎵 Audio context setup complete, state:', audioContextRef.current.state)
       }
     } catch (audioContextError) {
       console.error('Error setting up audio context:', audioContextError)
@@ -716,12 +748,10 @@ export default function CatTriangle({
   const getUserMedia = useCallback(async () => {
     try {
       if (localStreamRef.current) {
-        console.log('🎤 Reusing existing media stream')
         setIsAudioEnabled(true)
         return localStreamRef.current
       }
 
-      console.log('🎤 Requesting microphone access...')
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -736,16 +766,9 @@ export default function CatTriangle({
       localStreamRef.current = stream
       setIsAudioEnabled(true)
       
-      const audioTracks = stream.getAudioTracks()
-      console.log('🎤 Got user media stream:', {
-        tracks: audioTracks.length,
-        settings: audioTracks[0]?.getSettings(),
-        constraints: audioTracks[0]?.getConstraints()
-      })
-      
       return stream
     } catch (mediaError: unknown) {
-      console.error('❌ Error accessing microphone:', mediaError)
+      console.error('Error accessing microphone:', mediaError)
       setIsAudioEnabled(false)
       
       if (mediaError instanceof DOMException) {
@@ -763,8 +786,6 @@ export default function CatTriangle({
 
   const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
     try {
-      console.log(`🔊 Setting up remote audio for ${userId}`)
-      
       const existingAudio = remoteAudioElementsRef.current.get(userId)
       if (existingAudio) {
         existingAudio.pause()
@@ -795,8 +816,6 @@ export default function CatTriangle({
       
       const attemptPlay = async () => {
         try {
-          console.log(`🔊 Attempting to play audio from ${userId}`)
-          
           if (audio.readyState < 2) {
             await new Promise((resolve) => {
               audio.oncanplay = resolve
@@ -809,22 +828,17 @@ export default function CatTriangle({
           
           if (playPromise !== undefined) {
             await playPromise
-            console.log(`✅ Successfully playing audio from ${userId}`)
           }
         } catch (playError: unknown) {
-          console.warn(`⚠️ Audio autoplay blocked for ${userId}, setting up click handler:`, playError)
-          
           const enableAudio = async (event: Event) => {
             try {
-              console.log(`🔊 User interaction detected, playing audio from ${userId}`)
               await audio.play()
-              console.log(`✅ Audio enabled for ${userId} after user interaction`)
               
               document.removeEventListener('click', enableAudio)
               document.removeEventListener('keydown', enableAudio)
               document.removeEventListener('touchstart', enableAudio)
             } catch (retryError: unknown) {
-              console.error(`❌ Failed to play audio for ${userId} after interaction:`, retryError)
+              console.error(`Failed to play audio for ${userId} after interaction:`, retryError)
             }
           }
           
@@ -840,26 +854,17 @@ export default function CatTriangle({
         }
       }
 
-      audio.onloadstart = () => console.log(`🔊 Audio loading started for ${userId}`)
       audio.oncanplay = () => {
-        console.log(`🔊 Audio can play for ${userId}`)
         attemptPlay()
       }
-      audio.onplaying = () => console.log(`▶️ Audio playing for ${userId}`)
-      audio.onended = () => console.log(`⏹️ Audio ended for ${userId}`)
-      audio.onerror = (e) => console.error(`❌ Audio error for ${userId}:`, e)
-      audio.onstalled = () => console.warn(`⏸️ Audio stalled for ${userId}`)
-      audio.onwaiting = () => console.warn(`⏳ Audio waiting for ${userId}`)
+      audio.onerror = (e) => console.error(`Audio error for ${userId}:`, e)
 
       if (stream.getAudioTracks().length > 0) {
-        console.log(`🎵 Remote stream has ${stream.getAudioTracks().length} audio tracks`)
         attemptPlay()
-      } else {
-        console.warn(`⚠️ No audio tracks in remote stream from ${userId}`)
       }
 
     } catch (setupError: unknown) {
-      console.error(`❌ Error setting up remote audio for ${userId}:`, setupError)
+      console.error(`Error setting up remote audio for ${userId}:`, setupError)
     }
   }, [])
 
@@ -870,12 +875,10 @@ export default function CatTriangle({
       })
       
       dataChannel.onopen = () => {
-        console.log(`📡 Data channel opened with ${userId}`)
         dataChannelRef.current.set(userId, dataChannel)
       }
       
       dataChannel.onclose = () => {
-        console.log(`📡 Data channel closed with ${userId}`)
         dataChannelRef.current.delete(userId)
       }
       
@@ -884,7 +887,7 @@ export default function CatTriangle({
           const message = JSON.parse(event.data)
           if (message.type === 'text-message') {
             addFloatingMessage(message.text)
-          } else if (message.type === 'whiteboard-data') {
+          } else if (message.type === 'draw' || message.type === 'clear' || message.type === 'undo') {
             handleWhiteboardData(message)
           }
         } catch (parseError: unknown) {
@@ -903,23 +906,19 @@ export default function CatTriangle({
 
   const createPeerConnection = useCallback((userId: string) => {
     try {
-      console.log(`🔗 Creating enhanced peer connection with ${userId}`)
       const pc = new RTCPeerConnection(rtcConfiguration)
       
       setupDataChannel(pc, userId)
       
       if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(track => {
-          console.log(`🎤 Adding local audio track to peer connection with ${userId}`, track.label)
           pc.addTrack(track, localStreamRef.current!)
         })
       }
 
       pc.ontrack = (event) => {
-        console.log(`📥 Received remote track from ${userId}:`, event.track.kind, event.track.label)
         const [remoteStream] = event.streams
         if (remoteStream && event.track.kind === 'audio') {
-          console.log(`🎵 Setting up remote audio stream from ${userId}`)
           remoteStreamsRef.current.set(userId, remoteStream)
           setupRemoteAudio(userId, remoteStream)
         }
@@ -927,10 +926,8 @@ export default function CatTriangle({
 
       pc.ondatachannel = (event) => {
         const channel = event.channel
-        console.log(`📡 Received data channel from ${userId}`)
         
         channel.onopen = () => {
-          console.log(`📡 Incoming data channel opened with ${userId}`)
           dataChannelRef.current.set(userId, channel)
         }
         
@@ -939,7 +936,7 @@ export default function CatTriangle({
             const message = JSON.parse(messageEvent.data)
             if (message.type === 'text-message') {
               addFloatingMessage(message.text)
-            } else if (message.type === 'whiteboard-data') {
+            } else if (message.type === 'draw' || message.type === 'clear' || message.type === 'undo') {
               handleWhiteboardData(message)
             }
           } catch (incomingError: unknown) {
@@ -951,7 +948,6 @@ export default function CatTriangle({
       pc.onicecandidate = (event) => {
         if (event.candidate && channelRef.current && currentUser) {
           if (event.candidate.candidate && event.candidate.candidate.trim() !== '') {
-            console.log(`📤 Sending ICE candidate to ${userId}:`, event.candidate.candidate.substring(0, 50) + '...')
             channelRef.current.send({
               type: 'broadcast',
               event: 'webrtc-signal',
@@ -963,17 +959,13 @@ export default function CatTriangle({
               }
             })
           }
-        } else if (!event.candidate) {
-          console.log(`❄️ ICE gathering complete for ${userId}`)
         }
       }
 
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState
-        console.log(`🔗 Connection state with ${userId}: ${state}`)
         
         if (state === 'connected') {
-          console.log(`✅ Successfully connected to ${userId}`)
           pendingIceCandidatesRef.current.delete(userId)
           connectionAttemptsRef.current.delete(userId)
           
@@ -983,11 +975,8 @@ export default function CatTriangle({
             connectionTimeoutRef.current.delete(userId)
           }
         } else if (state === 'connecting') {
-          console.log(`🔄 Connecting to ${userId}...`)
-          
           const timeout = setTimeout(() => {
             if (pc.connectionState !== 'connected') {
-              console.log(`⏰ Connection timeout with ${userId}, attempting restart`)
               try {
                 pc.restartIce()
               } catch (restartError: unknown) {
@@ -998,12 +987,9 @@ export default function CatTriangle({
           
           connectionTimeoutRef.current.set(userId, timeout)
         } else if (state === 'failed') {
-          console.log(`❌ Connection failed with ${userId}`)
-          
           const attempts = connectionAttemptsRef.current.get(userId) || 0
           if (attempts < 3) {
             connectionAttemptsRef.current.set(userId, attempts + 1)
-            console.log(`🔄 Retry attempt ${attempts + 1} for ${userId}`)
             setTimeout(() => {
               if (pc.connectionState === 'failed') {
                 try {
@@ -1013,11 +999,8 @@ export default function CatTriangle({
                 }
               }
             }, 2000 * (attempts + 1))
-          } else {
-            console.log(`🚫 Max connection attempts reached for ${userId}`)
           }
         } else if (state === 'closed') {
-          console.log(`🔒 Connection closed with ${userId}`)
           peerConnectionsRef.current.delete(userId)
           remoteStreamsRef.current.delete(userId)
           pendingIceCandidatesRef.current.delete(userId)
@@ -1047,24 +1030,14 @@ export default function CatTriangle({
 
       pc.oniceconnectionstatechange = () => {
         const iceState = pc.iceConnectionState
-        console.log(`❄️ ICE connection with ${userId}: ${iceState}`)
         
         if (iceState === 'failed' && pc.connectionState !== 'closed') {
-          console.log(`❄️ ICE connection failed with ${userId}, attempting restart`)
           try {
             pc.restartIce()
           } catch (iceRestartError: unknown) {
             console.error(`Error restarting ICE for ${userId}:`, iceRestartError)
           }
         }
-      }
-
-      pc.onsignalingstatechange = () => {
-        console.log(`📡 Signaling state with ${userId}: ${pc.signalingState}`)
-      }
-
-      pc.onicegatheringstatechange = () => {
-        console.log(`❄️ ICE gathering state with ${userId}: ${pc.iceGatheringState}`)
       }
 
       return pc
@@ -1077,17 +1050,15 @@ export default function CatTriangle({
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
     const pendingCandidates = pendingIceCandidatesRef.current.get(userId) || []
     if (pendingCandidates.length > 0 && pc.remoteDescription && pc.signalingState !== 'closed') {
-      console.log(`📥 Processing ${pendingCandidates.length} pending ICE candidates for ${userId}`)
       
       for (const candidate of pendingCandidates) {
         try {
           if (candidate && typeof candidate === 'object' && candidate.candidate) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            console.log(`✅ Added pending ICE candidate for ${userId}`)
           }
         } catch (candidateError: unknown) {
           if (pc.connectionState !== 'connected') {
-            console.warn(`⚠️ Error adding pending ICE candidate for ${userId}:`, candidateError)
+            console.warn(`Error adding pending ICE candidate for ${userId}:`, candidateError)
           }
         }
       }
@@ -1102,13 +1073,10 @@ export default function CatTriangle({
     const { type, data, from } = signal
     let pc = peerConnectionsRef.current.get(from)
 
-    try {
-      console.log(`🔄 Handling ${type} signal from ${from}`)
-      
+    try {      
       switch (type) {
         case 'offer':
           if (pc && pc.connectionState !== 'closed') {
-            console.log(`🧹 Closing existing connection with ${from} for new offer`)
             pc.close()
             pendingIceCandidatesRef.current.delete(from)
           }
@@ -1116,12 +1084,10 @@ export default function CatTriangle({
           pc = createPeerConnection(from)
           peerConnectionsRef.current.set(from, pc)
           
-          console.log(`📥 Setting remote description (offer) from ${from}`)
           await pc.setRemoteDescription(new RTCSessionDescription(data))
           
           await processPendingIceCandidates(from, pc)
           
-          console.log(`📤 Creating answer for ${from}`)
           const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: false
@@ -1130,7 +1096,6 @@ export default function CatTriangle({
           await pc.setLocalDescription(answer)
           
           if (channelRef.current) {
-            console.log(`📤 Sending answer to ${from}`)
             channelRef.current.send({
               type: 'broadcast',
               event: 'webrtc-signal',
@@ -1146,11 +1111,8 @@ export default function CatTriangle({
 
         case 'answer':
           if (pc && pc.signalingState === 'have-local-offer') {
-            console.log(`📥 Setting remote description (answer) from ${from}`)
             await pc.setRemoteDescription(new RTCSessionDescription(data))
             await processPendingIceCandidates(from, pc)
-          } else {
-            console.warn(`⚠️ Received answer from ${from} but not in correct state:`, pc?.signalingState)
           }
           break
 
@@ -1158,17 +1120,15 @@ export default function CatTriangle({
           if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
             try {
               if (data && typeof data === 'object' && data.candidate) {
-                console.log(`📥 Adding ICE candidate from ${from}`)
                 await pc.addIceCandidate(new RTCIceCandidate(data))
               }
             } catch (iceError: unknown) {
               if (pc.connectionState !== 'connected') {
-                console.warn(`⚠️ Error adding ICE candidate from ${from}:`, iceError)
+                console.warn(`Error adding ICE candidate from ${from}:`, iceError)
               }
             }
           } else if (pc && !pc.remoteDescription) {
             if (data && typeof data === 'object' && data.candidate) {
-              console.log(`💾 Storing ICE candidate from ${from} for later processing`)
               const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
               pendingCandidates.push(data)
               pendingIceCandidatesRef.current.set(from, pendingCandidates)
@@ -1177,7 +1137,7 @@ export default function CatTriangle({
           break
       }
     } catch (signalingError: unknown) {
-      console.error(`❌ Error handling ${type} signal from ${from}:`, signalingError)
+      console.error(`Error handling ${type} signal from ${from}:`, signalingError)
       if (pc && pc.connectionState !== 'closed') {
         pc.close()
       }
@@ -1191,11 +1151,8 @@ export default function CatTriangle({
     if (!currentUser || !isVisible || !localStreamRef.current) return
 
     try {
-      console.log(`🚀 Creating offer for ${targetUserId}`)
-      
       const existingPc = peerConnectionsRef.current.get(targetUserId)
       if (existingPc && existingPc.connectionState !== 'closed') {
-        console.log(`🧹 Closing existing connection with ${targetUserId} for new offer`)
         existingPc.close()
       }
 
@@ -1221,7 +1178,6 @@ export default function CatTriangle({
         }
       })
 
-      console.log(`📤 Creating offer with enhanced constraints`)
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: false,
@@ -1229,10 +1185,8 @@ export default function CatTriangle({
       })
       
       await pc.setLocalDescription(offer)
-      console.log(`✅ Set local description for ${targetUserId}`)
 
       if (channelRef.current) {
-        console.log(`📤 Sending offer to ${targetUserId}`)
         channelRef.current.send({
           type: 'broadcast',
           event: 'webrtc-signal',
@@ -1245,7 +1199,7 @@ export default function CatTriangle({
         })
       }
     } catch (offerError: unknown) {
-      console.error(`❌ Error creating offer for ${targetUserId}:`, offerError)
+      console.error(`Error creating offer for ${targetUserId}:`, offerError)
       peerConnectionsRef.current.delete(targetUserId)
     }
   }, [currentUser, createPeerConnection, isVisible])
@@ -1255,7 +1209,6 @@ export default function CatTriangle({
       return
     }
 
-    console.log('🔧 Setting up enhanced Supabase channel for:', currentUser.email)
     const channel = supabaseRef.current.channel('cat-triangle-audio-v2', {
       config: { 
         presence: { key: currentUser.id },
@@ -1280,18 +1233,15 @@ export default function CatTriangle({
         }
       })
       
-      console.log(`👥 Presence sync: ${users.length} users connected`)
       setConnectedUsers(users)
       setIsConnected(users.length > 1)
     })
 
     channel.on('presence', { event: 'join' }, ({ newPresences }: PresenceEvent) => {
       newPresences?.forEach((presence: PresenceData, index: number) => {
-        console.log(`👋 User joined: ${presence.email}`)
         if (presence.id !== currentUser.id && isAudioEnabled) {
           const delay = (index + 1) * 2000 + Math.random() * 3000
           setTimeout(() => {
-            console.log(`🚀 Attempting connection to ${presence.email} after ${delay}ms delay`)
             createOffer(presence.id)
           }, delay)
         }
@@ -1300,7 +1250,6 @@ export default function CatTriangle({
 
     channel.on('presence', { event: 'leave' }, ({ leftPresences }: PresenceEvent) => {
       leftPresences?.forEach((presence: PresenceData) => {
-        console.log(`👋 User left: ${presence.email}`)
         const pc = peerConnectionsRef.current.get(presence.id)
         if (pc && pc.connectionState !== 'closed') {
           pc.close()
@@ -1347,7 +1296,6 @@ export default function CatTriangle({
     })
 
     channel.subscribe(async (status: string) => {
-      console.log(`📡 Channel subscription status: ${status}`)
       if (status === 'SUBSCRIBED') {
         try {
           await channel.track({
@@ -1355,21 +1303,13 @@ export default function CatTriangle({
             email: currentUser.email,
             connected_at: new Date().toISOString()
           })
-          console.log('✅ Tracked presence in channel')
         } catch (trackingError: unknown) {
-          console.error('❌ Error tracking presence:', trackingError)
+          console.error('Error tracking presence:', trackingError)
         }
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('❌ Channel subscription error')
-      } else if (status === 'TIMED_OUT') {
-        console.error('⏰ Channel subscription timed out')
-      } else if (status === 'CLOSED') {
-        console.log('🔒 Channel subscription closed')
       }
     })
 
     return () => {
-      console.log('🔌 Unsubscribing from channel')
       try {
         channel.unsubscribe()
       } catch (unsubscribeError: unknown) {
@@ -1389,23 +1329,20 @@ export default function CatTriangle({
 
     try {
       if (!isConnected) {
-        console.log('🚀 Starting enhanced connection...')
         setConnectionStatus('connecting')
         
         await setupAudioContext()
         
         try {
           await getUserMedia()
-          console.log('✅ Microphone access granted')
         } catch (micError: unknown) {
-          console.error('❌ Microphone access failed:', micError)
+          console.error('Microphone access failed:', micError)
           setConnectionStatus('disconnected')
           alert((micError instanceof Error ? micError.message : String(micError)) || 'Failed to access microphone')
           return
         }
 
         setConnectionStatus('connected')
-        console.log('✅ Enhanced connection established')
         
         setTimeout(() => {
           if (connectedUsers.length > 1) {
@@ -1419,11 +1356,10 @@ export default function CatTriangle({
           }
         }, 1000)
       } else {
-        console.log('🔌 Disconnecting...')
         await cleanupConnection()
       }
     } catch (connectionError: unknown) {
-      console.error('❌ Error toggling connection:', connectionError)
+      console.error('Error toggling connection:', connectionError)
       setConnectionStatus('disconnected')
       alert('Error: ' + (connectionError instanceof Error ? connectionError.message : 'Unknown error occurred'))
     }
@@ -1434,15 +1370,6 @@ export default function CatTriangle({
     if (connectionStatus === 'connecting') return '🙀'
     if (isConnected && connectedUsers.length > 1) return '😻'
     return '😿'
-  }
-
-  const getStatusText = () => {
-    if (connectionStatus === 'connecting') return 'Connecting...'
-    if (isConnected && connectedUsers.length > 1) {
-      return `${connectedUsers.length} users connected`
-    }
-    if (isConnected) return 'Waiting for others...'
-    return 'Click to connect'
   }
 
   useEffect(() => {
@@ -1465,7 +1392,7 @@ export default function CatTriangle({
     <div className="fixed inset-0 z-50 pointer-events-none">
       {/* Whiteboard */}
       {showWhiteboard && (
-        <div className={`fixed bg-white shadow-2xl border border-black transition-all duration-300 pointer-events-auto ${
+        <div className={`fixed bg-white shadow-2xl border-2 border-black transition-all duration-300 pointer-events-auto ${
           isWhiteboardMinimized 
             ? 'bottom-20 right-4 w-80 h-12' 
             : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 min-w-96 min-h-96'
@@ -1473,21 +1400,14 @@ export default function CatTriangle({
           
           {/* Whiteboard Header */}
           <div className="bg-black text-white p-3 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg">📝 Collaborative Whiteboard</span>
-              {connectedUsers.length > 1 && (
-                <span className="text-xs bg-white text-black px-2 py-1">
-                  {connectedUsers.length} users
-                </span>
-              )}
-            </div>
+            <span className="font-bold text-lg">Collaborative Whiteboard</span>
             <div className="flex gap-2">
               <button
                 onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
                 className="w-6 h-6 bg-white text-black hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
                 title={isWhiteboardMinimized ? 'Expand' : 'Minimize'}
               >
-                {isWhiteboardMinimized ? '⬆' : '⬇'}
+                {isWhiteboardMinimized ? '↑' : '↓'}
               </button>
               <button
                 onClick={() => setShowWhiteboard(false)}
@@ -1531,46 +1451,30 @@ export default function CatTriangle({
                     onClick={undoLastStroke}
                     disabled={whiteboardStrokes.length === 0}
                     className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
-                    title="Undo last stroke (Ctrl+Z)"
                   >
-                    ↶ Undo
+                    Undo
                   </button>
                   <button
                     onClick={clearWhiteboard}
                     disabled={whiteboardStrokes.length === 0}
                     className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
-                    title="Clear whiteboard (Ctrl+Delete)"
                   >
-                    🗑️ Clear
+                    Clear
                   </button>
                 </div>
               </div>
 
               {/* Canvas */}
-              <div className="flex-1 overflow-hidden relative">
+              <div className="flex-1 relative">
                 <canvas
                   ref={whiteboardCanvasRef}
-                  width={800}
-                  height={600}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
-                  className="absolute inset-0 w-full h-full cursor-crosshair bg-white"
+                  className="w-full h-full cursor-crosshair bg-white block"
                   style={{ touchAction: 'none' }}
                 />
-                
-                {whiteboardStrokes.length === 0 && !isDrawing && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center text-gray-500">
-                      <div className="text-4xl mb-2">🎨</div>
-                      <div className="text-lg font-medium">Start drawing to collaborate!</div>
-                      <div className="text-sm mt-2">
-                        Alt+W to toggle • Ctrl+Z to undo • Ctrl+Delete to clear
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -1682,55 +1586,10 @@ export default function CatTriangle({
           `}
         >
           <span>{getCatEmoji()}</span>
-          
-          <div className="absolute bottom-16 right-0 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-            <div className="bg-pink-100 text-pink-800 px-3 py-1 text-xs font-bold shadow-lg max-w-xs rounded whitespace-nowrap">
-              {getStatusText()}
-              {showWhiteboard && (
-                <div className="text-xs mt-1 text-purple-600">
-                  📝 Whiteboard active
-                </div>
-              )}
-              <div className="text-xs mt-1 opacity-75">
-                Alt+O/D: Toggle • Alt+W: Whiteboard • Tab: Message
-              </div>
-            </div>
-          </div>
         </button>
       </div>
       
       <style jsx>{`
-        @keyframes float-left-enhanced {
-          0% {
-            transform: translateX(0) translateY(0) scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          15% {
-            transform: translateX(-15px) translateY(-12px) scale(1.1) rotate(3deg);
-            opacity: 0.95;
-          }
-          30% {
-            transform: translateX(-35px) translateY(-28px) scale(1.15) rotate(-2deg);
-            opacity: 0.9;
-          }
-          50% {
-            transform: translateX(-60px) translateY(-50px) scale(1.2) rotate(1deg);
-            opacity: 0.8;
-          }
-          70% {
-            transform: translateX(-85px) translateY(-75px) scale(1.1) rotate(-1deg);
-            opacity: 0.6;
-          }
-          85% {
-            transform: translateX(-105px) translateY(-95px) scale(1.05) rotate(0.5deg);
-            opacity: 0.3;
-          }
-          100% {
-            transform: translateX(-130px) translateY(-120px) scale(0.9) rotate(0deg);
-            opacity: 0;
-          }
-        }
-
         @keyframes float-left-hearts {
           0% {
             transform: translateX(0) translateY(0) scale(0.8) rotate(0deg);
