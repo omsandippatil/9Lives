@@ -54,6 +54,22 @@ interface FloatingMessage {
   lane: number
 }
 
+interface WhiteboardStroke {
+  id: string
+  points: { x: number; y: number }[]
+  color: string
+  thickness: number
+  timestamp: number
+  userId: string
+}
+
+interface WhiteboardData {
+  type: 'draw' | 'clear' | 'undo'
+  stroke?: WhiteboardStroke
+  userId: string
+  timestamp: number
+}
+
 const rtcConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -108,6 +124,15 @@ export default function CatTriangle({
   const [floatingMessages, setFloatingMessages] = useState<FloatingMessage[]>([])
   const [usedLanes, setUsedLanes] = useState<Set<number>>(new Set())
   
+  // Whiteboard states
+  const [showWhiteboard, setShowWhiteboard] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [whiteboardStrokes, setWhiteboardStrokes] = useState<WhiteboardStroke[]>([])
+  const [currentStroke, setCurrentStroke] = useState<{ x: number; y: number }[]>([])
+  const [drawColor, setDrawColor] = useState('#000000')
+  const [drawThickness, setDrawThickness] = useState(3)
+  const [isWhiteboardMinimized, setIsWhiteboardMinimized] = useState(false)
+  
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -121,6 +146,7 @@ export default function CatTriangle({
   const connectionAttemptsRef = useRef<Map<string, number>>(new Map())
   const dataChannelRef = useRef<Map<string, RTCDataChannel>>(new Map())
   const connectionTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const whiteboardCanvasRef = useRef<HTMLCanvasElement>(null)
 
   const getUserFromCookies = useCallback(() => {
     if (typeof document === 'undefined') return null
@@ -180,6 +206,201 @@ export default function CatTriangle({
     }
     return Math.floor(Math.random() * totalLanes)
   }, [usedLanes])
+
+  // Whiteboard functions
+  const broadcastWhiteboardData = useCallback((data: WhiteboardData) => {
+    if (!currentUser) return
+
+    // Send via Supabase channel
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'whiteboard-data',
+        payload: data
+      })
+    }
+
+    // Send via WebRTC data channels
+    dataChannelRef.current.forEach((channel, userId) => {
+      if (channel.readyState === 'open') {
+        try {
+          channel.send(JSON.stringify({
+            ...data,
+            type: 'whiteboard-data'
+          }))
+        } catch (sendError) {
+          console.warn(`Failed to send whiteboard data via data channel to ${userId}:`, sendError)
+        }
+      }
+    })
+  }, [currentUser])
+
+  const drawStroke = useCallback((stroke: WhiteboardStroke, canvas?: HTMLCanvasElement) => {
+    const targetCanvas = canvas || whiteboardCanvasRef.current
+    if (!targetCanvas) return
+
+    const ctx = targetCanvas.getContext('2d')
+    if (!ctx || stroke.points.length < 2) return
+
+    ctx.strokeStyle = stroke.color
+    ctx.lineWidth = stroke.thickness
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
+    ctx.beginPath()
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
+    
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+    }
+    
+    ctx.stroke()
+  }, [])
+
+  const redrawWhiteboard = useCallback(() => {
+    const canvas = whiteboardCanvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    
+    // Redraw all strokes
+    whiteboardStrokes.forEach(stroke => {
+      drawStroke(stroke, canvas)
+    })
+  }, [whiteboardStrokes, drawStroke])
+
+  const handleWhiteboardData = useCallback((data: WhiteboardData) => {
+    if (!currentUser || data.userId === currentUser.id) return
+
+    if (data.type === 'draw' && data.stroke) {
+      setWhiteboardStrokes(prev => [...prev, data.stroke!])
+      drawStroke(data.stroke)
+    } else if (data.type === 'clear') {
+      setWhiteboardStrokes([])
+      const canvas = whiteboardCanvasRef.current
+      if (canvas) {
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+        }
+      }
+    } else if (data.type === 'undo') {
+      setWhiteboardStrokes(prev => prev.slice(0, -1))
+      setTimeout(() => redrawWhiteboard(), 10)
+    }
+  }, [currentUser, drawStroke, redrawWhiteboard])
+
+  const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = whiteboardCanvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    }
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!currentUser) return
+    
+    const pos = getMousePos(e)
+    setIsDrawing(true)
+    setCurrentStroke([pos])
+  }, [currentUser, getMousePos])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !currentUser) return
+
+    const pos = getMousePos(e)
+    setCurrentStroke(prev => {
+      const newStroke = [...prev, pos]
+      
+      // Draw current stroke in real-time
+      const canvas = whiteboardCanvasRef.current
+      if (canvas && newStroke.length >= 2) {
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.strokeStyle = drawColor
+          ctx.lineWidth = drawThickness
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          
+          const lastPoint = newStroke[newStroke.length - 2]
+          ctx.beginPath()
+          ctx.moveTo(lastPoint.x, lastPoint.y)
+          ctx.lineTo(pos.x, pos.y)
+          ctx.stroke()
+        }
+      }
+      
+      return newStroke
+    })
+  }, [isDrawing, currentUser, getMousePos, drawColor, drawThickness])
+
+  const handleMouseUp = useCallback(() => {
+    if (!isDrawing || !currentUser || currentStroke.length < 2) {
+      setIsDrawing(false)
+      setCurrentStroke([])
+      return
+    }
+
+    const newStroke: WhiteboardStroke = {
+      id: `${currentUser.id}-${Date.now()}-${Math.random()}`,
+      points: currentStroke,
+      color: drawColor,
+      thickness: drawThickness,
+      timestamp: Date.now(),
+      userId: currentUser.id
+    }
+
+    setWhiteboardStrokes(prev => [...prev, newStroke])
+    broadcastWhiteboardData({
+      type: 'draw',
+      stroke: newStroke,
+      userId: currentUser.id,
+      timestamp: Date.now()
+    })
+
+    setIsDrawing(false)
+    setCurrentStroke([])
+  }, [isDrawing, currentUser, currentStroke, drawColor, drawThickness, broadcastWhiteboardData])
+
+  const clearWhiteboard = useCallback(() => {
+    if (!currentUser) return
+
+    setWhiteboardStrokes([])
+    const canvas = whiteboardCanvasRef.current
+    if (canvas) {
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+      }
+    }
+
+    broadcastWhiteboardData({
+      type: 'clear',
+      userId: currentUser.id,
+      timestamp: Date.now()
+    })
+  }, [currentUser, broadcastWhiteboardData])
+
+  const undoLastStroke = useCallback(() => {
+    if (!currentUser || whiteboardStrokes.length === 0) return
+
+    setWhiteboardStrokes(prev => prev.slice(0, -1))
+    setTimeout(() => redrawWhiteboard(), 10)
+
+    broadcastWhiteboardData({
+      type: 'undo',
+      userId: currentUser.id,
+      timestamp: Date.now()
+    })
+  }, [currentUser, whiteboardStrokes.length, redrawWhiteboard, broadcastWhiteboardData])
 
   const cleanupConnection = useCallback(async () => {
     if (isCleaningUpRef.current) return
@@ -419,12 +640,20 @@ export default function CatTriangle({
         if (isVisible) {
           setIsVisible(false)
           setShowMessageInput(false)
+          setShowWhiteboard(false)
           if (isConnected || connectionStatus !== 'disconnected') {
             cleanupConnection()
           }
         } else {
           setIsVisible(true)
         }
+      }
+      
+      // Toggle whiteboard with Alt+W
+      if (isVisible && event.altKey && event.key === 'w') {
+        event.preventDefault()
+        setShowWhiteboard(prev => !prev)
+        setIsWhiteboardMinimized(false)
       }
       
       if (isVisible && event.key === 'Tab' && !event.altKey && !event.ctrlKey) {
@@ -448,11 +677,22 @@ export default function CatTriangle({
           createHeartShower()
         }
       }
+      
+      // Whiteboard keyboard shortcuts
+      if (showWhiteboard && !isWhiteboardMinimized && event.ctrlKey) {
+        if (event.key === 'z') {
+          event.preventDefault()
+          undoLastStroke()
+        } else if (event.key === 'Delete' || event.key === 'Backspace') {
+          event.preventDefault()
+          clearWhiteboard()
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isVisible, isConnected, connectionStatus, cleanupConnection, createHeartShower, showMessageInput, showTemporaryEmoji])
+  }, [isVisible, isConnected, connectionStatus, cleanupConnection, createHeartShower, showMessageInput, showTemporaryEmoji, showWhiteboard, isWhiteboardMinimized, undoLastStroke, clearWhiteboard])
 
   const setupAudioContext = useCallback(async () => {
     try {
@@ -644,6 +884,8 @@ export default function CatTriangle({
           const message = JSON.parse(event.data)
           if (message.type === 'text-message') {
             addFloatingMessage(message.text)
+          } else if (message.type === 'whiteboard-data') {
+            handleWhiteboardData(message)
           }
         } catch (parseError: unknown) {
           console.warn('Error parsing data channel message:', parseError)
@@ -657,7 +899,7 @@ export default function CatTriangle({
     } catch (channelError: unknown) {
       console.error(`Error setting up data channel with ${userId}:`, channelError)
     }
-  }, [addFloatingMessage])
+  }, [addFloatingMessage, handleWhiteboardData])
 
   const createPeerConnection = useCallback((userId: string) => {
     try {
@@ -697,6 +939,8 @@ export default function CatTriangle({
             const message = JSON.parse(messageEvent.data)
             if (message.type === 'text-message') {
               addFloatingMessage(message.text)
+            } else if (message.type === 'whiteboard-data') {
+              handleWhiteboardData(message)
             }
           } catch (incomingError: unknown) {
             console.warn('Error parsing incoming data channel message:', incomingError)
@@ -828,7 +1072,7 @@ export default function CatTriangle({
       console.error('Error creating peer connection:', peerError)
       throw peerError
     }
-  }, [currentUser, setupRemoteAudio, setupDataChannel, addFloatingMessage])
+  }, [currentUser, setupRemoteAudio, setupDataChannel, addFloatingMessage, handleWhiteboardData])
 
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
     const pendingCandidates = pendingIceCandidatesRef.current.get(userId) || []
@@ -1098,6 +1342,10 @@ export default function CatTriangle({
       }
     })
 
+    channel.on('broadcast', { event: 'whiteboard-data' }, ({ payload }: any) => {
+      handleWhiteboardData(payload)
+    })
+
     channel.subscribe(async (status: string) => {
       console.log(`📡 Channel subscription status: ${status}`)
       if (status === 'SUBSCRIBED') {
@@ -1129,7 +1377,7 @@ export default function CatTriangle({
       }
       channelRef.current = null
     }
-  }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage])
+  }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage, handleWhiteboardData])
 
   const handleCircleClick = useCallback(async () => {
     if (!currentUser) {
@@ -1214,114 +1462,242 @@ export default function CatTriangle({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
-      {showMessageInput && (
-        <div className="absolute bottom-20 right-0 mb-2">
-          <div className="bg-white shadow-lg p-2 rounded-lg">
-            <input
-              id="cat-triangle-message-input"
-              type="text"
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && messageText.trim()) {
-                  e.preventDefault()
-                  handleSendMessage()
-                } else if (e.key === 'Escape') {
-                  setShowMessageInput(false)
-                  setMessageText('')
-                }
-              }}
-              placeholder="Type message..."
-              className="w-40 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300 font-medium text-gray-800 bg-white placeholder-gray-500 rounded"
-              maxLength={50}
-            />
-            <div className="flex justify-between items-center mt-1">
-              <span className="text-xs text-gray-600 font-medium">{messageText.length}/50</span>
-              <div className="flex gap-1">
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!messageText.trim()}
-                  className="px-2 py-1 text-xs font-bold bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  Send
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMessageInput(false)
-                    setMessageText('')
-                  }}
-                  className="px-2 py-1 text-xs font-bold bg-gray-400 text-white rounded hover:bg-gray-500"
-                >
-                  ✕
-                </button>
-              </div>
+    <div className="fixed inset-0 z-50 pointer-events-none">
+      {/* Whiteboard */}
+      {showWhiteboard && (
+        <div className={`fixed bg-white shadow-2xl border border-gray-300 transition-all duration-300 pointer-events-auto ${
+          isWhiteboardMinimized 
+            ? 'bottom-20 right-4 w-80 h-12' 
+            : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 min-w-96 min-h-96'
+        } rounded-lg overflow-hidden`}>
+          
+          {/* Whiteboard Header */}
+          <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-lg">📝 Collaborative Whiteboard</span>
+              {connectedUsers.length > 1 && (
+                <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                  {connectedUsers.length} users
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
+                className="w-6 h-6 bg-white/20 hover:bg-white/30 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                title={isWhiteboardMinimized ? 'Expand' : 'Minimize'}
+              >
+                {isWhiteboardMinimized ? '⬆' : '⬇'}
+              </button>
+              <button
+                onClick={() => setShowWhiteboard(false)}
+                className="w-6 h-6 bg-red-500 hover:bg-red-600 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                title="Close whiteboard"
+              >
+                ✕
+              </button>
             </div>
           </div>
+
+          {!isWhiteboardMinimized && (
+            <>
+              {/* Whiteboard Controls */}
+              <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Color:</label>
+                  <input
+                    type="color"
+                    value={drawColor}
+                    onChange={(e) => setDrawColor(e.target.value)}
+                    className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                  />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Size:</label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={drawThickness}
+                    onChange={(e) => setDrawThickness(parseInt(e.target.value))}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-gray-600 w-8">{drawThickness}px</span>
+                </div>
+                
+                <div className="flex gap-2 ml-auto">
+                  <button
+                    onClick={undoLastStroke}
+                    disabled={whiteboardStrokes.length === 0}
+                    className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 text-white text-sm rounded font-medium transition-colors"
+                    title="Undo last stroke (Ctrl+Z)"
+                  >
+                    ↶ Undo
+                  </button>
+                  <button
+                    onClick={clearWhiteboard}
+                    disabled={whiteboardStrokes.length === 0}
+                    className="px-3 py-1 bg-red-500 hover:bg-red-600 disabled:bg-gray-300 text-white text-sm rounded font-medium transition-colors"
+                    title="Clear whiteboard (Ctrl+Delete)"
+                  >
+                    🗑️ Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Canvas */}
+              <div className="flex-1 overflow-hidden relative">
+                <canvas
+                  ref={whiteboardCanvasRef}
+                  width={800}
+                  height={600}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  className="absolute inset-0 w-full h-full cursor-crosshair bg-white"
+                  style={{ touchAction: 'none' }}
+                />
+                
+                {whiteboardStrokes.length === 0 && !isDrawing && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center text-gray-400">
+                      <div className="text-4xl mb-2">🎨</div>
+                      <div className="text-lg font-medium">Start drawing to collaborate!</div>
+                      <div className="text-sm mt-2">
+                        Alt+W to toggle • Ctrl+Z to undo • Ctrl+Delete to clear
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {floatingMessages.map((message) => (
-        <div
-          key={message.id}
-          className="absolute pointer-events-none text-xs font-black select-none max-w-xs"
-          style={{
-            left: `${message.x}px`,
-            top: `${message.y}px`,
-            animationDelay: `${message.delay}ms`,
-            animation: 'float-left-text 6s ease-out forwards'
-          }}
-        >
-          <div className="bg-white px-2 py-1 shadow-lg rounded text-gray-800">
-            {message.text}
+      {/* Main UI Container */}
+      <div className="fixed bottom-4 right-4 pointer-events-auto">
+        {showMessageInput && (
+          <div className="absolute bottom-20 right-0 mb-2">
+            <div className="bg-white shadow-lg p-2 rounded-lg">
+              <input
+                id="cat-triangle-message-input"
+                type="text"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && messageText.trim()) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  } else if (e.key === 'Escape') {
+                    setShowMessageInput(false)
+                    setMessageText('')
+                  }
+                }}
+                placeholder="Type message..."
+                className="w-40 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-pink-300 font-medium text-gray-800 bg-white placeholder-gray-500 rounded"
+                maxLength={50}
+              />
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-xs text-gray-600 font-medium">{messageText.length}/50</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!messageText.trim()}
+                    className="px-2 py-1 text-xs font-bold bg-pink-500 text-white rounded hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    Send
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMessageInput(false)
+                      setMessageText('')
+                    }}
+                    className="px-2 py-1 text-xs font-bold bg-gray-400 text-white rounded hover:bg-gray-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        )}
 
-      {floatingEmojis.map((emoji) => (
-        <div
-          key={emoji.id}
-          className="absolute pointer-events-none select-none"
-          style={{
-            left: `${emoji.x}px`,
-            top: `${emoji.y}px`,
-            animationDelay: `${emoji.delay}ms`,
-            animation: 'float-left-hearts 8s ease-out forwards',
-            fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '16px' : '24px',
-            textShadow: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') 
-              ? '0 0 12px rgba(255, 192, 203, 0.8), 0 0 20px rgba(255, 182, 193, 0.6)'
-              : '0 2px 4px rgba(0,0,0,0.3)',
-            filter: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷')
-              ? 'drop-shadow(0 0 8px rgba(255, 192, 203, 0.9))'
-              : 'drop-shadow(0 2px 3px rgba(0,0,0,0.2))'
-          }}
-        >
-          {emoji.emoji}
-        </div>
-      ))}
-      
-      <button
-        onClick={handleCircleClick}
-        disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
-        className={`
-          w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
-          shadow-lg group
-          ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
-          ${isConnected && connectedUsers.length > 1
-            ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
-            : 'bg-white shadow-gray-200 hover:bg-gray-50'
-          }
-          hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed
-        `}
-      >
-        <span>{getCatEmoji()}</span>
-        
-        <div className="absolute bottom-16 right-0 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-          <div className="bg-pink-100 text-pink-800 px-3 py-1 text-xs font-bold shadow-lg max-w-xs rounded whitespace-nowrap">
-            {getStatusText()}
+        {/* Floating Messages */}
+        {floatingMessages.map((message) => (
+          <div
+            key={message.id}
+            className="absolute pointer-events-none text-xs font-black select-none max-w-xs"
+            style={{
+              left: `${message.x}px`,
+              top: `${message.y}px`,
+              animationDelay: `${message.delay}ms`,
+              animation: 'float-left-text 6s ease-out forwards'
+            }}
+          >
+            <div className="bg-white px-2 py-1 shadow-lg rounded text-gray-800">
+              {message.text}
+            </div>
           </div>
-        </div>
-      </button>
+        ))}
+
+        {/* Floating Emojis */}
+        {floatingEmojis.map((emoji) => (
+          <div
+            key={emoji.id}
+            className="absolute pointer-events-none select-none"
+            style={{
+              left: `${emoji.x}px`,
+              top: `${emoji.y}px`,
+              animationDelay: `${emoji.delay}ms`,
+              animation: 'float-left-hearts 8s ease-out forwards',
+              fontSize: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') ? '16px' : '24px',
+              textShadow: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷') 
+                ? '0 0 12px rgba(255, 192, 203, 0.8), 0 0 20px rgba(255, 182, 193, 0.6)'
+                : '0 2px 4px rgba(0,0,0,0.3)',
+              filter: emoji.emoji.includes('💖') || emoji.emoji.includes('💕') || emoji.emoji.includes('💗') || emoji.emoji.includes('🩷')
+                ? 'drop-shadow(0 0 8px rgba(255, 192, 203, 0.9))'
+                : 'drop-shadow(0 2px 3px rgba(0,0,0,0.2))'
+            }}
+          >
+            {emoji.emoji}
+          </div>
+        ))}
+        
+        {/* Cat Triangle Button */}
+        <button
+          onClick={handleCircleClick}
+          disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
+          className={`
+            w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
+            shadow-lg group
+            ${connectionStatus === 'connecting' || isCleaningUpRef.current ? 'animate-pulse' : ''}
+            ${isConnected && connectedUsers.length > 1
+              ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
+              : 'bg-white shadow-gray-200 hover:bg-gray-50'
+            }
+            hover:shadow-xl hover:scale-105 disabled:cursor-not-allowed
+          `}
+        >
+          <span>{getCatEmoji()}</span>
+          
+          <div className="absolute bottom-16 right-0 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <div className="bg-pink-100 text-pink-800 px-3 py-1 text-xs font-bold shadow-lg max-w-xs rounded whitespace-nowrap">
+              {getStatusText()}
+              {showWhiteboard && (
+                <div className="text-xs mt-1 text-purple-600">
+                  📝 Whiteboard active
+                </div>
+              )}
+              <div className="text-xs mt-1 opacity-75">
+                Alt+O/D: Toggle • Alt+W: Whiteboard • Tab: Message
+              </div>
+            </div>
+          </div>
+        </button>
+      </div>
       
       <style jsx>{`
         @keyframes float-left-enhanced {
