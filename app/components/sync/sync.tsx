@@ -70,13 +70,26 @@ interface WhiteboardData {
   timestamp: number
 }
 
+// Enhanced STUN/TURN configuration for better cross-network connectivity
 const rtcConfiguration = {
   iceServers: [
+    // Google STUN servers
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    
+    // Cloudflare STUN
     { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
+    
+    // Additional STUN servers
+    { urls: 'stun:stun.stunprotocol.org:3478' },
+    { urls: 'stun:stun.voipbuster.com' },
+    { urls: 'stun:stun.voipstunt.com' },
+    { urls: 'stun:stun.ekiga.net' },
+    
+    // Free TURN servers (multiple for redundancy)
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -101,9 +114,25 @@ const rtcConfiguration = {
       urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
       username: 'webrtc',
       credential: 'webrtc'
+    },
+    // Additional TURN servers
+    {
+      urls: 'turn:numb.viagenie.ca',
+      username: 'webrtc@live.com',
+      credential: 'muazkh'
+    },
+    {
+      urls: 'turn:192.158.29.39:3478?transport=udp',
+      username: '28224511:1379330808',
+      credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+    },
+    {
+      urls: 'turn:192.158.29.39:3478?transport=tcp',
+      username: '28224511:1379330808',
+      credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
     }
   ],
-  iceCandidatePoolSize: 20,
+  iceCandidatePoolSize: 10,
   iceTransportPolicy: 'all' as RTCIceTransportPolicy,
   bundlePolicy: 'max-bundle' as RTCBundlePolicy,
   rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy
@@ -948,6 +977,7 @@ export default function CatTriangle({
           maxRetransmits: 3
         })
         console.log(`Created data channel for ${userId} as initiator`)
+        setupDataChannelHandlers(dataChannel, userId)
       } else {
         pc.ondatachannel = (event) => {
           dataChannel = event.channel
@@ -956,8 +986,6 @@ export default function CatTriangle({
         }
         return
       }
-
-      setupDataChannelHandlers(dataChannel, userId)
     } catch (channelError: unknown) {
       console.error(`Error setting up data channel with ${userId}:`, channelError)
     }
@@ -992,12 +1020,12 @@ export default function CatTriangle({
     }
   }, [addFloatingMessage, handleWhiteboardData])
 
-  const createPeerConnection = useCallback((userId: string, isInitiator: boolean = false) => {
+  const createPeerConnection = useCallback((userId: string, isInitiator: boolean = false): RTCPeerConnection | undefined => {
     try {
       const existingState = peerConnectionStateRef.current.get(userId)
       if (existingState === 'creating') {
         console.log(`Peer connection already being created for ${userId}`)
-        return peerConnectionsRef.current.get(userId) || null
+        return peerConnectionsRef.current.get(userId)
       }
 
       console.log(`Creating peer connection for ${userId} (initiator: ${isInitiator})`)
@@ -1546,7 +1574,7 @@ export default function CatTriangle({
             </div>
           </div>
 
-          {!isWhiteboardMinimized && (
+           {!isWhiteboardMinimized && (
             <>
               <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-black">
                 <div className="flex items-center gap-2">
