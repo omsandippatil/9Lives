@@ -657,7 +657,7 @@ export default function TechnicalQuestionsPage() {
 
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('current_streak, total_points, technical_question')
+        .select('current_streak, total_points, technical_questions_attempted')
         .eq('id', userId)
         .single()
 
@@ -681,7 +681,7 @@ export default function TechnicalQuestionsPage() {
 
       setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
-      setTechnicalQuestions(userData?.technical_question || 0)
+      setTechnicalQuestions(userData?.technical_questions_attempted || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
     }
@@ -700,7 +700,7 @@ export default function TechnicalQuestionsPage() {
           const { error } = await supabase
             .from('users')
             .update({ 
-              technical_question: currentQuestionId,
+              technical_questions_attempted: currentQuestionId,
               total_points: totalPoints + 1 // Technical questions give 1 point
             })
             .eq('id', userId)

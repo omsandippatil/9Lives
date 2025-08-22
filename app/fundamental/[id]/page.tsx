@@ -657,7 +657,7 @@ export default function FundamentalQuestionsPage() {
 
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('current_streak, total_points, fundamental_question')
+        .select('current_streak, total_points, fundamental_questions_attempted')
         .eq('id', userId)
         .single()
 
@@ -681,7 +681,7 @@ export default function FundamentalQuestionsPage() {
 
       setStreakData(parsedStreak)
       setTotalPoints(userData?.total_points || 0)
-      setFundamentalQuestions(userData?.fundamental_question || 0)
+      setFundamentalQuestions(userData?.fundamental_questions_attempted || 0)
     } catch (error) {
       console.error('Error fetching user data:', error)
     }
@@ -700,7 +700,7 @@ export default function FundamentalQuestionsPage() {
           const { error } = await supabase
             .from('users')
             .update({ 
-              fundamental_question: currentQuestionId,
+              fundamental_questions_attempted: currentQuestionId,
               total_points: totalPoints + 1 // Fundamental questions give 1 point
             })
             .eq('id', userId)
