@@ -70,19 +70,13 @@ interface WhiteboardData {
   timestamp: number
 }
 
-// Enhanced RTC configuration with more reliable TURN servers
 const rtcConfiguration = {
   iceServers: [
-    // Google STUN servers
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    
-    // Additional public STUN servers
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
-    
-    // Multiple TURN servers for better reliability
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -98,7 +92,6 @@ const rtcConfiguration = {
       username: 'openrelayproject',
       credential: 'openrelayproject'
     },
-    // Backup TURN servers
     {
       urls: 'turn:relay1.expressturn.com:3478',
       username: 'ef3JQMTGZ9EEGQAF6',
@@ -110,15 +103,10 @@ const rtcConfiguration = {
       credential: 'webrtc'
     }
   ],
-  iceCandidatePoolSize: 20, // Increased for better connectivity
+  iceCandidatePoolSize: 20,
   iceTransportPolicy: 'all' as RTCIceTransportPolicy,
   bundlePolicy: 'max-bundle' as RTCBundlePolicy,
-  rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
-  // Additional configuration for better NAT traversal
-  configuration: {
-    iceServers: [],
-    iceCandidatePoolSize: 20
-  }
+  rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy
 }
 
 export default function CatTriangle({ 
@@ -138,7 +126,6 @@ export default function CatTriangle({
   const [floatingMessages, setFloatingMessages] = useState<FloatingMessage[]>([])
   const [usedLanes, setUsedLanes] = useState<Set<number>>(new Set())
   
-  // Whiteboard states
   const [showWhiteboard, setShowWhiteboard] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [whiteboardStrokes, setWhiteboardStrokes] = useState<WhiteboardStroke[]>([])
@@ -163,6 +150,7 @@ export default function CatTriangle({
   const whiteboardCanvasRef = useRef<HTMLCanvasElement>(null)
   const offerTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
   const negotiationNeededRef = useRef<Map<string, boolean>>(new Map())
+  const peerConnectionStateRef = useRef<Map<string, 'creating' | 'active' | 'closed'>>(new Map())
 
   const getUserFromCookies = useCallback(() => {
     if (typeof document === 'undefined') return null
@@ -223,11 +211,9 @@ export default function CatTriangle({
     return Math.floor(Math.random() * totalLanes)
   }, [usedLanes])
 
-  // Fixed whiteboard functions
   const broadcastWhiteboardData = useCallback((data: WhiteboardData) => {
     if (!currentUser) return
 
-    // Send via Supabase channel
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -236,7 +222,6 @@ export default function CatTriangle({
       })
     }
 
-    // Send via WebRTC data channels
     dataChannelRef.current.forEach((channel, userId) => {
       if (channel.readyState === 'open') {
         try {
@@ -277,10 +262,8 @@ export default function CatTriangle({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     
-    // Redraw all strokes
     whiteboardStrokes.forEach(stroke => {
       drawStroke(stroke)
     })
@@ -350,7 +333,6 @@ export default function CatTriangle({
     setCurrentStroke(prev => {
       const newStroke = [...prev, pos]
       
-      // Draw current stroke in real-time
       const canvas = whiteboardCanvasRef.current
       if (canvas && newStroke.length >= 2) {
         const ctx = canvas.getContext('2d')
@@ -435,7 +417,6 @@ export default function CatTriangle({
     })
   }, [currentUser, whiteboardStrokes.length, redrawWhiteboard, broadcastWhiteboardData])
 
-  // Initialize canvas size properly
   useEffect(() => {
     const canvas = whiteboardCanvasRef.current
     if (canvas && showWhiteboard && !isWhiteboardMinimized) {
@@ -457,6 +438,54 @@ export default function CatTriangle({
     }
   }, [showWhiteboard, isWhiteboardMinimized, redrawWhiteboard])
 
+  const cleanupPeerConnection = useCallback((userId: string) => {
+    const pc = peerConnectionsRef.current.get(userId)
+    if (pc && pc.connectionState !== 'closed') {
+      pc.onicecandidate = null
+      pc.ontrack = null
+      pc.onconnectionstatechange = null
+      pc.onicegatheringstatechange = null
+      pc.onsignalingstatechange = null
+      pc.oniceconnectionstatechange = null
+      pc.ondatachannel = null
+      pc.onnegotiationneeded = null
+      pc.close()
+    }
+    
+    peerConnectionsRef.current.delete(userId)
+    peerConnectionStateRef.current.delete(userId)
+    remoteStreamsRef.current.delete(userId)
+    pendingIceCandidatesRef.current.delete(userId)
+    connectionAttemptsRef.current.delete(userId)
+    negotiationNeededRef.current.delete(userId)
+    
+    const dataChannel = dataChannelRef.current.get(userId)
+    if (dataChannel && dataChannel.readyState === 'open') {
+      dataChannel.close()
+    }
+    dataChannelRef.current.delete(userId)
+    
+    const timeout = connectionTimeoutRef.current.get(userId)
+    if (timeout) {
+      clearTimeout(timeout)
+      connectionTimeoutRef.current.delete(userId)
+    }
+    
+    const offerTimeout = offerTimeoutRef.current.get(userId)
+    if (offerTimeout) {
+      clearTimeout(offerTimeout)
+      offerTimeoutRef.current.delete(userId)
+    }
+    
+    const audio = remoteAudioElementsRef.current.get(userId)
+    if (audio) {
+      audio.pause()
+      audio.srcObject = null
+      audio.remove()
+      remoteAudioElementsRef.current.delete(userId)
+    }
+  }, [])
+
   const cleanupConnection = useCallback(async () => {
     if (isCleaningUpRef.current) return
     isCleaningUpRef.current = true
@@ -464,7 +493,6 @@ export default function CatTriangle({
     try {
       console.log('Cleaning up connections...')
       
-      // Clear all timeouts
       connectionTimeoutRef.current.forEach((timeout) => {
         clearTimeout(timeout)
       })
@@ -475,7 +503,6 @@ export default function CatTriangle({
       })
       offerTimeoutRef.current.clear()
       
-      // Close data channels
       dataChannelRef.current.forEach((channel, userId) => {
         if (channel.readyState === 'open') {
           channel.close()
@@ -483,7 +510,6 @@ export default function CatTriangle({
       })
       dataChannelRef.current.clear()
 
-      // Stop local media
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
           track.stop()
@@ -491,7 +517,6 @@ export default function CatTriangle({
         localStreamRef.current = null
       }
 
-      // Clean up remote audio elements
       remoteAudioElementsRef.current.forEach((audio, userId) => {
         audio.pause()
         audio.srcObject = null
@@ -499,7 +524,6 @@ export default function CatTriangle({
       })
       remoteAudioElementsRef.current.clear()
 
-      // Close peer connections
       peerConnectionsRef.current.forEach((pc, userId) => {
         if (pc.connectionState !== 'closed') {
           pc.onicecandidate = null
@@ -515,6 +539,7 @@ export default function CatTriangle({
         }
       })
       peerConnectionsRef.current.clear()
+      peerConnectionStateRef.current.clear()
       remoteStreamsRef.current.clear()
       pendingIceCandidatesRef.current.clear()
       connectionAttemptsRef.current.clear()
@@ -711,7 +736,6 @@ export default function CatTriangle({
         }
       }
       
-      // Toggle whiteboard with Alt+W
       if (isVisible && event.altKey && event.key === 'w') {
         event.preventDefault()
         setShowWhiteboard(prev => !prev)
@@ -740,7 +764,6 @@ export default function CatTriangle({
         }
       }
       
-      // Whiteboard keyboard shortcuts
       if (showWhiteboard && !isWhiteboardMinimized && event.ctrlKey) {
         if (event.key === 'z') {
           event.preventDefault()
@@ -789,7 +812,8 @@ export default function CatTriangle({
           noiseSuppression: true,
           autoGainControl: true,
           sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 1 }        },
+          channelCount: { ideal: 1 }
+        },
         video: false
       })
       
@@ -819,7 +843,6 @@ export default function CatTriangle({
     try {
       console.log(`Setting up remote audio for user ${userId}`)
       
-      // Clean up existing audio element
       const existingAudio = remoteAudioElementsRef.current.get(userId)
       if (existingAudio) {
         existingAudio.pause()
@@ -837,7 +860,6 @@ export default function CatTriangle({
       audio.preload = 'metadata'
       audio.controls = false
       
-      // Hide audio element
       audio.style.position = 'fixed'
       audio.style.left = '-9999px'
       audio.style.top = '-9999px'
@@ -849,7 +871,6 @@ export default function CatTriangle({
       document.body.appendChild(audio)
       remoteAudioElementsRef.current.set(userId, audio)
       
-      // Enhanced audio play handling
       const attemptPlay = async () => {
         try {
           if (audio.readyState < 2) {
@@ -863,7 +884,6 @@ export default function CatTriangle({
               audio.addEventListener('canplay', onReady, { once: true })
               audio.addEventListener('loadeddata', onReady, { once: true })
               
-              // Fallback timeout
               setTimeout(resolve, 3000)
             })
           }
@@ -893,7 +913,6 @@ export default function CatTriangle({
           document.addEventListener('keydown', enableAudio, { once: true, passive: true })
           document.addEventListener('touchstart', enableAudio, { once: true, passive: true })
           
-          // Clean up listeners after 30 seconds
           setTimeout(() => {
             document.removeEventListener('click', enableAudio)
             document.removeEventListener('keydown', enableAudio)
@@ -902,13 +921,11 @@ export default function CatTriangle({
         }
       }
 
-      // Set up event handlers
       audio.oncanplay = attemptPlay
       audio.onerror = (e) => console.error(`Audio error for ${userId}:`, e)
       audio.onloadstart = () => console.log(`Loading audio stream for ${userId}`)
       audio.onloadeddata = () => console.log(`Audio data loaded for ${userId}`)
 
-      // Start playing if we have audio tracks
       if (stream.getAudioTracks().length > 0) {
         console.log(`Audio tracks found for ${userId}, attempting to play`)
         attemptPlay()
@@ -926,14 +943,12 @@ export default function CatTriangle({
       let dataChannel: RTCDataChannel
 
       if (isInitiator) {
-        // Create data channel as initiator
         dataChannel = pc.createDataChannel('messages', {
           ordered: true,
           maxRetransmits: 3
         })
         console.log(`Created data channel for ${userId} as initiator`)
       } else {
-        // Wait for data channel as receiver
         pc.ondatachannel = (event) => {
           dataChannel = event.channel
           console.log(`Received data channel from ${userId}`)
@@ -979,14 +994,21 @@ export default function CatTriangle({
 
   const createPeerConnection = useCallback((userId: string, isInitiator: boolean = false) => {
     try {
+      const existingState = peerConnectionStateRef.current.get(userId)
+      if (existingState === 'creating') {
+        console.log(`Peer connection already being created for ${userId}`)
+        return peerConnectionsRef.current.get(userId) || null
+      }
+
       console.log(`Creating peer connection for ${userId} (initiator: ${isInitiator})`)
+      peerConnectionStateRef.current.set(userId, 'creating')
       
       const pc = new RTCPeerConnection(rtcConfiguration)
+      peerConnectionsRef.current.set(userId, pc)
+      peerConnectionStateRef.current.set(userId, 'active')
       
-      // Set up data channel
       setupDataChannel(pc, userId, isInitiator)
       
-      // Add local stream if available
       if (localStreamRef.current) {
         console.log(`Adding local audio tracks to peer connection for ${userId}`)
         localStreamRef.current.getAudioTracks().forEach(track => {
@@ -994,7 +1016,6 @@ export default function CatTriangle({
         })
       }
 
-      // Handle incoming tracks
       pc.ontrack = (event) => {
         console.log(`Received remote track from ${userId}:`, event.track.kind)
         const [remoteStream] = event.streams
@@ -1004,7 +1025,6 @@ export default function CatTriangle({
         }
       }
 
-      // Handle ICE candidates with better error handling
       pc.onicecandidate = (event) => {
         if (event.candidate && channelRef.current && currentUser) {
           if (event.candidate.candidate && event.candidate.candidate.trim() !== '') {
@@ -1025,7 +1045,6 @@ export default function CatTriangle({
         }
       }
 
-      // Enhanced connection state handling
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState
         console.log(`Connection state changed to ${state} for ${userId}`)
@@ -1042,9 +1061,8 @@ export default function CatTriangle({
           }
         } else if (state === 'connecting') {
           console.log(`Connecting to ${userId}...`)
-          // Set connection timeout
           const timeout = setTimeout(() => {
-            if (pc.connectionState !== 'connected') {
+            if (pc.connectionState !== 'connected' && pc.connectionState !== 'closed') {
               console.warn(`Connection timeout for ${userId}, restarting ICE`)
               try {
                 pc.restartIce()
@@ -1052,59 +1070,36 @@ export default function CatTriangle({
                 console.error(`Error restarting ICE on timeout for ${userId}:`, restartError)
               }
             }
-          }, 45000) // Increased timeout for cross-network connections
+          }, 45000)
           
           connectionTimeoutRef.current.set(userId, timeout)
         } else if (state === 'failed') {
           console.error(`Connection failed for ${userId}`)
           const attempts = connectionAttemptsRef.current.get(userId) || 0
-          if (attempts < 5) { // Increased retry attempts
+          if (attempts < 5) {
             console.log(`Retrying connection to ${userId} (attempt ${attempts + 1})`)
             connectionAttemptsRef.current.set(userId, attempts + 1)
             setTimeout(() => {
-              if (pc.connectionState === 'failed') {
+              const currentPc = peerConnectionsRef.current.get(userId)
+              if (currentPc && currentPc.connectionState === 'failed') {
                 try {
-                  pc.restartIce()
+                  currentPc.restartIce()
                 } catch (retryRestartError: unknown) {
                   console.error(`Error restarting ICE for ${userId}:`, retryRestartError)
                 }
               }
-            }, 3000 * (attempts + 1)) // Progressive backoff
+            }, 3000 * (attempts + 1))
           } else {
             console.error(`Max retry attempts reached for ${userId}`)
+            cleanupPeerConnection(userId)
           }
         } else if (state === 'closed') {
           console.log(`Connection closed for ${userId}`)
-          // Clean up resources
-          peerConnectionsRef.current.delete(userId)
-          remoteStreamsRef.current.delete(userId)
-          pendingIceCandidatesRef.current.delete(userId)
-          connectionAttemptsRef.current.delete(userId)
-          negotiationNeededRef.current.delete(userId)
-          
-          const dataChannel = dataChannelRef.current.get(userId)
-          if (dataChannel && dataChannel.readyState === 'open') {
-            dataChannel.close()
-          }
-          dataChannelRef.current.delete(userId)
-          
-          const timeout = connectionTimeoutRef.current.get(userId)
-          if (timeout) {
-            clearTimeout(timeout)
-            connectionTimeoutRef.current.delete(userId)
-          }
-          
-          const audio = remoteAudioElementsRef.current.get(userId)
-          if (audio) {
-            audio.pause()
-            audio.srcObject = null
-            audio.remove()
-            remoteAudioElementsRef.current.delete(userId)
-          }
+          peerConnectionStateRef.current.set(userId, 'closed')
+          cleanupPeerConnection(userId)
         }
       }
 
-      // Better ICE connection state handling
       pc.oniceconnectionstatechange = () => {
         const iceState = pc.iceConnectionState
         console.log(`ICE connection state changed to ${iceState} for ${userId}`)
@@ -1118,11 +1113,11 @@ export default function CatTriangle({
           }
         } else if (iceState === 'disconnected') {
           console.warn(`ICE connection disconnected for ${userId}`)
-          // Wait a bit before restarting ICE in case it recovers
           setTimeout(() => {
-            if (pc.iceConnectionState === 'disconnected' && pc.connectionState !== 'closed') {
+            const currentPc = peerConnectionsRef.current.get(userId)
+            if (currentPc && currentPc.iceConnectionState === 'disconnected' && currentPc.connectionState !== 'closed') {
               try {
-                pc.restartIce()
+                currentPc.restartIce()
               } catch (iceRestartError: unknown) {
                 console.error(`Error restarting ICE after disconnect for ${userId}:`, iceRestartError)
               }
@@ -1131,12 +1126,10 @@ export default function CatTriangle({
         }
       }
 
-      // Handle ICE gathering state
       pc.onicegatheringstatechange = () => {
         console.log(`ICE gathering state changed to ${pc.iceGatheringState} for ${userId}`)
       }
 
-      // Handle signaling state changes
       pc.onsignalingstatechange = () => {
         console.log(`Signaling state changed to ${pc.signalingState} for ${userId}`)
       }
@@ -1144,9 +1137,10 @@ export default function CatTriangle({
       return pc
     } catch (peerError: unknown) {
       console.error('Error creating peer connection:', peerError)
+      peerConnectionStateRef.current.delete(userId)
       throw peerError
     }
-  }, [currentUser, setupRemoteAudio, setupDataChannel, setupDataChannelHandlers])
+  }, [currentUser, setupRemoteAudio, setupDataChannel, setupDataChannelHandlers, cleanupPeerConnection])
 
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
     const pendingCandidates = pendingIceCandidatesRef.current.get(userId) || []
@@ -1181,21 +1175,20 @@ export default function CatTriangle({
     try {      
       switch (type) {
         case 'offer':
-          // Clean up existing connection
           if (pc && pc.connectionState !== 'closed') {
             console.log(`Closing existing peer connection for ${from}`)
-            pc.close()
-            pendingIceCandidatesRef.current.delete(from)
+            cleanupPeerConnection(from)
           }
           
-          // Create new peer connection as receiver
           pc = createPeerConnection(from, false)
-          peerConnectionsRef.current.set(from, pc)
+          if (!pc) {
+            console.error(`Failed to create peer connection for ${from}`)
+            return
+          }
           
           console.log(`Setting remote description for ${from}`)
           await pc.setRemoteDescription(new RTCSessionDescription(data))
           
-          // Process any pending ICE candidates
           await processPendingIceCandidates(from, pc)
           
           console.log(`Creating answer for ${from}`)
@@ -1222,17 +1215,17 @@ export default function CatTriangle({
           break
 
         case 'answer':
-          if (pc && pc.signalingState === 'have-local-offer') {
+          if (pc && pc.signalingState === 'have-local-offer' && pc.connectionState !== 'closed') {
             console.log(`Setting remote description (answer) for ${from}`)
             await pc.setRemoteDescription(new RTCSessionDescription(data))
             await processPendingIceCandidates(from, pc)
           } else {
-            console.warn(`Received answer from ${from} but not in correct state: ${pc?.signalingState}`)
+            console.warn(`Received answer from ${from} but not in correct state: ${pc?.signalingState || 'no-pc'} / ${pc?.connectionState || 'no-pc'}`)
           }
           break
 
         case 'ice-candidate':
-          if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
+          if (pc && pc.remoteDescription && pc.signalingState !== 'closed' && pc.connectionState !== 'closed') {
             try {
               if (data && typeof data === 'object' && data.candidate) {
                 console.log(`Adding ICE candidate from ${from}`)
@@ -1244,7 +1237,6 @@ export default function CatTriangle({
               }
             }
           } else if (pc && !pc.remoteDescription) {
-            // Queue ICE candidate for later processing
             if (data && typeof data === 'object' && data.candidate) {
               console.log(`Queuing ICE candidate from ${from} (no remote description yet)`)
               const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
@@ -1256,14 +1248,9 @@ export default function CatTriangle({
       }
     } catch (signalingError: unknown) {
       console.error(`Error handling ${type} signal from ${from}:`, signalingError)
-      if (pc && pc.connectionState !== 'closed') {
-        pc.close()
-      }
-      peerConnectionsRef.current.delete(from)
-      remoteStreamsRef.current.delete(from)
-      pendingIceCandidatesRef.current.delete(from)
+      cleanupPeerConnection(from)
     }
-  }, [currentUser, createPeerConnection, processPendingIceCandidates])
+  }, [currentUser, createPeerConnection, processPendingIceCandidates, cleanupPeerConnection])
 
   const createOffer = useCallback(async (targetUserId: string) => {
     if (!currentUser || !isVisible || !localStreamRef.current) return
@@ -1271,17 +1258,23 @@ export default function CatTriangle({
     try {
       console.log(`Creating offer for ${targetUserId}`)
       
-      // Clean up existing connection
       const existingPc = peerConnectionsRef.current.get(targetUserId)
-      if (existingPc && existingPc.connectionState !== 'closed') {
-        existingPc.close()
+      const existingState = peerConnectionStateRef.current.get(targetUserId)
+      
+      if (existingPc && existingState !== 'closed') {
+        if (existingPc.connectionState === 'connected') {
+          console.log(`Already connected to ${targetUserId}, skipping offer`)
+          return
+        }
+        cleanupPeerConnection(targetUserId)
       }
 
-      // Create new peer connection as initiator
       const pc = createPeerConnection(targetUserId, true)
-      peerConnectionsRef.current.set(targetUserId, pc)
+      if (!pc) {
+        console.error(`Failed to create peer connection for ${targetUserId}`)
+        return
+      }
 
-      // Wait for ICE gathering to be in good state
       await new Promise<void>((resolve) => {
         if (pc.iceGatheringState === 'complete') {
           resolve()
@@ -1298,13 +1291,17 @@ export default function CatTriangle({
           
           pc.addEventListener('icegatheringstatechange', checkGathering)
           
-          // Don't wait too long for ICE gathering
           timeoutId = setTimeout(() => {
             pc.removeEventListener('icegatheringstatechange', checkGathering)
             resolve()
           }, 8000)
         }
       })
+
+      if (pc.connectionState === 'closed') {
+        console.log(`Peer connection closed while preparing offer for ${targetUserId}`)
+        return
+      }
 
       console.log(`Creating offer for ${targetUserId} with ICE state: ${pc.iceGatheringState}`)
       
@@ -1314,9 +1311,14 @@ export default function CatTriangle({
         iceRestart: false
       })
       
+      if (pc.connectionState === 'closed') {
+        console.log(`Peer connection closed after creating offer for ${targetUserId}`)
+        return
+      }
+      
       await pc.setLocalDescription(offer)
 
-      if (channelRef.current) {
+      if (channelRef.current && pc.connectionState !== 'closed') {
         console.log(`Sending offer to ${targetUserId}`)
         channelRef.current.send({
           type: 'broadcast',
@@ -1329,9 +1331,9 @@ export default function CatTriangle({
           }
         })
         
-        // Set timeout for offer
         const timeout = setTimeout(() => {
-          if (pc.connectionState !== 'connected') {
+          const currentPc = peerConnectionsRef.current.get(targetUserId)
+          if (currentPc && currentPc.connectionState !== 'connected') {
             console.warn(`Offer timeout for ${targetUserId}`)
           }
         }, 30000)
@@ -1339,11 +1341,10 @@ export default function CatTriangle({
       }
     } catch (offerError: unknown) {
       console.error(`Error creating offer for ${targetUserId}:`, offerError)
-      peerConnectionsRef.current.delete(targetUserId)
+      cleanupPeerConnection(targetUserId)
     }
-  }, [currentUser, createPeerConnection, isVisible])
+  }, [currentUser, createPeerConnection, cleanupPeerConnection, isVisible])
 
-  // Enhanced Supabase channel setup
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) {
       return
@@ -1353,7 +1354,7 @@ export default function CatTriangle({
     const channel = supabaseRef.current.channel('cat-triangle-audio-v3', {
       config: { 
         presence: { key: currentUser.id },
-        broadcast: { self: false, ack: false } // Disable ack for better performance
+        broadcast: { self: false, ack: false }
       }
     })
 
@@ -1383,7 +1384,6 @@ export default function CatTriangle({
       console.log('New users joined:', newPresences?.length)
       newPresences?.forEach((presence: PresenceData, index: number) => {
         if (presence.id !== currentUser.id && isAudioEnabled) {
-          // Staggered connection attempts with longer delays for cross-network reliability
           const delay = (index + 1) * 3000 + Math.random() * 5000
           console.log(`Scheduling offer to ${presence.id} in ${delay}ms`)
           setTimeout(() => {
@@ -1396,41 +1396,7 @@ export default function CatTriangle({
     channel.on('presence', { event: 'leave' }, ({ leftPresences }: PresenceEvent) => {
       console.log('Users left:', leftPresences?.length)
       leftPresences?.forEach((presence: PresenceData) => {
-        const pc = peerConnectionsRef.current.get(presence.id)
-        if (pc && pc.connectionState !== 'closed') {
-          pc.close()
-        }
-        peerConnectionsRef.current.delete(presence.id)
-        remoteStreamsRef.current.delete(presence.id)
-        pendingIceCandidatesRef.current.delete(presence.id)
-        connectionAttemptsRef.current.delete(presence.id)
-        negotiationNeededRef.current.delete(presence.id)
-        
-        const dataChannel = dataChannelRef.current.get(presence.id)
-        if (dataChannel && dataChannel.readyState === 'open') {
-          dataChannel.close()
-        }
-        dataChannelRef.current.delete(presence.id)
-        
-        const timeout = connectionTimeoutRef.current.get(presence.id)
-        if (timeout) {
-          clearTimeout(timeout)
-          connectionTimeoutRef.current.delete(presence.id)
-        }
-        
-        const offerTimeout = offerTimeoutRef.current.get(presence.id)
-        if (offerTimeout) {
-          clearTimeout(offerTimeout)
-          offerTimeoutRef.current.delete(presence.id)
-        }
-        
-        const audio = remoteAudioElementsRef.current.get(presence.id)
-        if (audio) {
-          audio.pause()
-          audio.srcObject = null
-          audio.remove()
-          remoteAudioElementsRef.current.delete(presence.id)
-        }
+        cleanupPeerConnection(presence.id)
       })
     })
 
@@ -1473,7 +1439,7 @@ export default function CatTriangle({
       }
       channelRef.current = null
     }
-  }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage, handleWhiteboardData])
+  }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage, handleWhiteboardData, cleanupPeerConnection])
 
   const handleCircleClick = useCallback(async () => {
     if (!currentUser) {
@@ -1488,10 +1454,8 @@ export default function CatTriangle({
         console.log('Starting connection process...')
         setConnectionStatus('connecting')
         
-        // Setup audio context first
         await setupAudioContext()
         
-        // Get user media with better error handling
         try {
           await getUserMedia()
           console.log('Successfully obtained user media')
@@ -1506,7 +1470,6 @@ export default function CatTriangle({
         setConnectionStatus('connected')
         console.log('Connection established, ready for peer connections')
         
-        // Initiate connections to existing users with better timing
         setTimeout(() => {
           const otherUsers = connectedUsers.filter(user => user.id !== currentUser.id)
           if (otherUsers.length > 0) {
@@ -1515,7 +1478,7 @@ export default function CatTriangle({
               setTimeout(() => {
                 console.log(`Creating offer to existing user: ${user.id}`)
                 createOffer(user.id)
-              }, (index + 1) * 2500) // Increased delay for better reliability
+              }, (index + 1) * 2500)
             })
           }
         }, 2000)
@@ -1556,7 +1519,6 @@ export default function CatTriangle({
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Whiteboard */}
       {showWhiteboard && (
         <div className={`fixed bg-white shadow-2xl border-2 border-black transition-all duration-300 pointer-events-auto ${
           isWhiteboardMinimized 
@@ -1564,7 +1526,6 @@ export default function CatTriangle({
             : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 min-w-96 min-h-96'
         } overflow-hidden`}>
           
-          {/* Whiteboard Header */}
           <div className="bg-black text-white p-3 flex justify-between items-center">
             <span className="font-bold text-lg">Collaborative Whiteboard</span>
             <div className="flex gap-2">
@@ -1587,7 +1548,6 @@ export default function CatTriangle({
 
           {!isWhiteboardMinimized && (
             <>
-              {/* Whiteboard Controls */}
               <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-black">
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium text-black">Color:</label>
@@ -1630,7 +1590,6 @@ export default function CatTriangle({
                 </div>
               </div>
 
-              {/* Canvas */}
               <div className="flex-1 relative">
                 <canvas
                   ref={whiteboardCanvasRef}
@@ -1647,7 +1606,6 @@ export default function CatTriangle({
         </div>
       )}
 
-      {/* Main UI Container */}
       <div className="fixed bottom-4 right-4 pointer-events-auto">
        {showMessageInput && (
           <div className="absolute bottom-20 right-0 mb-2">
@@ -1695,7 +1653,6 @@ export default function CatTriangle({
           </div>
         )}
 
-        {/* Floating Messages */}
         {floatingMessages.map((message) => (
           <div
             key={message.id}
@@ -1713,7 +1670,6 @@ export default function CatTriangle({
           </div>
         ))}
 
-        {/* Floating Emojis */}
         {floatingEmojis.map((emoji) => (
           <div
             key={emoji.id}
@@ -1736,7 +1692,6 @@ export default function CatTriangle({
           </div>
         ))}
         
-        {/* Connection Status Indicator */}
         {connectionStatus === 'connecting' && (
           <div className="absolute bottom-16 right-0 bg-yellow-100 border border-yellow-400 text-yellow-800 px-2 py-1 rounded text-xs font-medium">
             Connecting...
@@ -1749,7 +1704,6 @@ export default function CatTriangle({
           </div>
         )}
         
-        {/* Cat Triangle Button */}
         <button
           onClick={handleCircleClick}
           disabled={connectionStatus === 'connecting' || isCleaningUpRef.current}
