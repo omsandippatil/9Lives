@@ -117,7 +117,6 @@ export default function CatTriangle({
   const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const isCleaningUpRef = useRef(false)
   const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
-  const isInitializedRef = useRef(false)
   const connectionAttemptsRef = useRef<Map<string, number>>(new Map())
   const dataChannelRef = useRef<Map<string, RTCDataChannel>>(new Map())
   const connectionTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
@@ -460,16 +459,18 @@ const cleanupConnection = useCallback(async () => {
 }, [])
 
   useEffect(() => {
-    if (!supabaseUrl || !supabaseAnonKey || isInitializedRef.current) return
+  if (!supabaseUrl || !supabaseAnonKey) return
 
+  // Only create one client instance globally
+  if (!supabaseRef.current) {
     try {
       supabaseRef.current = createClient(supabaseUrl, supabaseAnonKey)
-      isInitializedRef.current = true
       console.log('Supabase initialized')
     } catch (initError) {
       console.error('Error initializing Supabase:', initError)
     }
-  }, [supabaseUrl, supabaseAnonKey])
+  }
+}, [supabaseUrl, supabaseAnonKey])
 
   useEffect(() => {
     const checkAuthStatus = () => {
