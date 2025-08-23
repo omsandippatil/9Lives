@@ -72,45 +72,11 @@ interface WhiteboardData {
 
 const rtcConfiguration = {
   iceServers: [
-    // === STUN (Free & Public) ===
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:3478' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:3478' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'stun:stun.nextcloud.com:443' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.stunprotocol.org:3478' },
-    { urls: 'stun:stun.ekiga.net' },
-    { urls: 'stun:stun.sipgate.net' },
-    { urls: 'stun:stun.voipbuster.com' },
-    { urls: 'stun:stun.voipstunt.com' },
-    { urls: 'stun:stun.counterpath.com' },
-    { urls: 'stun:stun.1und1.de' },
-    { urls: 'stun:stun.sipnet.ru' },
-    { urls: 'stun:stun.voip.aql.com' },
-
-    // === TURN (Free / Permanent) ===
-    // OpenRelay Project (20 GB/month free, public credentials)
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ],
-  iceCandidatePoolSize: 15,
+  iceCandidatePoolSize: 10,
   iceTransportPolicy: 'all' as RTCIceTransportPolicy,
   bundlePolicy: 'max-bundle' as RTCBundlePolicy,
   rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy
@@ -450,83 +416,48 @@ export default function CatTriangle({
     }
   }, [showWhiteboard, isWhiteboardMinimized, redrawWhiteboard])
 
-  const cleanupConnection = useCallback(async () => {
-    if (isCleaningUpRef.current) return
-    isCleaningUpRef.current = true
+const cleanupConnection = useCallback(async () => {
+  if (isCleaningUpRef.current) return
+  isCleaningUpRef.current = true
 
-    try {
-      console.log('Cleaning up connections...')
-      
-      connectionTimeoutRef.current.forEach((timeout) => {
-        clearTimeout(timeout)
-      })
-      connectionTimeoutRef.current.clear()
-      
-      dataChannelRef.current.forEach((channel, userId) => {
-        if (channel.readyState === 'open') {
-          channel.close()
-        }
-      })
-      dataChannelRef.current.clear()
-
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          track.stop()
-        })
-        localStreamRef.current = null
-      }
-
-      remoteAudioElementsRef.current.forEach((audio, userId) => {
-        audio.pause()
-        audio.srcObject = null
-        audio.remove()
-      })
-      remoteAudioElementsRef.current.clear()
-
-      peerConnectionsRef.current.forEach((pc, userId) => {
-        if (pc.connectionState !== 'closed') {
-          pc.onicecandidate = null
-          pc.ontrack = null
-          pc.onconnectionstatechange = null
-          pc.onicegatheringstatechange = null
-          pc.onsignalingstatechange = null
-          pc.oniceconnectionstatechange = null
-          pc.ondatachannel = null
-          
-          pc.close()
-        }
-      })
-      peerConnectionsRef.current.clear()
-      remoteStreamsRef.current.clear()
-      pendingIceCandidatesRef.current.clear()
-      connectionAttemptsRef.current.clear()
-
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try {
-          await audioContextRef.current.close()
-        } catch (closeError) {
-          console.warn('Error closing audio context:', closeError)
-        }
-        audioContextRef.current = null
-      }
-
-      if (channelRef.current) {
-        try {
-          await channelRef.current.untrack()
-        } catch (untrackError) {
-          console.warn('Error untracking from channel:', untrackError)
-        }
-      }
-
-      setIsAudioEnabled(false)
-      setIsConnected(false)
-      setConnectionStatus('disconnected')
-    } catch (cleanupError) {
-      console.error('Error during cleanup:', cleanupError)
-    } finally {
-      isCleaningUpRef.current = false
+  try {
+    console.log('Cleaning up connections...')
+    
+    // Stop local stream
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop())
+      localStreamRef.current = null
     }
-  }, [])
+
+    // Clean up remote audio elements
+    remoteAudioElementsRef.current.forEach((audio) => {
+      audio.pause()
+      audio.srcObject = null
+      audio.remove()
+    })
+    remoteAudioElementsRef.current.clear()
+
+    // Close all peer connections
+    peerConnectionsRef.current.forEach((pc) => {
+      pc.close()
+    })
+    peerConnectionsRef.current.clear()
+    remoteStreamsRef.current.clear()
+
+    // Untrack from channel
+    if (channelRef.current) {
+      await channelRef.current.untrack()
+    }
+
+    setIsAudioEnabled(false)
+    setIsConnected(false)
+    setConnectionStatus('disconnected')
+  } catch (error) {
+    console.error('Error during cleanup:', error)
+  } finally {
+    isCleaningUpRef.current = false
+  }
+}, [])
 
   useEffect(() => {
     if (!supabaseUrl || !supabaseAnonKey || isInitializedRef.current) return
@@ -754,128 +685,100 @@ export default function CatTriangle({
     }
   }, [])
 
-  const getUserMedia = useCallback(async () => {
-    try {
-      if (localStreamRef.current) {
-        setIsAudioEnabled(true)
-        return localStreamRef.current
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 1 }
-        },
-        video: false
-      })
-      
-      localStreamRef.current = stream
+const getUserMedia = useCallback(async () => {
+  try {
+    if (localStreamRef.current) {
       setIsAudioEnabled(true)
-      
-      return stream
-    } catch (mediaError: unknown) {
-      console.error('Error accessing microphone:', mediaError)
-      setIsAudioEnabled(false)
-      
-      if (mediaError instanceof DOMException) {
-        if (mediaError.name === 'NotAllowedError') {
-          throw new Error('Microphone permission denied. Please allow microphone access.')
-        } else if (mediaError.name === 'NotFoundError') {
-          throw new Error('No microphone found. Please connect a microphone.')
-        } else if (mediaError.name === 'NotReadableError') {
-          throw new Error('Microphone is being used by another application.')
-        }
-      }
-      throw new Error('Failed to access microphone: ' + (mediaError instanceof Error ? mediaError.message : String(mediaError)))
+      return localStreamRef.current
     }
-  }, [])
 
-  const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
-    try {
-      const existingAudio = remoteAudioElementsRef.current.get(userId)
-      if (existingAudio) {
-        existingAudio.pause()
-        existingAudio.srcObject = null
-        existingAudio.remove()
-        remoteAudioElementsRef.current.delete(userId)
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: false
+    })
+    
+    localStreamRef.current = stream
+    setIsAudioEnabled(true)
+    
+    return stream
+  } catch (mediaError: unknown) {
+    console.error('Error accessing microphone:', mediaError)
+    setIsAudioEnabled(false)
+    
+    if (mediaError instanceof DOMException) {
+      if (mediaError.name === 'NotAllowedError') {
+        throw new Error('Microphone permission denied. Please allow microphone access.')
+      } else if (mediaError.name === 'NotFoundError') {
+        throw new Error('No microphone found. Please connect a microphone.')
       }
+    }
+    throw new Error('Failed to access microphone')
+  }
+}, [])
 
-      const audio = document.createElement('audio')
-      audio.srcObject = stream
-      audio.autoplay = true
-      audio.setAttribute('playsinline', 'true')
-      audio.volume = 1.0
-      audio.muted = false
-      audio.preload = 'metadata'
-      audio.controls = false
-      
-      audio.style.position = 'fixed'
-      audio.style.left = '-9999px'
-      audio.style.top = '-9999px'
-      audio.style.width = '1px'
-      audio.style.height = '1px'
-      audio.style.opacity = '0'
-      audio.style.pointerEvents = 'none'
-      
-      document.body.appendChild(audio)
-      remoteAudioElementsRef.current.set(userId, audio)
-      
-      const attemptPlay = async () => {
-        try {
-          if (audio.readyState < 2) {
-            await new Promise((resolve) => {
-              audio.oncanplay = resolve
-              audio.onloadeddata = resolve
-              setTimeout(resolve, 1000)
-            })
-          }
-          
-          const playPromise = audio.play()
-          
-          if (playPromise !== undefined) {
-            await playPromise
-          }
-        } catch (playError: unknown) {
-          const enableAudio = async (event: Event) => {
-            try {
-              await audio.play()
-              
-              document.removeEventListener('click', enableAudio)
-              document.removeEventListener('keydown', enableAudio)
-              document.removeEventListener('touchstart', enableAudio)
-            } catch (retryError: unknown) {
-              console.error(`Failed to play audio for ${userId} after interaction:`, retryError)
-            }
-          }
-          
-          document.addEventListener('click', enableAudio, { once: true, passive: true })
-          document.addEventListener('keydown', enableAudio, { once: true, passive: true })
-          document.addEventListener('touchstart', enableAudio, { once: true, passive: true })
-          
-          setTimeout(() => {
+const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
+  try {
+    // Clean up existing audio element
+    const existingAudio = remoteAudioElementsRef.current.get(userId)
+    if (existingAudio) {
+      existingAudio.pause()
+      existingAudio.srcObject = null
+      existingAudio.remove()
+    }
+
+    // Create new audio element
+    const audio = document.createElement('audio')
+    audio.srcObject = stream
+    audio.autoplay = true
+    audio.setAttribute('playsinline', 'true') 
+    audio.volume = 1.0
+    
+    // Hide the audio element
+    audio.style.position = 'absolute'
+    audio.style.left = '-9999px'
+    audio.style.visibility = 'hidden'
+    
+    document.body.appendChild(audio)
+    remoteAudioElementsRef.current.set(userId, audio)
+    
+    // Simple play attempt
+    const playAudio = async () => {
+      try {
+        await audio.play()
+      } catch (playError) {
+        console.warn(`Audio play failed for ${userId}, waiting for user interaction`)
+        
+        // Wait for user interaction to enable audio
+        const enableAudio = async () => {
+          try {
+            await audio.play()
             document.removeEventListener('click', enableAudio)
             document.removeEventListener('keydown', enableAudio)
-            document.removeEventListener('touchstart', enableAudio)
-          }, 30000)
+          } catch (retryError) {
+            console.error(`Failed to play audio for ${userId}:`, retryError)
+          }
         }
+        
+        document.addEventListener('click', enableAudio, { once: true })
+        document.addEventListener('keydown', enableAudio, { once: true })
       }
-
-      audio.oncanplay = () => {
-        attemptPlay()
-      }
-      audio.onerror = (e) => console.error(`Audio error for ${userId}:`, e)
-
-      if (stream.getAudioTracks().length > 0) {
-        attemptPlay()
-      }
-
-    } catch (setupError: unknown) {
-      console.error(`Error setting up remote audio for ${userId}:`, setupError)
     }
-  }, [])
+
+    // Attempt to play when stream is ready
+    if (audio.readyState >= 2) {
+      playAudio()
+    } else {
+      audio.onloadeddata = playAudio
+    }
+
+  } catch (setupError) {
+    console.error(`Error setting up remote audio for ${userId}:`, setupError)
+  }
+}, [])
 
   const setupDataChannel = useCallback((pc: RTCPeerConnection, userId: string) => {
     try {
@@ -913,149 +816,75 @@ export default function CatTriangle({
     }
   }, [addFloatingMessage, handleWhiteboardData])
 
-  const createPeerConnection = useCallback((userId: string) => {
-    try {
-      const pc = new RTCPeerConnection(rtcConfiguration)
-      
-      setupDataChannel(pc, userId)
-      
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(track => {
-          pc.addTrack(track, localStreamRef.current!)
+const createPeerConnection = useCallback((userId: string) => {
+  try {
+    const pc = new RTCPeerConnection(rtcConfiguration)
+    
+    // Add local stream if available
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!)
+      })
+    }
+
+    // Handle incoming tracks
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams
+      if (remoteStream && event.track.kind === 'audio') {
+        remoteStreamsRef.current.set(userId, remoteStream)
+        setupRemoteAudio(userId, remoteStream)
+      }
+    }
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && channelRef.current && currentUser) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc-signal',
+          payload: {
+            type: 'ice-candidate',
+            candidate: event.candidate,
+            from: currentUser.id,
+            to: userId
+          }
         })
       }
-
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams
-        if (remoteStream && event.track.kind === 'audio') {
-          remoteStreamsRef.current.set(userId, remoteStream)
-          setupRemoteAudio(userId, remoteStream)
-        }
-      }
-
-      pc.ondatachannel = (event) => {
-        const channel = event.channel
-        
-        channel.onopen = () => {
-          dataChannelRef.current.set(userId, channel)
-        }
-        
-        channel.onmessage = (messageEvent) => {
-          try {
-            const message = JSON.parse(messageEvent.data)
-            if (message.type === 'text-message') {
-              addFloatingMessage(message.text)
-            } else if (message.type === 'draw' || message.type === 'clear' || message.type === 'undo') {
-              handleWhiteboardData(message)
-            }
-          } catch (incomingError: unknown) {
-            console.warn('Error parsing incoming data channel message:', incomingError)
-          }
-        }
-      }
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && channelRef.current && currentUser) {
-          if (event.candidate.candidate && event.candidate.candidate.trim() !== '') {
-            channelRef.current.send({
-              type: 'broadcast',
-              event: 'webrtc-signal',
-              payload: {
-                type: 'ice-candidate',
-                data: event.candidate,
-                from: currentUser.id,
-                to: userId
-              }
-            })
-          }
-        }
-      }
-
-      pc.onconnectionstatechange = () => {
-        const state = pc.connectionState
-        
-        if (state === 'connected') {
-          pendingIceCandidatesRef.current.delete(userId)
-          connectionAttemptsRef.current.delete(userId)
-          
-          const timeout = connectionTimeoutRef.current.get(userId)
-          if (timeout) {
-            clearTimeout(timeout)
-            connectionTimeoutRef.current.delete(userId)
-          }
-        } else if (state === 'connecting') {
-          const timeout = setTimeout(() => {
-            if (pc.connectionState !== 'connected') {
-              try {
-                pc.restartIce()
-              } catch (restartError: unknown) {
-                console.error(`Error restarting ICE on timeout for ${userId}:`, restartError)
-              }
-            }
-          }, 30000)
-          
-          connectionTimeoutRef.current.set(userId, timeout)
-        } else if (state === 'failed') {
-          const attempts = connectionAttemptsRef.current.get(userId) || 0
-          if (attempts < 3) {
-            connectionAttemptsRef.current.set(userId, attempts + 1)
-            setTimeout(() => {
-              if (pc.connectionState === 'failed') {
-                try {
-                  pc.restartIce()
-                } catch (retryRestartError: unknown) {
-                  console.error(`Error restarting ICE for ${userId}:`, retryRestartError)
-                }
-              }
-            }, 2000 * (attempts + 1))
-          }
-        } else if (state === 'closed') {
-          peerConnectionsRef.current.delete(userId)
-          remoteStreamsRef.current.delete(userId)
-          pendingIceCandidatesRef.current.delete(userId)
-          connectionAttemptsRef.current.delete(userId)
-          
-          const dataChannel = dataChannelRef.current.get(userId)
-          if (dataChannel) {
-            dataChannel.close()
-            dataChannelRef.current.delete(userId)
-          }
-          
-          const timeout = connectionTimeoutRef.current.get(userId)
-          if (timeout) {
-            clearTimeout(timeout)
-            connectionTimeoutRef.current.delete(userId)
-          }
-          
-          const audio = remoteAudioElementsRef.current.get(userId)
-          if (audio) {
-            audio.pause()
-            audio.srcObject = null
-            audio.remove()
-            remoteAudioElementsRef.current.delete(userId)
-          }
-        }
-      }
-
-      pc.oniceconnectionstatechange = () => {
-        const iceState = pc.iceConnectionState
-        
-        if (iceState === 'failed' && pc.connectionState !== 'closed') {
-          try {
-            pc.restartIce()
-          } catch (iceRestartError: unknown) {
-            console.error(`Error restarting ICE for ${userId}:`, iceRestartError)
-          }
-        }
-      }
-
-      return pc
-    } catch (peerError: unknown) {
-      console.error('Error creating peer connection:', peerError)
-      throw peerError
     }
-  }, [currentUser, setupRemoteAudio, setupDataChannel, addFloatingMessage, handleWhiteboardData])
 
+    // Handle connection state changes
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState
+      console.log(`Connection with ${userId}: ${state}`)
+      
+      if (state === 'failed' || state === 'disconnected') {
+        // Attempt to restart ICE
+        setTimeout(() => {
+          if (pc.connectionState === 'failed') {
+            pc.restartIce()
+          }
+        }, 1000)
+      } else if (state === 'closed') {
+        // Clean up resources
+        peerConnectionsRef.current.delete(userId)
+        remoteStreamsRef.current.delete(userId)
+        
+        const audio = remoteAudioElementsRef.current.get(userId)
+        if (audio) {
+          audio.pause()
+          audio.srcObject = null
+          audio.remove()
+          remoteAudioElementsRef.current.delete(userId)
+        }
+      }
+    }
+
+    return pc
+  } catch (error) {
+    console.error('Error creating peer connection:', error)
+    throw error
+  }
+}, [currentUser, setupRemoteAudio])
   const processPendingIceCandidates = useCallback(async (userId: string, pc: RTCPeerConnection) => {
     const pendingCandidates = pendingIceCandidatesRef.current.get(userId) || []
     if (pendingCandidates.length > 0 && pc.remoteDescription && pc.signalingState !== 'closed') {
@@ -1076,142 +905,86 @@ export default function CatTriangle({
     }
   }, [])
 
-  const handleSignaling = useCallback(async (signal: SignalData) => {
-    if (!currentUser || signal.to !== currentUser.id) return
+const handleSignaling = useCallback(async (signal: any) => {
+  if (!currentUser || signal.to !== currentUser.id) return
 
-    const { type, data, from } = signal
-    let pc = peerConnectionsRef.current.get(from)
+  const { type, from } = signal
+  let pc = peerConnectionsRef.current.get(from)
 
-    try {      
-      switch (type) {
-        case 'offer':
-          if (pc && pc.connectionState !== 'closed') {
-            pc.close()
-            pendingIceCandidatesRef.current.delete(from)
-          }
-          
-          pc = createPeerConnection(from)
-          peerConnectionsRef.current.set(from, pc)
-          
-          await pc.setRemoteDescription(new RTCSessionDescription(data))
-          
-          await processPendingIceCandidates(from, pc)
-          
-          const answer = await pc.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: false
+  try {
+    switch (type) {
+      case 'offer':
+        // Create new peer connection for incoming offer
+        pc = createPeerConnection(from)
+        peerConnectionsRef.current.set(from, pc)
+        
+        await pc.setRemoteDescription(signal.offer)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        
+        // Send answer back
+        if (channelRef.current) {
+          channelRef.current.send({
+            type: 'broadcast',
+            event: 'webrtc-signal',
+            payload: {
+              type: 'answer',
+              answer: answer,
+              from: currentUser.id,
+              to: from
+            }
           })
-          
-          await pc.setLocalDescription(answer)
-          
-          if (channelRef.current) {
-            channelRef.current.send({
-              type: 'broadcast',
-              event: 'webrtc-signal',
-              payload: {
-                type: 'answer',
-                data: answer,
-                from: currentUser.id,
-                to: from
-              }
-            })
-          }
-          break
+        }
+        break
 
-        case 'answer':
-          if (pc && pc.signalingState === 'have-local-offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data))
-            await processPendingIceCandidates(from, pc)
-          }
-          break
+      case 'answer':
+        if (pc) {
+          await pc.setRemoteDescription(signal.answer)
+        }
+        break
 
-        case 'ice-candidate':
-          if (pc && pc.remoteDescription && pc.signalingState !== 'closed') {
-            try {
-              if (data && typeof data === 'object' && data.candidate) {
-                await pc.addIceCandidate(new RTCIceCandidate(data))
-              }
-            } catch (iceError: unknown) {
-              if (pc.connectionState !== 'connected') {
-                console.warn(`Error adding ICE candidate from ${from}:`, iceError)
-              }
-            }
-          } else if (pc && !pc.remoteDescription) {
-            if (data && typeof data === 'object' && data.candidate) {
-              const pendingCandidates = pendingIceCandidatesRef.current.get(from) || []
-              pendingCandidates.push(data)
-              pendingIceCandidatesRef.current.set(from, pendingCandidates)
-            }
-          }
-          break
-      }
-    } catch (signalingError: unknown) {
-      console.error(`Error handling ${type} signal from ${from}:`, signalingError)
-      if (pc && pc.connectionState !== 'closed') {
-        pc.close()
-      }
-      peerConnectionsRef.current.delete(from)
-      remoteStreamsRef.current.delete(from)
-      pendingIceCandidatesRef.current.delete(from)
+      case 'ice-candidate':
+        if (pc && signal.candidate) {
+          await pc.addIceCandidate(signal.candidate)
+        }
+        break
     }
-  }, [currentUser, createPeerConnection, processPendingIceCandidates])
+  } catch (error) {
+    console.error(`Error handling ${type} from ${from}:`, error)
+  }
+}, [currentUser, createPeerConnection])
 
-  const createOffer = useCallback(async (targetUserId: string) => {
-    if (!currentUser || !isVisible || !localStreamRef.current) return
+const createOffer = useCallback(async (targetUserId: string) => {
+  if (!currentUser || !localStreamRef.current) return
 
-    try {
-      const existingPc = peerConnectionsRef.current.get(targetUserId)
-      if (existingPc && existingPc.connectionState !== 'closed') {
-        existingPc.close()
-      }
+  try {
+    const pc = createPeerConnection(targetUserId)
+    peerConnectionsRef.current.set(targetUserId, pc)
 
-      const pc = createPeerConnection(targetUserId)
-      peerConnectionsRef.current.set(targetUserId, pc)
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: false
+    })
+    
+    await pc.setLocalDescription(offer)
 
-      await new Promise<void>((resolve) => {
-        if (pc.iceGatheringState === 'complete') {
-          resolve()
-        } else {
-          const checkGathering = () => {
-            if (pc.iceGatheringState === 'gathering' || pc.iceGatheringState === 'complete') {
-              pc.removeEventListener('icegatheringstatechange', checkGathering)
-              resolve()
-            }
-          }
-          pc.addEventListener('icegatheringstatechange', checkGathering)
-          
-          setTimeout(() => {
-            pc.removeEventListener('icegatheringstatechange', checkGathering)
-            resolve()
-          }, 5000)
+    // Send offer
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'webrtc-signal',
+        payload: {
+          type: 'offer',
+          offer: offer,
+          from: currentUser.id,
+          to: targetUserId
         }
       })
-
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: false,
-        iceRestart: false
-      })
-      
-      await pc.setLocalDescription(offer)
-
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc-signal',
-          payload: {
-            type: 'offer',
-            data: offer,
-            from: currentUser.id,
-            to: targetUserId
-          }
-        })
-      }
-    } catch (offerError: unknown) {
-      console.error(`Error creating offer for ${targetUserId}:`, offerError)
-      peerConnectionsRef.current.delete(targetUserId)
     }
-  }, [currentUser, createPeerConnection, isVisible])
+  } catch (error) {
+    console.error(`Error creating offer for ${targetUserId}:`, error)
+  }
+}, [currentUser, createPeerConnection])
 
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) {
