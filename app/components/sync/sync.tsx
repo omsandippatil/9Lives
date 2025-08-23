@@ -56,9 +56,29 @@ interface WhiteboardData {
 
 // Simple WebRTC configuration - no STUN servers needed for local connections
 const rtcConfiguration = {
-  iceServers: [],
+  iceServers: [
+    // Google's free STUN servers
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    
+    // Free TURN server (limited bandwidth - for testing only)
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject', 
+      credential: 'openrelayproject'
+    }
+  ],
   iceCandidatePoolSize: 10
 }
+
 
 export default function CatTriangle({ 
   supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
