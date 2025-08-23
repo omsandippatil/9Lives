@@ -112,6 +112,8 @@ export default function CatTriangle({
   const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const dataChannelRef = useRef<Map<string, RTCDataChannel>>(new Map())
   const whiteboardCanvasRef = useRef<HTMLCanvasElement>(null)
+  const pendingOffers = useRef<Set<string>>(new Set())
+
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
   const isCleaningUpRef = useRef(false)
 
@@ -701,59 +703,109 @@ export default function CatTriangle({
     return pc
   }, [currentUser, setupRemoteAudio, createDataChannel, addFloatingMessage, handleWhiteboardData])
 
-  const handleSignaling = useCallback(async (signal: SignalData) => {
-    if (!currentUser || signal.to !== currentUser.id) return
+const handleSignaling = useCallback(async (signal: SignalData) => {
+  if (!currentUser || signal.to !== currentUser.id) return
 
-    const { type, data, from } = signal
-    let pc = peerConnectionsRef.current.get(from)
+  const { type, data, from } = signal
+  let pc = peerConnectionsRef.current.get(from)
 
-    try {      
-      switch (type) {
-        case 'offer':
-          pc = createPeerConnection(from)
-          peerConnectionsRef.current.set(from, pc)
-          
-          await pc.setRemoteDescription(new RTCSessionDescription(data))
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          
-          if (channelRef.current) {
-            channelRef.current.send({
-              type: 'broadcast',
-              event: 'webrtc-signal',
-              payload: {
-                type: 'answer',
-                data: answer,
-                from: currentUser.id,
-                to: from
-              }
-            })
-          }
-          break
+  try {      
+    switch (type) {
+      case 'offer':
+        // Always create a new peer connection for offers
+        if (pc) {
+          pc.close()
+          peerConnectionsRef.current.delete(from)
+        }
+        
+        pc = createPeerConnection(from)
+        peerConnectionsRef.current.set(from, pc)
+        
+        // Check if we can set remote description
+        if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
+          console.warn(`Cannot handle offer in state: ${pc.signalingState}`)
+          return
+        }
+        
+        await pc.setRemoteDescription(new RTCSessionDescription(data))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        
+        if (channelRef.current) {
+          channelRef.current.send({
+            type: 'broadcast',
+            event: 'webrtc-signal',
+            payload: {
+              type: 'answer',
+              data: answer,
+              from: currentUser.id,
+              to: from
+            }
+          })
+        }
+        break
 
-        case 'answer':
-          if (pc) {
-            await pc.setRemoteDescription(new RTCSessionDescription(data))
-          }
-          break
+      case 'answer':
+        if (!pc) {
+          console.warn('Received answer but no peer connection exists')
+          return
+        }
+        
+        // Check if we can set remote description for answer
+        if (pc.signalingState !== 'have-local-offer') {
+          console.warn(`Cannot handle answer in state: ${pc.signalingState}`)
+          return
+        }
+        
+        await pc.setRemoteDescription(new RTCSessionDescription(data))
+        break
 
-        case 'ice-candidate':
-          if (pc && data) {
-            await pc.addIceCandidate(new RTCIceCandidate(data))
-          }
-          break
-      }
-    } catch (error) {
-      console.error('Signaling error:', error)
+      case 'ice-candidate':
+        if (!pc) {
+          console.warn('Received ICE candidate but no peer connection exists')
+          return
+        }
+        
+        // Check if remote description is set before adding ICE candidates
+        if (pc.remoteDescription && data) {
+          await pc.addIceCandidate(new RTCIceCandidate(data))
+        } else {
+          console.warn('Cannot add ICE candidate: no remote description set')
+        }
+        break
     }
-  }, [currentUser, createPeerConnection])
+  } catch (error) {
+    console.error(`Signaling error for ${type}:`, error)
+    
+    // Clean up problematic connection
+    if (pc) {
+      pc.close()
+      peerConnectionsRef.current.delete(from)
+      dataChannelRef.current.delete(from)
+      
+      const audio = remoteAudioElementsRef.current.get(from)
+      if (audio) {
+        audio.remove()
+        remoteAudioElementsRef.current.delete(from)
+      }
+    }
+  }
+}, [currentUser, createPeerConnection])
 
-  const createOffer = useCallback(async (targetUserId: string) => {
-    if (!currentUser || !localStreamRef.current) return
+const createOffer = useCallback(async (targetUserId: string) => {
+  if (!currentUser || !localStreamRef.current) return
 
-    const pc = createPeerConnection(targetUserId)
-    peerConnectionsRef.current.set(targetUserId, pc)
+  // Clean up any existing connection first
+  const existingPc = peerConnectionsRef.current.get(targetUserId)
+  if (existingPc) {
+    existingPc.close()
+    peerConnectionsRef.current.delete(targetUserId)
+  }
 
+  const pc = createPeerConnection(targetUserId)
+  peerConnectionsRef.current.set(targetUserId, pc)
+
+  try {
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
 
@@ -769,7 +821,13 @@ export default function CatTriangle({
         }
       })
     }
-  }, [currentUser, createPeerConnection])
+  } catch (error) {
+    console.error('Error creating offer:', error)
+    pc.close()
+    peerConnectionsRef.current.delete(targetUserId)
+  }
+}, [currentUser, createPeerConnection])
+
 
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) return
@@ -803,12 +861,22 @@ export default function CatTriangle({
     })
 
     channel.on('presence', { event: 'join' }, ({ newPresences }: any) => {
-      newPresences?.forEach((presence: any) => {
-        if (presence.id !== currentUser.id && isAudioEnabled) {
-          setTimeout(() => createOffer(presence.id), 1000)
-        }
-      })
-    })
+  newPresences?.forEach((presence: any) => {
+    if (currentUser && presence.id !== currentUser.id && isAudioEnabled) {
+      // Prevent duplicate offers
+      if (!pendingOffers.current.has(presence.id)) {
+        pendingOffers.current.add(presence.id)
+        setTimeout(() => {
+          createOffer(presence.id)
+          // Clean up after attempt
+          setTimeout(() => {
+            pendingOffers.current.delete(presence.id)
+          }, 5000)
+        }, 1000)
+      }
+    }
+  })
+})
 
     channel.on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
       leftPresences?.forEach((presence: any) => {
