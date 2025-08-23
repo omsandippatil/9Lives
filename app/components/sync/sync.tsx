@@ -72,14 +72,28 @@ interface WhiteboardData {
 
 const rtcConfiguration = {
   iceServers: [
+    // === STUN (Free & Public) ===
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:3478' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:3478' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
     { urls: 'stun:stun.nextcloud.com:443' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.stunprotocol.org:3478' },
+    { urls: 'stun:stun.ekiga.net' },
+    { urls: 'stun:stun.sipgate.net' },
+    { urls: 'stun:stun.voipbuster.com' },
+    { urls: 'stun:stun.voipstunt.com' },
+    { urls: 'stun:stun.counterpath.com' },
+    { urls: 'stun:stun.1und1.de' },
+    { urls: 'stun:stun.sipnet.ru' },
+    { urls: 'stun:stun.voip.aql.com' },
+
+    // === TURN (Free / Permanent) ===
+    // OpenRelay Project (20 GB/month free, public credentials)
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
@@ -87,18 +101,13 @@ const rtcConfiguration = {
     },
     {
       urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject', 
+      username: 'openrelayproject',
       credential: 'openrelayproject'
     },
     {
       urls: 'turn:openrelay.metered.ca:443?transport=tcp',
       username: 'openrelayproject',
       credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:relay1.expressturn.com:3478',
-      username: 'ef3JQMTGZ9EEGQAF6',
-      credential: 'Pxb8EDcdLxezgTpf'
     }
   ],
   iceCandidatePoolSize: 15,
