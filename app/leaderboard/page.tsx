@@ -379,7 +379,7 @@ const Leaderboard = () => {
               {leaderboard.map((user, index) => (
                 <div
                   key={user.id}
-                  className={`group bg-white hover:bg-gray-50 border-2 transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] relative ${
+                  className={`group bg-white hover:bg-gray-50 border-2 transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] ${
                     user.rank === 1 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-white' :
                     user.rank === 2 ? 'border-gray-300 bg-gradient-to-r from-gray-50 to-white' :
                     user.rank === 3 ? 'border-orange-300 bg-gradient-to-r from-orange-50 to-white' :
@@ -404,18 +404,21 @@ const Leaderboard = () => {
                         <div className="ml-4">
                           <div className="font-light text-lg mb-1">{formatEmail(user.email)}</div>
                           <div className="text-xs text-gray-500 font-light flex flex-wrap gap-2">
-                            <span>🎯 {user.categories.coding}c</span>
-                            <span>⚙️ {user.categories.technical}t</span>
-                            <span>📚 {user.categories.fundamental}f</span>
-                            <span>🧠 {user.categories.aptitude}a</span>
-                            <span>👥 {user.categories.hr}hr</span>
-                            <span>📊 {user.total_questions_attempted}q</span>
-                            <span>🏷️ {user.tech_topics_covered} topics</span>
-                            {user.language_coverage.java > 0 && <span>☕ {user.language_coverage.java}j</span>}
-                            {user.language_coverage.python > 0 && <span>🐍 {user.language_coverage.python}py</span>}
-                            {user.language_coverage.sql > 0 && <span>🗄️ {user.language_coverage.sql}sql</span>}
-                            {user.special_topics.ai > 0 && <span>🤖 {user.special_topics.ai}ai</span>}
-                            {user.special_topics.system_design > 0 && <span>🏗️ {user.special_topics.system_design}sd</span>}
+                            <span>🎯 {user.today_activity.coding}c</span>
+                            <span>⚙️ {user.today_activity.technical}t</span>
+                            <span>📚 {user.today_activity.fundamental}f</span>
+                            <span>🧠 {user.today_activity.aptitude}a</span>
+                            <span>👥 {user.today_activity.hr}hr</span>
+                            <span>📊 {getTodayActivityTotal(user)}q today</span>
+                            <span>🏷️ {user.today_activity.tech_topics} topics</span>
+                            {user.today_activity.java > 0 && <span>☕ {user.today_activity.java}j</span>}
+                            {user.today_activity.python > 0 && <span>🐍 {user.today_activity.python}py</span>}
+                            {user.today_activity.sql > 0 && <span>🗄️ {user.today_activity.sql}sql</span>}
+                            {user.today_activity.ai > 0 && <span>🤖 {user.today_activity.ai}ai</span>}
+                            {user.today_activity.system_design > 0 && <span>🏗️ {user.today_activity.system_design}sd</span>}
+                            {user.today_activity.focus > 0 && (
+                              <span className="text-green-600">⏱️ {formatFocusTime(user.today_activity.focus)} focus</span>
+                            )}
                             {user.current_streak > 0 && (
                               <span className="text-orange-600">🔥 {user.current_streak}d streak</span>
                             )}
@@ -434,34 +437,6 @@ const Leaderboard = () => {
                         </div>
                         <div className="text-xs text-gray-400 uppercase tracking-wider">Fishes</div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Today's Activity Hover Tooltip */}
-                  <div className="absolute top-0 left-0 w-full bg-black text-white p-4 opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-y-full z-10 pointer-events-none">
-                    <div className="text-sm font-light">
-                      <div className="mb-2 font-medium">📅 Today's Activity</div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <div>🎯 Coding: {user.today_activity.coding}</div>
-                        <div>⚙️ Technical: {user.today_activity.technical}</div>
-                        <div>📚 Fundamental: {user.today_activity.fundamental}</div>
-                        <div>🧠 Aptitude: {user.today_activity.aptitude}</div>
-                        <div>👥 HR: {user.today_activity.hr}</div>
-                        <div>🏷️ Topics: {user.today_activity.tech_topics}</div>
-                        {user.today_activity.java > 0 && <div>☕ Java: {user.today_activity.java}</div>}
-                        {user.today_activity.python > 0 && <div>🐍 Python: {user.today_activity.python}</div>}
-                        {user.today_activity.sql > 0 && <div>🗄️ SQL: {user.today_activity.sql}</div>}
-                        {user.today_activity.ai > 0 && <div>🤖 AI/ML: {user.today_activity.ai}</div>}
-                        {user.today_activity.system_design > 0 && <div>🏗️ System Design: {user.today_activity.system_design}</div>}
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-gray-600 flex justify-between items-center">
-                        <div>📊 Total Questions: {getTodayActivityTotal(user)}</div>
-                        <div className="text-green-400">⏱️ Focus: {formatFocusTime(user.today_activity.focus)}</div>
-                      </div>
-                    </div>
-                    {/* Arrow pointing down */}
-                    <div className="absolute bottom-0 left-6 transform translate-y-full">
-                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-black"></div>
                     </div>
                   </div>
                 </div>
