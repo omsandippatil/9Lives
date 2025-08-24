@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import "./globals.css";
 import CatTriangle from "./components/sync/sync";
+import FocusOverlay from './components/focus/focus';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,6 +36,7 @@ export default function RootLayout({
       >
         <CatTriangle />
         {children}
+        <FocusOverlay autoStart={true} />
         <Analytics />
         <SpeedInsights />
       </body>
