@@ -218,34 +218,26 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
     
     if (isRunning && isAuthenticated) {
       interval = setInterval(() => {
-        setTimeSpent(prev => {
-          const newTime = prev + 1;
-          // Save to sessionStorage every 10 seconds to prevent data loss
-          if (newTime % 10 === 0) {
-            saveToSessionStorage(newTime);
-          }
-          return newTime;
-        });
+        setTimeSpent(prev => prev + 1);
       }, 1000);
     }
     
     return () => clearInterval(interval);
-  }, [isRunning, isAuthenticated, saveToSessionStorage]);
+  }, [isRunning, isAuthenticated]);
 
   // Handle page unload events - save to both sessionStorage and Supabase
   useEffect(() => {
-    const handleSaveOnUnload = async () => {
+    const handleSaveOnUnload = () => {
       if (timeSpent > 0 && userId && isAuthenticated) {
+        console.log('Saving on unload:', timeSpent);
         saveToSessionStorage(timeSpent);
         // Only save to Supabase if current time is greater than stored time
-        await saveToSupabase(timeSpent);
+        saveToSupabase(timeSpent);
       }
     };
 
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = () => {
       handleSaveOnUnload();
-      // Note: async operations may not complete in beforeunload
-      // but we still try for better data persistence
     };
 
     const handleVisibilityChange = () => {
@@ -254,14 +246,11 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       }
     };
 
-    // Use addEventListener with proper cleanup
-    const beforeUnloadHandler = (e: BeforeUnloadEvent) => handleBeforeUnload(e);
-    
-    window.addEventListener('beforeunload', beforeUnloadHandler);
+    window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      window.removeEventListener('beforeunload', beforeUnloadHandler);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       // Save when component unmounts
