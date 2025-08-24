@@ -92,7 +92,8 @@ export async function GET(request: NextRequest) {
         system_design_covered: weekData.system_design_covered || '',
         java_lang_covered: weekData.java_lang_covered || '',
         python_lang_covered: weekData.python_lang_covered || '',
-        sql_lang_covered: weekData.sql_lang_covered || ''
+        sql_lang_covered: weekData.sql_lang_covered || '',
+        focus: weekData.focus || ''
       },
       parsed_arrays: {
         coding_questions_attempted: parseCommaSeparated(weekData.coding_questions_attempted),
@@ -105,7 +106,8 @@ export async function GET(request: NextRequest) {
         system_design_covered: parseCommaSeparated(weekData.system_design_covered),
         java_lang_covered: parseCommaSeparated(weekData.java_lang_covered),
         python_lang_covered: parseCommaSeparated(weekData.python_lang_covered),
-        sql_lang_covered: parseCommaSeparated(weekData.sql_lang_covered)
+        sql_lang_covered: parseCommaSeparated(weekData.sql_lang_covered),
+        focus: parseCommaSeparated(weekData.focus)
       }
     }
 
@@ -121,7 +123,8 @@ export async function GET(request: NextRequest) {
       system_design_covered: calculateStats(parsedData.parsed_arrays.system_design_covered),
       java_lang_covered: calculateStats(parsedData.parsed_arrays.java_lang_covered),
       python_lang_covered: calculateStats(parsedData.parsed_arrays.python_lang_covered),
-      sql_lang_covered: calculateStats(parsedData.parsed_arrays.sql_lang_covered)
+      sql_lang_covered: calculateStats(parsedData.parsed_arrays.sql_lang_covered),
+      focus: calculateStats(parsedData.parsed_arrays.focus)
     }
 
     console.log('Week data fetched successfully for UID:', uid)
