@@ -225,14 +225,12 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
     return () => clearInterval(interval);
   }, [isRunning, isAuthenticated]);
 
-  // Handle page unload events - save to both sessionStorage and Supabase
+  // Handle page unload events - only save to sessionStorage
   useEffect(() => {
     const handleSaveOnUnload = () => {
       if (timeSpent > 0 && userId && isAuthenticated) {
-        console.log('Saving on unload:', timeSpent);
+        console.log('Saving to sessionStorage on unload:', timeSpent);
         saveToSessionStorage(timeSpent);
-        // Only save to Supabase if current time is greater than stored time
-        saveToSupabase(timeSpent);
       }
     };
 
@@ -256,7 +254,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       // Save when component unmounts
       handleSaveOnUnload();
     };
-  }, [timeSpent, userId, isAuthenticated, saveToSessionStorage, saveToSupabase]);
+  }, [timeSpent, userId, isAuthenticated, saveToSessionStorage]);
 
   // Get tier based on progress
   const getTier = (): { emoji: string; name: string; bg: string; text: string } => {
