@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 interface FocusOverlayProps {
@@ -17,6 +17,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const supabaseTimeRef = useRef<number>(0); // Track the last known Supabase value
   const GOAL_SECONDS = 6 * 60 * 60; // 6 hours in seconds
 
   // Get cache key for today's data
@@ -45,7 +46,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
     return 0;
   }, [userId, getCacheKey]);
 
-  // Save data to sessionStorage (only called on unload)
+  // Save data to sessionStorage
   const saveToSessionStorage = useCallback((time: number) => {
     if (!userId) return;
     
@@ -136,6 +137,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       }
 
       const focusTime = data?.focus || 0;
+      supabaseTimeRef.current = focusTime; // Store the Supabase value
       console.log('Loaded from Supabase:', focusTime);
       return focusTime;
     } catch (error) {
@@ -144,9 +146,15 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
     }
   }, [userId, isAuthenticated]);
 
-  // Save focus time to Supabase (only called on page load/unload)
-  const saveToSupabase = useCallback(async (time: number) => {
+  // Save focus time to Supabase (only when current time > supabase time)
+  const saveToSupabase = useCallback(async (time: number, force: boolean = false) => {
     if (!userId || !isAuthenticated || time <= 0) {
+      return;
+    }
+
+    // Only save if current time is greater than stored Supabase time, or if forced
+    if (!force && time <= supabaseTimeRef.current) {
+      console.log('Skipping Supabase save - current time not greater than stored:', { current: time, stored: supabaseTimeRef.current });
       return;
     }
 
@@ -163,6 +171,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       if (error) {
         console.error('Error saving to Supabase:', error);
       } else {
+        supabaseTimeRef.current = time; // Update our reference
         console.log('Saved to Supabase:', time);
       }
     } catch (error) {
@@ -176,18 +185,21 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       const authSuccess = initializeAuth();
       
       if (authSuccess) {
-        // First check sessionStorage
+        // Load from Supabase first to get the baseline
+        const supabaseTime = await loadFromSupabase();
+        
+        // Then check sessionStorage
         const cachedTime = loadFromSessionStorage();
         
-        if (cachedTime > 0) {
-          // Use cached time and sync to Supabase
-          setTimeSpent(cachedTime);
-          console.log('Using cached time:', cachedTime);
-          await saveToSupabase(cachedTime);
-        } else {
-          // Load from Supabase if no cache
-          const savedTime = await loadFromSupabase();
-          setTimeSpent(savedTime);
+        // Use the higher value
+        const finalTime = Math.max(supabaseTime, cachedTime);
+        setTimeSpent(finalTime);
+        
+        console.log('Initialization:', { supabaseTime, cachedTime, finalTime });
+        
+        // If cached time is higher than Supabase, save it to Supabase
+        if (cachedTime > supabaseTime) {
+          await saveToSupabase(cachedTime, true);
         }
         
         if (autoStart) {
@@ -206,24 +218,34 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
     
     if (isRunning && isAuthenticated) {
       interval = setInterval(() => {
-        setTimeSpent(prev => prev + 1);
+        setTimeSpent(prev => {
+          const newTime = prev + 1;
+          // Save to sessionStorage every 10 seconds to prevent data loss
+          if (newTime % 10 === 0) {
+            saveToSessionStorage(newTime);
+          }
+          return newTime;
+        });
       }, 1000);
     }
     
     return () => clearInterval(interval);
-  }, [isRunning, isAuthenticated]);
+  }, [isRunning, isAuthenticated, saveToSessionStorage]);
 
   // Handle page unload events - save to both sessionStorage and Supabase
   useEffect(() => {
-    const handleSaveOnUnload = () => {
+    const handleSaveOnUnload = async () => {
       if (timeSpent > 0 && userId && isAuthenticated) {
         saveToSessionStorage(timeSpent);
-        saveToSupabase(timeSpent);
+        // Only save to Supabase if current time is greater than stored time
+        await saveToSupabase(timeSpent);
       }
     };
 
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       handleSaveOnUnload();
+      // Note: async operations may not complete in beforeunload
+      // but we still try for better data persistence
     };
 
     const handleVisibilityChange = () => {
@@ -232,11 +254,14 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    // Use addEventListener with proper cleanup
+    const beforeUnloadHandler = (e: BeforeUnloadEvent) => handleBeforeUnload(e);
+    
+    window.addEventListener('beforeunload', beforeUnloadHandler);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', beforeUnloadHandler);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       // Save when component unmounts
@@ -317,15 +342,7 @@ export default function FocusOverlay({ autoStart = false }: FocusOverlayProps) {
         </div>
       </div>
 
-      {/* Progress bar at top */}
-      <div className="absolute top-0 left-0 right-0 pointer-events-none">
-        <div className="w-full bg-black bg-opacity-20 h-1">
-          <div 
-            className={`h-full transition-all duration-1000 ease-out ${tier.bg}`}
-            style={{ width: `${getProgress()}%` }}
-          />
-        </div>
-      </div>
+
     </div>
   );
 }
