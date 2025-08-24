@@ -13,7 +13,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   }
 })
 
-// Columns that can be reset in week table
+// Columns that can be reset in week table (including focus which stores seconds)
 const WEEK_RESETTABLE_COLUMNS = [
   'coding_questions_attempted',
   'technical_questions_attempted', 
@@ -25,7 +25,8 @@ const WEEK_RESETTABLE_COLUMNS = [
   'system_design_covered',
   'java_lang_covered',
   'python_lang_covered',
-  'sql_lang_covered'
+  'sql_lang_covered',
+  'focus'
 ] as const
 
 export async function GET(request: NextRequest) {
@@ -86,11 +87,12 @@ async function handleResetWeekTable(request: NextRequest, method: 'GET' | 'POST'
       })
     }
 
-    // Calculate statistics before reset
+    // Calculate statistics before reset (treating all columns as numeric including focus)
     const totalRecords = weekRecords.length
     const statisticsBeforeReset: Record<string, { 
       records_with_data: number, 
       total_days_tracked: number,
+      total_value: number,
       sample_values: string[] 
     }> = {}
     
@@ -99,10 +101,20 @@ async function handleResetWeekTable(request: NextRequest, method: 'GET' | 'POST'
         record[column] && record[column].toString().trim() !== ''
       )
       
-      const totalDays = recordsWithData.reduce((total, record) => {
+      let totalDays = 0
+      let totalValue = 0
+      
+      recordsWithData.forEach(record => {
         const values = record[column]?.toString().split(',') || []
-        return total + values.length
-      }, 0)
+        totalDays += values.length
+        // Sum all values for this column across all records (treating as numbers)
+        values.forEach((val: string) => {
+          const numVal = Number(val.trim())
+          if (!isNaN(numVal)) {
+            totalValue += numVal
+          }
+        })
+      })
 
       const sampleValues = recordsWithData.slice(0, 3).map(record => 
         record[column]?.toString() || ''
@@ -111,6 +123,7 @@ async function handleResetWeekTable(request: NextRequest, method: 'GET' | 'POST'
       statisticsBeforeReset[column] = {
         records_with_data: recordsWithData.length,
         total_days_tracked: totalDays,
+        total_value: totalValue,
         sample_values: sampleValues
       }
     })
@@ -148,14 +161,14 @@ async function handleResetWeekTable(request: NextRequest, method: 'GET' | 'POST'
     
     return NextResponse.json({ 
       success: true,
-      message: 'Week table reset successfully - all historical data cleared',
+      message: 'Week table reset successfully - all historical data cleared (including focus time tracking)',
       reset_type: 'full_week_table_reset',
       columns_reset: WEEK_RESETTABLE_COLUMNS,
       total_records_before: totalRecords,
       records_reset: recordsReset,
       statistics_before_reset: statisticsBeforeReset,
       action: 'reset_week_table',
-      warning: 'All weekly historical data has been permanently cleared',
+      warning: 'All weekly historical data has been permanently cleared including focus session times',
       timestamp: new Date().toISOString()
     })
 

@@ -25,7 +25,8 @@ const RESETTABLE_COLUMNS = [
   'system_design_covered',
   'java_lang_covered',
   'python_lang_covered',
-  'sql_lang_covered'
+  'sql_lang_covered',
+  'focus'
 ] as const
 
 type ResettableColumn = typeof RESETTABLE_COLUMNS[number]
@@ -131,7 +132,7 @@ async function handleResetAllUsers(request: NextRequest, method: 'GET' | 'POST')
     // Prepare columns to process
     const columnsToReset = specificColumn ? [specificColumn] : RESETTABLE_COLUMNS
     
-    // Calculate statistics before reset
+    // Calculate statistics before reset (treating all columns as numeric including focus)
     const totalRecords = todayRecords.length
     const statisticsBeforeReset: Record<string, { total: number, max: number, avg: number }> = {}
     
@@ -158,6 +159,7 @@ async function handleResetAllUsers(request: NextRequest, method: 'GET' | 'POST')
       const weekUpdateData: Record<string, string> = {}
       
       columnsToReset.forEach(column => {
+        // Treat all columns as numeric (including focus which contains seconds)
         const todayValue = Number(todayRecord[column]) || 0
         const existingWeekValue = existingWeekRecord ? existingWeekRecord[column] : ''
         
@@ -191,7 +193,7 @@ async function handleResetAllUsers(request: NextRequest, method: 'GET' | 'POST')
           }
           
           // Initialize empty strings for columns not being updated
-          columnsToReset.forEach(column => {
+          RESETTABLE_COLUMNS.forEach(column => {
             if (!(column in weekUpdateData)) {
               newWeekRecord[column] = ''
             }
@@ -219,11 +221,12 @@ async function handleResetAllUsers(request: NextRequest, method: 'GET' | 'POST')
       console.warn('Backup errors encountered:', backupErrors.slice(0, 5)) // Log first 5 errors
     }
 
-    // Step 2: Reset today's values to zero
+    // Step 2: Reset today's values to zero (including focus)
     console.log('Starting reset process: Resetting today values to zero...')
     
     const resetUpdateData: Record<string, number> = {}
     columnsToReset.forEach(column => {
+      // Reset all columns to 0 (including focus which stores seconds as numbers)
       resetUpdateData[column] = 0
     })
 
@@ -258,7 +261,7 @@ async function handleResetAllUsers(request: NextRequest, method: 'GET' | 'POST')
       success: true,
       message: specificColumn 
         ? `${specificColumn} backed up to week table and reset to 0 for all users successfully`
-        : 'All counts backed up to week table and reset to 0 for all users successfully',
+        : 'All counts backed up to week table and reset to 0 for all users successfully (including focus seconds)',
       reset_type: specificColumn ? 'single_column_all_users' : 'all_columns_all_users',
       columns_processed: columnsToReset,
       total_records_before: totalRecords,
