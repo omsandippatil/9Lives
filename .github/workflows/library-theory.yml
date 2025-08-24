@@ -1,0 +1,19 @@
+name: Library APIs Every 1 Hour
+
+on:
+  schedule:
+    # Runs every 1 hour
+    - cron: "0 * * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-library-apis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Algorithm API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/algorithm?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call Data Structure API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/data-structure?api_key=${{ secrets.API_KEY }}"
