@@ -49,6 +49,7 @@ interface LeaderboardUser {
     java: number
     python: number
     sql: number
+    focus: number // focus time in seconds
   }
 }
 
@@ -57,6 +58,7 @@ interface LeaderboardStats {
   top_score: number
   active_today: number
   total_today_activity: number
+  total_focus_time: number
 }
 
 const Leaderboard = () => {
@@ -65,7 +67,6 @@ const Leaderboard = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('🏆')
-  const [viewMode, setViewMode] = useState<'overall' | 'today'>('overall')
 
   // Cat animation cycle
   useEffect(() => {
@@ -129,7 +130,8 @@ const Leaderboard = () => {
           system_design_covered,
           java_lang_covered,
           python_lang_covered,
-          sql_lang_covered
+          sql_lang_covered,
+          focus
         `)
 
       if (todayError) throw todayError
@@ -193,6 +195,7 @@ const Leaderboard = () => {
             java: todayActivity.java_lang_covered || 0,
             python: todayActivity.python_lang_covered || 0,
             sql: todayActivity.sql_lang_covered || 0,
+            focus: todayActivity.focus || 0,
           }
         }
       }) || []
@@ -207,11 +210,16 @@ const Leaderboard = () => {
           (today.hr_questions_attempted || 0)
       }, 0) || 0
 
+      const totalFocusTime = todayData?.reduce((sum, today) => {
+        return sum + (today.focus || 0)
+      }, 0) || 0
+
       const statsData: LeaderboardStats = {
         total_users: usersData?.length || 0,
         top_score: usersData?.[0]?.total_points || 0,
         active_today: todayData?.length || 0,
-        total_today_activity: totalTodayActivity
+        total_today_activity: totalTodayActivity,
+        total_focus_time: totalFocusTime
       }
 
       setLeaderboard(processedUsers)
@@ -267,11 +275,20 @@ const Leaderboard = () => {
            user.today_activity.hr
   }
 
-  const sortedByTodayActivity = [...leaderboard].sort((a, b) => 
-    getTodayActivityTotal(b) - getTodayActivityTotal(a)
-  ).map((user, index) => ({ ...user, rank: index + 1 }))
+  const formatFocusTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+  }
 
-  const displayData = viewMode === 'today' ? sortedByTodayActivity : leaderboard
+  const formatTotalFocusTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    if (hours === 0) return `${minutes}m`
+    return `${hours}h ${minutes}m`
+  }
 
   if (loading) {
     return (
@@ -331,6 +348,10 @@ const Leaderboard = () => {
                   <p className="text-xs text-gray-400 uppercase tracking-wider">Active Today</p>
                   <p className="text-lg font-light">{stats.active_today}</p>
                 </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider">Focus Time</p>
+                  <p className="text-lg font-light">{formatTotalFocusTime(stats.total_focus_time)}</p>
+                </div>
               </>
             )}
             <button 
@@ -343,37 +364,11 @@ const Leaderboard = () => {
         </div>
       </header>
 
-      {/* View Toggle */}
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        <div className="flex gap-2 bg-white p-1 border border-gray-200 w-fit">
-          <button
-            onClick={() => setViewMode('overall')}
-            className={`px-6 py-2 font-light transition-all ${
-              viewMode === 'overall'
-                ? 'bg-black text-white'
-                : 'text-gray-600 hover:text-black hover:bg-gray-50'
-            }`}
-          >
-            🏆 Overall Rankings
-          </button>
-          <button
-            onClick={() => setViewMode('today')}
-            className={`px-6 py-2 font-light transition-all ${
-              viewMode === 'today'
-                ? 'bg-black text-white'
-                : 'text-gray-600 hover:text-black hover:bg-gray-50'
-            }`}
-          >
-            📅 Today's Activity
-          </button>
-        </div>
-      </div>
-
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 pb-12">
+      <main className="max-w-6xl mx-auto px-6 pb-12 pt-6">
         {/* Leaderboard */}
         <div className="mb-12">
-          {displayData.length === 0 ? (
+          {leaderboard.length === 0 ? (
             <div className="text-center py-20 bg-white shadow-sm border border-gray-200">
               <div className="text-8xl mb-8">😴</div>
               <p className="text-2xl text-gray-600 font-light mb-4">The kingdom sleeps...</p>
@@ -381,10 +376,10 @@ const Leaderboard = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {displayData.map((user, index) => (
+              {leaderboard.map((user, index) => (
                 <div
                   key={user.id}
-                  className={`group bg-white hover:bg-gray-50 border-2 transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] ${
+                  className={`group bg-white hover:bg-gray-50 border-2 transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] relative ${
                     user.rank === 1 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-white' :
                     user.rank === 2 ? 'border-gray-300 bg-gradient-to-r from-gray-50 to-white' :
                     user.rank === 3 ? 'border-orange-300 bg-gradient-to-r from-orange-50 to-white' :
@@ -409,39 +404,20 @@ const Leaderboard = () => {
                         <div className="ml-4">
                           <div className="font-light text-lg mb-1">{formatEmail(user.email)}</div>
                           <div className="text-xs text-gray-500 font-light flex flex-wrap gap-2">
-                            {viewMode === 'overall' ? (
-                              <>
-                                <span>🎯 {user.categories.coding}c</span>
-                                <span>⚙️ {user.categories.technical}t</span>
-                                <span>📚 {user.categories.fundamental}f</span>
-                                <span>🧠 {user.categories.aptitude}a</span>
-                                <span>👥 {user.categories.hr}hr</span>
-                                <span>📊 {user.total_questions_attempted}q</span>
-                                <span>🏷️ {user.tech_topics_covered} topics</span>
-                                {user.language_coverage.java > 0 && <span>☕ {user.language_coverage.java}j</span>}
-                                {user.language_coverage.python > 0 && <span>🐍 {user.language_coverage.python}py</span>}
-                                {user.language_coverage.sql > 0 && <span>🗄️ {user.language_coverage.sql}sql</span>}
-                                {user.special_topics.ai > 0 && <span>🤖 {user.special_topics.ai}ai</span>}
-                                {user.special_topics.system_design > 0 && <span>🏗️ {user.special_topics.system_design}sd</span>}
-                                {user.current_streak > 0 && (
-                                  <span className="text-orange-600">🔥 {user.current_streak}d streak</span>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <span>🎯 {user.today_activity.coding}c</span>
-                                <span>⚙️ {user.today_activity.technical}t</span>
-                                <span>📚 {user.today_activity.fundamental}f</span>
-                                <span>🧠 {user.today_activity.aptitude}a</span>
-                                <span>👥 {user.today_activity.hr}hr</span>
-                                <span>📊 {getTodayActivityTotal(user)}q today</span>
-                                <span>🏷️ {user.today_activity.tech_topics} topics</span>
-                                {user.today_activity.java > 0 && <span>☕ {user.today_activity.java}j</span>}
-                                {user.today_activity.python > 0 && <span>🐍 {user.today_activity.python}py</span>}
-                                {user.today_activity.sql > 0 && <span>🗄️ {user.today_activity.sql}sql</span>}
-                                {user.today_activity.ai > 0 && <span>🤖 {user.today_activity.ai}ai</span>}
-                                {user.today_activity.system_design > 0 && <span>🏗️ {user.today_activity.system_design}sd</span>}
-                              </>
+                            <span>🎯 {user.categories.coding}c</span>
+                            <span>⚙️ {user.categories.technical}t</span>
+                            <span>📚 {user.categories.fundamental}f</span>
+                            <span>🧠 {user.categories.aptitude}a</span>
+                            <span>👥 {user.categories.hr}hr</span>
+                            <span>📊 {user.total_questions_attempted}q</span>
+                            <span>🏷️ {user.tech_topics_covered} topics</span>
+                            {user.language_coverage.java > 0 && <span>☕ {user.language_coverage.java}j</span>}
+                            {user.language_coverage.python > 0 && <span>🐍 {user.language_coverage.python}py</span>}
+                            {user.language_coverage.sql > 0 && <span>🗄️ {user.language_coverage.sql}sql</span>}
+                            {user.special_topics.ai > 0 && <span>🤖 {user.special_topics.ai}ai</span>}
+                            {user.special_topics.system_design > 0 && <span>🏗️ {user.special_topics.system_design}sd</span>}
+                            {user.current_streak > 0 && (
+                              <span className="text-orange-600">🔥 {user.current_streak}d streak</span>
                             )}
                           </div>
                         </div>
@@ -454,20 +430,38 @@ const Leaderboard = () => {
                           user.rank === 3 ? 'text-orange-600' :
                           'text-black'
                         }`}>
-                          {viewMode === 'overall' ? (
-                            <>
-                              {user.total_points.toLocaleString()} <span className="text-2xl">🐟</span>
-                            </>
-                          ) : (
-                            <>
-                              {getTodayActivityTotal(user)} <span className="text-2xl">⚡</span>
-                            </>
-                          )}
+                          {user.total_points.toLocaleString()} <span className="text-2xl">🐟</span>
                         </div>
-                        <div className="text-xs text-gray-400 uppercase tracking-wider">
-                          {viewMode === 'overall' ? 'Fishes' : 'Today'}
-                        </div>
+                        <div className="text-xs text-gray-400 uppercase tracking-wider">Fishes</div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Today's Activity Hover Tooltip */}
+                  <div className="absolute top-0 left-0 w-full bg-black text-white p-4 opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-y-full z-10 pointer-events-none">
+                    <div className="text-sm font-light">
+                      <div className="mb-2 font-medium">📅 Today's Activity</div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div>🎯 Coding: {user.today_activity.coding}</div>
+                        <div>⚙️ Technical: {user.today_activity.technical}</div>
+                        <div>📚 Fundamental: {user.today_activity.fundamental}</div>
+                        <div>🧠 Aptitude: {user.today_activity.aptitude}</div>
+                        <div>👥 HR: {user.today_activity.hr}</div>
+                        <div>🏷️ Topics: {user.today_activity.tech_topics}</div>
+                        {user.today_activity.java > 0 && <div>☕ Java: {user.today_activity.java}</div>}
+                        {user.today_activity.python > 0 && <div>🐍 Python: {user.today_activity.python}</div>}
+                        {user.today_activity.sql > 0 && <div>🗄️ SQL: {user.today_activity.sql}</div>}
+                        {user.today_activity.ai > 0 && <div>🤖 AI/ML: {user.today_activity.ai}</div>}
+                        {user.today_activity.system_design > 0 && <div>🏗️ System Design: {user.today_activity.system_design}</div>}
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-gray-600 flex justify-between items-center">
+                        <div>📊 Total Questions: {getTodayActivityTotal(user)}</div>
+                        <div className="text-green-400">⏱️ Focus: {formatFocusTime(user.today_activity.focus)}</div>
+                      </div>
+                    </div>
+                    {/* Arrow pointing down */}
+                    <div className="absolute bottom-0 left-6 transform translate-y-full">
+                      <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-black"></div>
                     </div>
                   </div>
                 </div>
