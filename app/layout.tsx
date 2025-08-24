@@ -5,6 +5,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import "./globals.css";
 import CatTriangle from "./components/sync/sync";
 import FocusOverlay from './components/focus/focus';
+import YouTubePlaylistStreamer from './components/sync/music';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // You can set different playlist IDs based on environment or user preference
+  const playlistId = "PLPOTS-vqkh7b4SN88fwYrCqEWxvOKkk1H";
+  
   return (
     <html lang="en">
       <body
@@ -37,6 +41,7 @@ export default function RootLayout({
         <CatTriangle />
         {children}
         <FocusOverlay autoStart={true} />
+        <YouTubePlaylistStreamer playlistId={playlistId} />
         <Analytics />
         <SpeedInsights />
       </body>
