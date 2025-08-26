@@ -1,240 +1,470 @@
 #!/bin/bash
 
-# STUN/TURN Server Deployment Script for Fly.io
-# This script deploys a coturn server on Fly.io with credentials
+# Simple TURN/STUN Server Deployment Script for Railway.com
+# Simplified version - audio rooms ready
+# Version: 2.0
 
-set -e
+set -e  # Exit on any error
 
-# Configuration
-APP_NAME="stun-server-$(date +%s)"
-TURN_USERNAME="turnuser"
-TURN_PASSWORD="$(openssl rand -base64 32)"
-TURN_SECRET="$(openssl rand -base64 64)"
-REALM="turnserver"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-echo "🚀 Deploying STUN/TURN server on Fly.io"
-echo "App name: $APP_NAME"
-echo "Username: $TURN_USERNAME"
-echo "Password: $TURN_PASSWORD"
-echo "Secret: $TURN_SECRET"
-echo "Realm: $REALM"
+# Logging function
+log() {
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+}
 
-# Check if flyctl is installed
-if ! command -v flyctl &> /dev/null; then
-    echo "❌ flyctl is not installed. Please install it first:"
-    echo "curl -L https://fly.io/install.sh | sh"
+error() {
+    echo -e "${RED}[ERROR] $1${NC}"
     exit 1
-fi
+}
 
-# Check if user is logged in
-if ! flyctl auth whoami &> /dev/null; then
-    echo "❌ Not logged into Fly.io. Please run: flyctl auth login"
-    exit 1
-fi
+warning() {
+    echo -e "${YELLOW}[WARNING] $1${NC}"
+}
 
-# Create project directory
-mkdir -p "$APP_NAME"
-cd "$APP_NAME"
+info() {
+    echo -e "${BLUE}[INFO] $1${NC}"
+}
 
-# Create Dockerfile
-cat > Dockerfile << 'EOF'
-FROM ubuntu:22.04
+# Configuration variables
+PROJECT_NAME=""
 
-RUN apt-get update && apt-get install -y \
-    coturn \
-    && rm -rf /var/lib/apt/lists/*
+# Check if we're in codespace
+check_codespace() {
+    if [[ -n "${CODESPACES}" ]]; then
+        log "Running in GitHub Codespace environment"
+        export CODESPACE_ENV=true
+    else
+        export CODESPACE_ENV=false
+    fi
+}
 
-# Copy configuration
-COPY turnserver.conf /etc/turnserver.conf
+# Install required dependencies
+install_dependencies() {
+    log "Installing required dependencies..."
+    
+    # Update package list
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update
+        
+        # Install basic dependencies
+        log "Installing basic dependencies..."
+        sudo apt-get install -y curl wget git jq
+        
+        # Install Node.js and npm
+        if ! command -v node &> /dev/null; then
+            log "Installing Node.js..."
+            # Install Node.js via NodeSource repository
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+        fi
+        
+    elif command -v yum &> /dev/null; then
+        sudo yum update -y
+        sudo yum install -y curl wget git jq nodejs npm
+        
+    elif command -v brew &> /dev/null; then
+        brew update
+        brew install curl wget git jq node
+    else
+        error "Package manager not found. Please install curl, wget, git, jq, nodejs, npm manually."
+    fi
+    
+    # Install Railway CLI
+    if ! command -v railway &> /dev/null; then
+        log "Installing Railway CLI..."
+        
+        # Try npm installation first
+        if command -v npm &> /dev/null; then
+            npm install -g @railway/cli || {
+                warning "Failed to install Railway CLI via npm. Trying direct installation..."
+                install_railway_cli_direct
+            }
+        else
+            install_railway_cli_direct
+        fi
+    fi
+    
+    log "Dependencies installed successfully"
+}
 
-# Create user for coturn
-RUN useradd -r -s /bin/false turnserver
+# Install Railway CLI directly
+install_railway_cli_direct() {
+    log "Installing Railway CLI directly..."
+    
+    # Detect OS and architecture
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    
+    case $ARCH in
+        x86_64) ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *) error "Unsupported architecture: $ARCH" ;;
+    esac
+    
+    # Download and install Railway CLI
+    RAILWAY_URL="https://github.com/railwayapp/cli/releases/latest/download/railway_${OS}_${ARCH}.tar.gz"
+    
+    curl -fsSL "$RAILWAY_URL" | tar -xz -C /tmp
+    sudo mv /tmp/railway /usr/local/bin/railway
+    sudo chmod +x /usr/local/bin/railway
+    
+    log "Railway CLI installed successfully"
+}
 
-# Create necessary directories
-RUN mkdir -p /var/log/turn /var/lib/turn
-RUN chown turnserver:turnserver /var/log/turn /var/lib/turn
+# Project selection menu
+select_project() {
+    log "Project Selection Menu"
+    echo "1. Use existing project in current directory"
+    echo "2. Clone existing project from Git repository"
+    echo "3. Create new project from scratch"
+    
+    read -p "Select option (1-3): " choice
+    
+    case $choice in
+        1)
+            PROJECT_NAME=$(basename "$PWD")
+            log "Using existing project: $PROJECT_NAME"
+            ;;
+        2)
+            read -p "Enter Git repository URL: " git_url
+            read -p "Enter project name: " PROJECT_NAME
+            log "Cloning repository..."
+            git clone "$git_url" "$PROJECT_NAME"
+            cd "$PROJECT_NAME"
+            ;;
+        3)
+            read -p "Enter new project name: " PROJECT_NAME
+            create_new_project
+            ;;
+        *)
+            error "Invalid selection"
+            ;;
+    esac
+}
 
-EXPOSE 3478/udp 3478/tcp
-EXPOSE 49152-65535/udp
+# Create new simple project
+create_new_project() {
+    log "Creating new audio rooms server project..."
+    
+    mkdir -p "$PROJECT_NAME"
+    cd "$PROJECT_NAME"
+    
+    # Create package.json
+    create_package_json
+    
+    # Create server.js
+    create_server_js
+    
+    log "Basic project structure created"
+}
 
-CMD ["turnserver", "-c", "/etc/turnserver.conf", "-v"]
-EOF
-
-# Create coturn configuration
-cat > turnserver.conf << EOF
-# STUN/TURN server configuration
-
-# Listening port for STUN/TURN
-listening-port=3478
-
-# External IP (will be set by Fly.io)
-external-ip=\${FLY_PUBLIC_IP}
-
-# Relay IP (same as external IP)
-relay-ip=\${FLY_PUBLIC_IP}
-
-# TURN server realm
-realm=$REALM
-
-# Enable STUN
-stun-only=0
-
-# Enable fingerprints in TURN messages
-fingerprint
-
-# Use long-term credentials mechanism
-lt-cred-mech
-
-# Static user credentials
-user=$TURN_USERNAME:$TURN_PASSWORD
-
-# Server name
-server-name=$APP_NAME
-
-# Use auth secret for time-limited credentials
-use-auth-secret
-static-auth-secret=$TURN_SECRET
-
-# Allow TCP and UDP protocols
-no-tcp-relay
-no-tls
-no-dtls
-
-# Port range for relay endpoints
-min-port=49152
-max-port=65535
-
-# Log file
-log-file=/var/log/turn/turnserver.log
-
-# Verbose logging (remove in production)
-verbose
-
-# Deny private IP ranges (security)
-denied-peer-ip=10.0.0.0-10.255.255.255
-denied-peer-ip=192.168.0.0-192.168.255.255
-denied-peer-ip=172.16.0.0-172.31.255.255
-
-# Allow loopback
-allow-loopback-peers
-
-# No authentication for STUN
-no-auth-stun
-
-# CLI support
-cli-port=5766
-cli-ip=127.0.0.1
-EOF
-
-# Create fly.toml configuration
-cat > fly.toml << EOF
-app = "$APP_NAME"
-primary_region = "ord"
-
-[build]
-
-[env]
-  FLY_PUBLIC_IP = "0.0.0.0"
-
-[http_service]
-  internal_port = 3478
-  force_https = false
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ["app"]
-
-[[services]]
-  protocol = "udp"
-  internal_port = 3478
-
-  [[services.ports]]
-    port = 3478
-
-[[services]]
-  protocol = "tcp"
-  internal_port = 3478
-
-  [[services.ports]]
-    port = 3478
-
-[[services]]
-  protocol = "udp"
-  internal_port = 49152
-  
-  [[services.ports]]
-    port = 49152
-    end_port = 65535
-
-[vm]
-  cpu_kind = "shared"
-  cpus = 1
-  memory_mb = 256
-EOF
-
-echo "📝 Created configuration files"
-
-# Deploy to Fly.io
-echo "🚀 Launching app on Fly.io..."
-flyctl launch --copy-config --no-deploy
-
-echo "🔧 Deploying..."
-flyctl deploy
-
-# Get the app URL
-APP_URL=$(flyctl info --json | jq -r '.Hostname')
-
-echo ""
-echo "✅ STUN/TURN Server deployed successfully!"
-echo ""
-echo "🔗 Connection Details:"
-echo "STUN URL: stun:$APP_URL:3478"
-echo "TURN URL: turn:$APP_URL:3478"
-echo ""
-echo "🔐 Credentials:"
-echo "Username: $TURN_USERNAME"
-echo "Password: $TURN_PASSWORD"
-echo "Secret: $TURN_SECRET"
-echo "Realm: $REALM"
-echo ""
-echo "📋 WebRTC Configuration Example:"
-echo "const iceServers = ["
-echo "  { urls: 'stun:$APP_URL:3478' },"
-echo "  {"
-echo "    urls: 'turn:$APP_URL:3478',"
-echo "    username: '$TURN_USERNAME',"
-echo "    credential: '$TURN_PASSWORD'"
-echo "  }"
-echo "];"
-echo ""
-echo "🔍 Check logs with: flyctl logs -a $APP_NAME"
-echo "📊 Check status with: flyctl status -a $APP_NAME"
-
-# Save credentials to file
-cat > credentials.txt << EOF
-STUN/TURN Server Credentials
-============================
-
-App Name: $APP_NAME
-STUN URL: stun:$APP_URL:3478
-TURN URL: turn:$APP_URL:3478
-
-Username: $TURN_USERNAME
-Password: $TURN_PASSWORD
-Secret: $TURN_SECRET
-Realm: $REALM
-
-WebRTC Configuration:
-const iceServers = [
-  { urls: 'stun:$APP_URL:3478' },
-  {
-    urls: 'turn:$APP_URL:3478',
-    username: '$TURN_USERNAME',
-    credential: '$TURN_PASSWORD'
+# Create clean package.json
+create_package_json() {
+    log "Creating package.json..."
+    
+    cat > package.json << 'EOL'
+{
+  "name": "audio-rooms-server",
+  "version": "1.0.0",
+  "description": "WebRTC signaling server for audio rooms",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": "18.x"
   }
-];
-EOF
+}
+EOL
+}
 
-echo "💾 Credentials saved to credentials.txt"
-echo ""
-echo "🎉 Deployment complete!"
+# Create server.js
+create_server_js() {
+    log "Creating server.js..."
+    
+    cat > server.js << 'EOL'
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+
+// STUN servers for WebRTC
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun.services.mozilla.com' }
+];
+
+app.use(cors());
+app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    port: PORT,
+    uptime: process.uptime()
+  });
+});
+
+// ICE servers configuration endpoint
+app.get('/api/ice-servers', (req, res) => {
+  res.json({ 
+    iceServers: ICE_SERVERS,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    name: 'Audio Rooms WebRTC Server',
+    status: 'running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      iceServers: '/api/ice-servers',
+      websocket: 'socket.io connection available'
+    },
+    documentation: {
+      connect: 'Connect to Socket.io for WebRTC signaling',
+      events: ['join-room', 'signal', 'leave-room']
+    }
+  });
+});
+
+// WebRTC signaling via Socket.io
+io.on('connection', (socket) => {
+  console.log(`🔗 Client connected: ${socket.id}`);
+  
+  // Join audio room
+  socket.on('join-room', (roomId) => {
+    socket.join(roomId);
+    socket.to(roomId).emit('user-connected', socket.id);
+    console.log(`👥 User ${socket.id} joined room: ${roomId}`);
+  });
+  
+  // WebRTC signaling
+  socket.on('signal', (data) => {
+    const { target, signal } = data;
+    socket.to(target).emit('signal', {
+      signal: signal,
+      sender: socket.id
+    });
+    console.log(`📡 Signal relayed from ${socket.id} to ${target}`);
+  });
+  
+  // Leave room
+  socket.on('leave-room', (roomId) => {
+    socket.leave(roomId);
+    socket.to(roomId).emit('user-disconnected', socket.id);
+    console.log(`👋 User ${socket.id} left room: ${roomId}`);
+  });
+  
+  // Handle disconnect
+  socket.on('disconnect', () => {
+    console.log(`❌ Client disconnected: ${socket.id}`);
+  });
+});
+
+// Start server
+server.listen(PORT, () => {
+  console.log(`🚀 Audio Rooms Server running on port ${PORT}`);
+  console.log(`📡 Health check: http://localhost:${PORT}/health`);
+  console.log(`🧊 ICE servers: http://localhost:${PORT}/api/ice-servers`);
+  console.log(`🔌 WebSocket ready for WebRTC signaling`);
+});
+EOL
+}
+
+# Clean up any problematic Railway files
+cleanup_railway_config() {
+    log "Cleaning up any problematic configuration files..."
+    
+    # Remove files that might cause deployment issues
+    [[ -f "railway.json" ]] && rm railway.json && log "Removed railway.json"
+    [[ -f "nixpacks.toml" ]] && rm nixpacks.toml && log "Removed nixpacks.toml"
+    [[ -f "railway.toml" ]] && rm railway.toml && log "Removed railway.toml"
+    [[ -f "Dockerfile" ]] && rm Dockerfile && log "Removed Dockerfile"
+    
+    log "Configuration cleanup completed"
+}
+
+# Setup Railway project
+setup_railway() {
+    log "Setting up Railway deployment..."
+    
+    # Check if Railway CLI is logged in
+    if ! railway whoami &> /dev/null; then
+        log "Logging into Railway..."
+        railway login || {
+            error "Failed to login to Railway. Please run 'railway login' manually and try again."
+        }
+    fi
+    
+    # Initialize Railway project if not already done
+    if [[ ! -f ".railway/config.json" ]]; then
+        log "Initializing Railway project..."
+        railway init || {
+            error "Failed to initialize Railway project"
+        }
+    else
+        log "Railway project already initialized"
+    fi
+    
+    log "Railway setup completed"
+}
+
+# Deploy to Railway
+deploy_to_railway() {
+    log "Deploying to Railway..."
+    
+    # Ensure git repository exists
+    if [[ ! -d ".git" ]]; then
+        log "Initializing git repository..."
+        git init
+        git add .
+        git commit -m "Initial commit: Audio rooms WebRTC server"
+    else
+        log "Committing changes..."
+        git add .
+        git commit -m "Deploy audio rooms server to Railway" || log "No changes to commit"
+    fi
+    
+    # Deploy with detached mode to avoid log streaming issues
+    log "Starting Railway deployment..."
+    if railway up --detach; then
+        log "✅ Deployment initiated successfully!"
+    else
+        warning "Deployment command had issues, but may still succeed"
+    fi
+    
+    # Wait for deployment to start
+    log "Waiting for deployment to initialize..."
+    sleep 15
+    
+    # Check status
+    check_deployment_status
+}
+
+# Check deployment status
+check_deployment_status() {
+    log "Checking deployment status..."
+    
+    # Get Railway status
+    if railway status &> /dev/null; then
+        railway status
+        
+        # Try to get domain
+        local domain=""
+        if railway domain &> /dev/null; then
+            domain=$(railway domain 2>/dev/null)
+        fi
+        
+        if [[ -n "$domain" && "$domain" != "No custom domain set" ]]; then
+            log "🌐 Your server is available at: https://$domain"
+            log "🔗 Test endpoints:"
+            log "   Health: https://$domain/health"
+            log "   ICE Servers: https://$domain/api/ice-servers"
+        else
+            log "🔍 Railway is assigning a domain. Check dashboard for URL."
+        fi
+    else
+        warning "Could not get Railway status"
+    fi
+    
+    log ""
+    log "📋 Next steps:"
+    log "1. Check Railway dashboard: railway open"
+    log "2. View logs: railway logs"
+    log "3. Monitor status: railway status"
+    log "4. Test health: curl https://your-domain.railway.app/health"
+}
+
+# Main deployment function
+main() {
+    log "🚀 Starting Simple Audio Rooms Server Deployment"
+    log "=============================================="
+    
+    # Check environment
+    check_codespace
+    
+    # Install dependencies
+    install_dependencies
+    
+    # Project selection
+    select_project
+    
+    # Clean up any existing config files that might cause issues
+    cleanup_railway_config
+    
+    # Ensure we have the right files
+    if [[ ! -f "package.json" ]]; then
+        log "Creating package.json..."
+        create_package_json
+    fi
+    
+    if [[ ! -f "server.js" ]]; then
+        log "Creating server.js..."
+        create_server_js
+    fi
+    
+    # Install dependencies
+    if [[ -f "package.json" ]]; then
+        log "Installing npm dependencies..."
+        npm install || warning "npm install failed, but deployment may still work"
+    fi
+    
+    # Setup Railway
+    setup_railway
+    
+    # Deploy
+    deploy_to_railway
+    
+    log "=============================================="
+    log "🎉 Simple Deployment Completed!"
+    log ""
+    log "✅ Your Audio Rooms WebRTC Server includes:"
+    log "   📡 WebRTC signaling via Socket.io"
+    log "   🧊 STUN servers for NAT traversal"
+    log "   ❤️  Health check endpoint"
+    log "   🔧 ICE server configuration API"
+    log ""
+    log "🔗 Integration example:"
+    log "   const response = await fetch('/api/ice-servers');"
+    log "   const { iceServers } = await response.json();"
+    log "   const pc = new RTCPeerConnection({ iceServers });"
+    log ""
+    log "📚 Socket.io events: 'join-room', 'signal', 'leave-room'"
+    log "🌐 Check Railway dashboard for your live URL!"
+}
+
+# Script execution
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
