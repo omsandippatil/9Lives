@@ -9,13 +9,6 @@ interface User {
   connected_at: string
 }
 
-interface SignalData {
-  type: 'offer' | 'answer' | 'ice-candidate'
-  data: any
-  from: string
-  to: string
-}
-
 interface CatTriangleProps {
   supabaseUrl?: string
   supabaseAnonKey?: string
@@ -54,32 +47,6 @@ interface WhiteboardData {
   timestamp: number
 }
 
-// Simple WebRTC configuration - no STUN servers needed for local connections
-const rtcConfiguration = {
-  iceServers: [
-    // Google's free STUN servers
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    
-    // Free TURN server (limited bandwidth - for testing only)
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject', 
-      credential: 'openrelayproject'
-    }
-  ],
-  iceCandidatePoolSize: 10
-}
-
-
 export default function CatTriangle({ 
   supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
   supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
@@ -87,7 +54,6 @@ export default function CatTriangle({
   const [isConnected, setIsConnected] = useState(false)
   const [connectedUsers, setConnectedUsers] = useState<User[]>([])
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([])
   const [temporaryEmoji, setTemporaryEmoji] = useState<string | null>(null)
@@ -107,15 +73,9 @@ export default function CatTriangle({
   
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
-  const localStreamRef = useRef<MediaStream | null>(null)
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
-  const remoteAudioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
-  const dataChannelRef = useRef<Map<string, RTCDataChannel>>(new Map())
   const whiteboardCanvasRef = useRef<HTMLCanvasElement>(null)
-  const pendingOffers = useRef<Set<string>>(new Set())
 
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
-  const isCleaningUpRef = useRef(false)
 
   const getUserFromCookies = useCallback(() => {
     if (typeof document === 'undefined') return null
@@ -183,16 +143,6 @@ export default function CatTriangle({
         payload: data
       })
     }
-
-    dataChannelRef.current.forEach((channel, userId) => {
-      if (channel.readyState === 'open') {
-        try {
-          channel.send(JSON.stringify(data))
-        } catch (sendError) {
-          console.warn(`Failed to send whiteboard data to ${userId}`)
-        }
-      }
-    })
   }, [currentUser])
 
   const drawStroke = useCallback((stroke: WhiteboardStroke) => {
@@ -400,24 +350,6 @@ export default function CatTriangle({
   }, [showWhiteboard, isWhiteboardMinimized, redrawWhiteboard])
 
   const cleanup = useCallback(async () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
-      localStreamRef.current = null
-    }
-
-    remoteAudioElementsRef.current.forEach((audio) => {
-      audio.pause()
-      audio.remove()
-    })
-    remoteAudioElementsRef.current.clear()
-
-    peerConnectionsRef.current.forEach((pc) => {
-      pc.close()
-    })
-    peerConnectionsRef.current.clear()
-
-    dataChannelRef.current.clear()
-    setIsAudioEnabled(false)
     setIsConnected(false)
   }, [])
 
@@ -479,17 +411,6 @@ export default function CatTriangle({
         }
       })
     }
-
-    dataChannelRef.current.forEach((channel) => {
-      if (channel.readyState === 'open') {
-        channel.send(JSON.stringify({
-          type: 'text-message',
-          text: text.trim(),
-          from: currentUser.id,
-          timestamp: Date.now()
-        }))
-      }
-    })
 
     addFloatingMessage(text.trim())
   }, [currentUser, addFloatingMessage])
@@ -596,243 +517,10 @@ export default function CatTriangle({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji, showWhiteboard, isWhiteboardMinimized, undoLastStroke, clearWhiteboard])
 
-  const getUserMedia = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    })
-    
-    localStreamRef.current = stream
-    setIsAudioEnabled(true)
-    return stream
-  }, [])
-
-  const setupRemoteAudio = useCallback((userId: string, stream: MediaStream) => {
-    const audio = document.createElement('audio')
-    audio.srcObject = stream
-    audio.autoplay = true
-    audio.style.display = 'none'
-    document.body.appendChild(audio)
-    remoteAudioElementsRef.current.set(userId, audio)
-  }, [])
-
-  const createDataChannel = useCallback((pc: RTCPeerConnection, userId: string) => {
-    const channel = pc.createDataChannel('messages')
-    
-    channel.onopen = () => dataChannelRef.current.set(userId, channel)
-    channel.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === 'text-message') {
-          addFloatingMessage(message.text)
-        } else {
-          handleWhiteboardData(message)
-        }
-      } catch (error) {
-        console.warn('Error parsing data channel message')
-      }
-    }
-  }, [addFloatingMessage, handleWhiteboardData])
-
-  const createPeerConnection = useCallback((userId: string) => {
-    const pc = new RTCPeerConnection(rtcConfiguration)
-    
-    createDataChannel(pc, userId)
-    
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!)
-      })
-    }
-
-    pc.ontrack = (event) => {
-      const [remoteStream] = event.streams
-      if (remoteStream && event.track.kind === 'audio') {
-        setupRemoteAudio(userId, remoteStream)
-      }
-    }
-
-    pc.ondatachannel = (event) => {
-      const channel = event.channel
-      channel.onopen = () => dataChannelRef.current.set(userId, channel)
-      channel.onmessage = (messageEvent) => {
-        try {
-          const message = JSON.parse(messageEvent.data)
-          if (message.type === 'text-message') {
-            addFloatingMessage(message.text)
-          } else {
-            handleWhiteboardData(message)
-          }
-        } catch (error) {
-          console.warn('Error parsing incoming data channel message')
-        }
-      }
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && channelRef.current && currentUser) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc-signal',
-          payload: {
-            type: 'ice-candidate',
-            data: event.candidate,
-            from: currentUser.id,
-            to: userId
-          }
-        })
-      }
-    }
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'closed') {
-        peerConnectionsRef.current.delete(userId)
-        dataChannelRef.current.delete(userId)
-        
-        const audio = remoteAudioElementsRef.current.get(userId)
-        if (audio) {
-          audio.remove()
-          remoteAudioElementsRef.current.delete(userId)
-        }
-      }
-    }
-
-    return pc
-  }, [currentUser, setupRemoteAudio, createDataChannel, addFloatingMessage, handleWhiteboardData])
-
-const handleSignaling = useCallback(async (signal: SignalData) => {
-  if (!currentUser || signal.to !== currentUser.id) return
-
-  const { type, data, from } = signal
-  let pc = peerConnectionsRef.current.get(from)
-
-  try {      
-    switch (type) {
-      case 'offer':
-        // Always create a new peer connection for offers
-        if (pc) {
-          pc.close()
-          peerConnectionsRef.current.delete(from)
-        }
-        
-        pc = createPeerConnection(from)
-        peerConnectionsRef.current.set(from, pc)
-        
-        // Check if we can set remote description
-        if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
-          console.warn(`Cannot handle offer in state: ${pc.signalingState}`)
-          return
-        }
-        
-        await pc.setRemoteDescription(new RTCSessionDescription(data))
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        
-        if (channelRef.current) {
-          channelRef.current.send({
-            type: 'broadcast',
-            event: 'webrtc-signal',
-            payload: {
-              type: 'answer',
-              data: answer,
-              from: currentUser.id,
-              to: from
-            }
-          })
-        }
-        break
-
-      case 'answer':
-        if (!pc) {
-          console.warn('Received answer but no peer connection exists')
-          return
-        }
-        
-        // Check if we can set remote description for answer
-        if (pc.signalingState !== 'have-local-offer') {
-          console.warn(`Cannot handle answer in state: ${pc.signalingState}`)
-          return
-        }
-        
-        await pc.setRemoteDescription(new RTCSessionDescription(data))
-        break
-
-      case 'ice-candidate':
-        if (!pc) {
-          console.warn('Received ICE candidate but no peer connection exists')
-          return
-        }
-        
-        // Check if remote description is set before adding ICE candidates
-        if (pc.remoteDescription && data) {
-          await pc.addIceCandidate(new RTCIceCandidate(data))
-        } else {
-          console.warn('Cannot add ICE candidate: no remote description set')
-        }
-        break
-    }
-  } catch (error) {
-    console.error(`Signaling error for ${type}:`, error)
-    
-    // Clean up problematic connection
-    if (pc) {
-      pc.close()
-      peerConnectionsRef.current.delete(from)
-      dataChannelRef.current.delete(from)
-      
-      const audio = remoteAudioElementsRef.current.get(from)
-      if (audio) {
-        audio.remove()
-        remoteAudioElementsRef.current.delete(from)
-      }
-    }
-  }
-}, [currentUser, createPeerConnection])
-
-const createOffer = useCallback(async (targetUserId: string) => {
-  if (!currentUser || !localStreamRef.current) return
-
-  // Clean up any existing connection first
-  const existingPc = peerConnectionsRef.current.get(targetUserId)
-  if (existingPc) {
-    existingPc.close()
-    peerConnectionsRef.current.delete(targetUserId)
-  }
-
-  const pc = createPeerConnection(targetUserId)
-  peerConnectionsRef.current.set(targetUserId, pc)
-
-  try {
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-
-    if (channelRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'webrtc-signal',
-        payload: {
-          type: 'offer',
-          data: offer,
-          from: currentUser.id,
-          to: targetUserId
-        }
-      })
-    }
-  } catch (error) {
-    console.error('Error creating offer:', error)
-    pc.close()
-    peerConnectionsRef.current.delete(targetUserId)
-  }
-}, [currentUser, createPeerConnection])
-
-
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) return
 
-    const channel = supabaseRef.current.channel('cat-triangle-audio-simple', {
+    const channel = supabaseRef.current.channel('cat-triangle-simple', {
       config: { 
         presence: { key: currentUser.id },
         broadcast: { self: false }
@@ -860,44 +548,6 @@ const createOffer = useCallback(async (targetUserId: string) => {
       setIsConnected(users.length > 1)
     })
 
-    channel.on('presence', { event: 'join' }, ({ newPresences }: any) => {
-  newPresences?.forEach((presence: any) => {
-    if (currentUser && presence.id !== currentUser.id && isAudioEnabled) {
-      // Prevent duplicate offers
-      if (!pendingOffers.current.has(presence.id)) {
-        pendingOffers.current.add(presence.id)
-        setTimeout(() => {
-          createOffer(presence.id)
-          // Clean up after attempt
-          setTimeout(() => {
-            pendingOffers.current.delete(presence.id)
-          }, 5000)
-        }, 1000)
-      }
-    }
-  })
-})
-
-    channel.on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
-      leftPresences?.forEach((presence: any) => {
-        const pc = peerConnectionsRef.current.get(presence.id)
-        if (pc) {
-          pc.close()
-          peerConnectionsRef.current.delete(presence.id)
-        }
-        
-        const audio = remoteAudioElementsRef.current.get(presence.id)
-        if (audio) {
-          audio.remove()
-          remoteAudioElementsRef.current.delete(presence.id)
-        }
-      })
-    })
-
-    channel.on('broadcast', { event: 'webrtc-signal' }, ({ payload }: any) => {
-      handleSignaling(payload)
-    })
-
     channel.on('broadcast', { event: 'text-message' }, ({ payload }: any) => {
       if (payload.from !== currentUser.id) {
         addFloatingMessage(payload.text)
@@ -922,40 +572,28 @@ const createOffer = useCallback(async (targetUserId: string) => {
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [currentUser?.id, currentUser?.email, isVisible, isAudioEnabled, createOffer, handleSignaling, addFloatingMessage, handleWhiteboardData])
+  }, [currentUser?.id, currentUser?.email, isVisible, addFloatingMessage, handleWhiteboardData])
 
-const handleCircleClick = useCallback(async () => {
-  if (!currentUser) {
-    alert('Please log in to connect!')
-    return
-  }
-
-  try {
-    if (!isConnected) {
-      setConnectionStatus('connecting')
-      await getUserMedia()
-      setConnectionStatus('connected')
-      
-      setTimeout(() => {
-        connectedUsers.forEach((user) => {
-          if (user.id !== currentUser.id) {
-            createOffer(user.id)
-          }
-        })
-      }, 1000)
-    } else {
-      isCleaningUpRef.current = true
-      setConnectionStatus('idle')
-      await cleanup()
-      isCleaningUpRef.current = false
+  const handleCircleClick = useCallback(async () => {
+    if (!currentUser) {
+      alert('Please log in to connect!')
+      return
     }
-  } catch (error) {
-    console.error('Error:', error)
-    alert('Error accessing microphone')
-    setConnectionStatus('idle')
-    isCleaningUpRef.current = false
-  }
-}, [currentUser, isConnected, getUserMedia, connectedUsers, createOffer, cleanup])
+
+    try {
+      if (!isConnected) {
+        setConnectionStatus('connecting')
+        setConnectionStatus('connected')
+      } else {
+        setConnectionStatus('idle')
+        await cleanup()
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      setConnectionStatus('idle')
+    }
+  }, [currentUser, isConnected, cleanup])
+
   const getCatEmoji = () => {
     if (temporaryEmoji) return temporaryEmoji
     if (isConnected && connectedUsers.length > 1) return '😻'
