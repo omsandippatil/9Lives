@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import Whiteboard from './whiteboard'
+import MessageSystem from './message'
+import AudioSystem from './audio'
 
 interface User {
   id: string
@@ -57,23 +60,20 @@ export default function CatTriangle({
   const [isVisible, setIsVisible] = useState(false)
   const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([])
   const [temporaryEmoji, setTemporaryEmoji] = useState<string | null>(null)
-  const [showMessageInput, setShowMessageInput] = useState(false)
-  const [messageText, setMessageText] = useState('')
   const [floatingMessages, setFloatingMessages] = useState<FloatingMessage[]>([])
   const [usedLanes, setUsedLanes] = useState<Set<number>>(new Set())
   
   // Whiteboard states
   const [showWhiteboard, setShowWhiteboard] = useState(false)
-  const [isDrawing, setIsDrawing] = useState(false)
   const [whiteboardStrokes, setWhiteboardStrokes] = useState<WhiteboardStroke[]>([])
-  const [currentStroke, setCurrentStroke] = useState<{ x: number; y: number }[]>([])
-  const [drawColor, setDrawColor] = useState('#000000')
-  const [drawThickness, setDrawThickness] = useState(3)
-  const [isWhiteboardMinimized, setIsWhiteboardMinimized] = useState(false)
+  
+  // Message states
+  const [showMessageInput, setShowMessageInput] = useState(false)
+  const [messageText, setMessageText] = useState('')
   
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
-  const whiteboardCanvasRef = useRef<HTMLCanvasElement>(null)
+  const audioSystemRef = useRef<any>(null)
 
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
 
@@ -133,221 +133,17 @@ export default function CatTriangle({
     return Math.floor(Math.random() * totalLanes)
   }, [usedLanes])
 
-  const broadcastWhiteboardData = useCallback((data: WhiteboardData) => {
+  const broadcastData = useCallback((event: string, payload: any) => {
     if (!currentUser) return
 
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
-        event: 'whiteboard-data',
-        payload: data
+        event,
+        payload
       })
     }
   }, [currentUser])
-
-  const drawStroke = useCallback((stroke: WhiteboardStroke) => {
-    const canvas = whiteboardCanvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx || stroke.points.length < 2) return
-
-    ctx.strokeStyle = stroke.color
-    ctx.lineWidth = stroke.thickness
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-
-    ctx.beginPath()
-    ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
-    
-    for (let i = 1; i < stroke.points.length; i++) {
-      ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
-    }
-    
-    ctx.stroke()
-  }, [])
-
-  const redrawWhiteboard = useCallback(() => {
-    const canvas = whiteboardCanvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    whiteboardStrokes.forEach(stroke => {
-      drawStroke(stroke)
-    })
-  }, [whiteboardStrokes, drawStroke])
-
-  const handleWhiteboardData = useCallback((data: WhiteboardData) => {
-    if (!currentUser || data.userId === currentUser.id) return
-
-    if (data.type === 'draw' && data.stroke) {
-      setWhiteboardStrokes(prev => [...prev, data.stroke!])
-      drawStroke(data.stroke)
-    } else if (data.type === 'clear') {
-      setWhiteboardStrokes([])
-      const canvas = whiteboardCanvasRef.current
-      if (canvas) {
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height)
-        }
-      }
-    } else if (data.type === 'undo') {
-      setWhiteboardStrokes(prev => {
-        const newStrokes = prev.slice(0, -1)
-        setTimeout(() => {
-          const canvas = whiteboardCanvasRef.current
-          if (canvas) {
-            const ctx = canvas.getContext('2d')
-            if (ctx) {
-              ctx.clearRect(0, 0, canvas.width, canvas.height)
-              newStrokes.forEach(stroke => {
-                drawStroke(stroke)
-              })
-            }
-          }
-        }, 0)
-        return newStrokes
-      })
-    }
-  }, [currentUser, drawStroke])
-
-  const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = whiteboardCanvasRef.current
-    if (!canvas) return { x: 0, y: 0 }
-
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    }
-  }, [])
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!currentUser) return
-    
-    const pos = getMousePos(e)
-    setIsDrawing(true)
-    setCurrentStroke([pos])
-  }, [currentUser, getMousePos])
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !currentUser) return
-
-    const pos = getMousePos(e)
-    setCurrentStroke(prev => {
-      const newStroke = [...prev, pos]
-      
-      const canvas = whiteboardCanvasRef.current
-      if (canvas && newStroke.length >= 2) {
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.strokeStyle = drawColor
-          ctx.lineWidth = drawThickness
-          ctx.lineCap = 'round'
-          ctx.lineJoin = 'round'
-          
-          const lastPoint = newStroke[newStroke.length - 2]
-          ctx.beginPath()
-          ctx.moveTo(lastPoint.x, lastPoint.y)
-          ctx.lineTo(pos.x, pos.y)
-          ctx.stroke()
-        }
-      }
-      
-      return newStroke
-    })
-  }, [isDrawing, currentUser, getMousePos, drawColor, drawThickness])
-
-  const handleMouseUp = useCallback(() => {
-    if (!isDrawing || !currentUser || currentStroke.length < 2) {
-      setIsDrawing(false)
-      setCurrentStroke([])
-      return
-    }
-
-    const newStroke: WhiteboardStroke = {
-      id: `${currentUser.id}-${Date.now()}-${Math.random()}`,
-      points: currentStroke,
-      color: drawColor,
-      thickness: drawThickness,
-      timestamp: Date.now(),
-      userId: currentUser.id
-    }
-
-    setWhiteboardStrokes(prev => [...prev, newStroke])
-    broadcastWhiteboardData({
-      type: 'draw',
-      stroke: newStroke,
-      userId: currentUser.id,
-      timestamp: Date.now()
-    })
-
-    setIsDrawing(false)
-    setCurrentStroke([])
-  }, [isDrawing, currentUser, currentStroke, drawColor, drawThickness, broadcastWhiteboardData])
-
-  const clearWhiteboard = useCallback(() => {
-    if (!currentUser) return
-
-    setWhiteboardStrokes([])
-    const canvas = whiteboardCanvasRef.current
-    if (canvas) {
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-      }
-    }
-
-    broadcastWhiteboardData({
-      type: 'clear',
-      userId: currentUser.id,
-      timestamp: Date.now()
-    })
-  }, [currentUser, broadcastWhiteboardData])
-
-  const undoLastStroke = useCallback(() => {
-    if (!currentUser || whiteboardStrokes.length === 0) return
-
-    setWhiteboardStrokes(prev => {
-      const newStrokes = prev.slice(0, -1)
-      setTimeout(() => redrawWhiteboard(), 0)
-      return newStrokes
-    })
-
-    broadcastWhiteboardData({
-      type: 'undo',
-      userId: currentUser.id,
-      timestamp: Date.now()
-    })
-  }, [currentUser, whiteboardStrokes.length, redrawWhiteboard, broadcastWhiteboardData])
-
-  useEffect(() => {
-    const canvas = whiteboardCanvasRef.current
-    if (canvas && showWhiteboard && !isWhiteboardMinimized) {
-      const resizeCanvas = () => {
-        const rect = canvas.getBoundingClientRect()
-        canvas.width = Math.floor(rect.width * window.devicePixelRatio)
-        canvas.height = Math.floor(rect.height * window.devicePixelRatio)
-        
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
-          redrawWhiteboard()
-        }
-      }
-      
-      setTimeout(resizeCanvas, 100)
-      window.addEventListener('resize', resizeCanvas)
-      return () => window.removeEventListener('resize', resizeCanvas)
-    }
-  }, [showWhiteboard, isWhiteboardMinimized, redrawWhiteboard])
 
   const cleanup = useCallback(async () => {
     setIsConnected(false)
@@ -396,32 +192,6 @@ export default function CatTriangle({
       })
     }, 6000 + newMessage.delay)
   }, [getAvailableLane])
-
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || !currentUser) return
-
-    if (channelRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'text-message',
-        payload: {
-          text: text.trim(),
-          from: currentUser.id,
-          timestamp: Date.now()
-        }
-      })
-    }
-
-    addFloatingMessage(text.trim())
-  }, [currentUser, addFloatingMessage])
-
-  const handleSendMessage = useCallback(async () => {
-    if (!messageText.trim()) return
-    
-    await sendMessage(messageText)
-    setMessageText('')
-    setShowMessageInput(false)
-  }, [messageText, sendMessage])
 
   const addFloatingEmoji = useCallback((emoji: string) => {
     const newEmoji: FloatingEmoji = {
@@ -477,45 +247,33 @@ export default function CatTriangle({
       if (isVisible && event.altKey && event.key === 'w') {
         event.preventDefault()
         setShowWhiteboard(prev => !prev)
-        setIsWhiteboardMinimized(false)
       }
       
       if (isVisible && event.key === 'Tab' && !event.altKey && !event.ctrlKey) {
         event.preventDefault()
         setShowMessageInput(true)
-        setTimeout(() => {
-          const input = document.getElementById('cat-triangle-message-input')
-          if (input) input.focus()
-        }, 10)
       }
       
       if (isVisible && event.altKey && !showMessageInput) {
         if (event.key === 'y') {
           event.preventDefault()
           showTemporaryEmoji('👍')
+          audioSystemRef.current?.playSound('thumbsUp')
         } else if (event.key === 'n') {
           event.preventDefault()
           showTemporaryEmoji('👎')
+          audioSystemRef.current?.playSound('thumbsDown')
         } else if (event.key === 'l') {
           event.preventDefault()
           createHeartShower()
-        }
-      }
-      
-      if (showWhiteboard && !isWhiteboardMinimized && event.ctrlKey) {
-        if (event.key === 'z') {
-          event.preventDefault()
-          undoLastStroke()
-        } else if (event.key === 'Delete' || event.key === 'Backspace') {
-          event.preventDefault()
-          clearWhiteboard()
+          audioSystemRef.current?.playSound('hearts')
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji, showWhiteboard, isWhiteboardMinimized, undoLastStroke, clearWhiteboard])
+  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji])
 
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) return
@@ -551,11 +309,8 @@ export default function CatTriangle({
     channel.on('broadcast', { event: 'text-message' }, ({ payload }: any) => {
       if (payload.from !== currentUser.id) {
         addFloatingMessage(payload.text)
+        audioSystemRef.current?.playSound('message')
       }
-    })
-
-    channel.on('broadcast', { event: 'whiteboard-data' }, ({ payload }: any) => {
-      handleWhiteboardData(payload)
     })
 
     channel.subscribe(async (status: string) => {
@@ -572,7 +327,7 @@ export default function CatTriangle({
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [currentUser?.id, currentUser?.email, isVisible, addFloatingMessage, handleWhiteboardData])
+  }, [currentUser?.id, currentUser?.email, isVisible, addFloatingMessage])
 
   const handleCircleClick = useCallback(async () => {
     if (!currentUser) {
@@ -584,9 +339,11 @@ export default function CatTriangle({
       if (!isConnected) {
         setConnectionStatus('connecting')
         setConnectionStatus('connected')
+        audioSystemRef.current?.playSound('connect')
       } else {
         setConnectionStatus('idle')
         await cleanup()
+        audioSystemRef.current?.playSound('disconnect')
       }
     } catch (error) {
       console.error('Error:', error)
@@ -616,166 +373,44 @@ export default function CatTriangle({
     return null
   }
 
-  
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
+      {/* Audio System */}
+      <AudioSystem ref={audioSystemRef} />
+
       {/* Whiteboard */}
       {showWhiteboard && (
-        <div className={`fixed bg-white shadow-2xl border-2 border-black transition-all duration-300 pointer-events-auto ${
-          isWhiteboardMinimized 
-            ? 'bottom-20 right-4 w-80 h-12' 
-            : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-4/5 min-w-96 min-h-96'
-        } overflow-hidden`}>
-          
-          {/* Whiteboard Header */}
-          <div className="bg-black text-white p-3 flex justify-between items-center">
-            <span className="font-bold text-lg">Collaborative Whiteboard</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
-                className="w-6 h-6 bg-white text-black hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
-                title={isWhiteboardMinimized ? 'Expand' : 'Minimize'}
-              >
-                {isWhiteboardMinimized ? '↑' : '↓'}
-              </button>
-              <button
-                onClick={() => setShowWhiteboard(false)}
-                className="w-6 h-6 bg-white text-black hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
-                title="Close whiteboard"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          {!isWhiteboardMinimized && (
-            <>
-              {/* Whiteboard Controls */}
-              <div className="bg-gray-100 p-2 flex items-center gap-3 border-b border-black">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-black">Color:</label>
-                  <input
-                    type="color"
-                    value={drawColor}
-                    onChange={(e) => setDrawColor(e.target.value)}
-                    className="w-8 h-8 border border-black cursor-pointer"
-                  />
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-black">Size:</label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    value={drawThickness}
-                    onChange={(e) => setDrawThickness(parseInt(e.target.value))}
-                    className="w-20"
-                  />
-                  <span className="text-sm text-black w-8">{drawThickness}px</span>
-                </div>
-                
-                <div className="flex gap-2 ml-auto">
-                  <button
-                    onClick={undoLastStroke}
-                    disabled={whiteboardStrokes.length === 0}
-                    className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
-                  >
-                    Undo
-                  </button>
-                  <button
-                    onClick={clearWhiteboard}
-                    disabled={whiteboardStrokes.length === 0}
-                    className="px-3 py-1 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-sm font-medium transition-colors"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-
-              {/* Canvas */}
-              <div className="flex-1 relative">
-                <canvas
-                  ref={whiteboardCanvasRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
-                  className="w-full h-full cursor-crosshair bg-white block"
-                  style={{ touchAction: 'none' }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+        <Whiteboard
+          currentUser={currentUser}
+          strokes={whiteboardStrokes}
+          onStrokesChange={setWhiteboardStrokes}
+          onClose={() => setShowWhiteboard(false)}
+          broadcastData={broadcastData}
+          channelRef={channelRef}
+        />
       )}
+
+      {/* Message System */}
+      <MessageSystem
+        showMessageInput={showMessageInput}
+        messageText={messageText}
+        onMessageTextChange={setMessageText}
+        onShowMessageInputChange={setShowMessageInput}
+        currentUser={currentUser}
+        onSendMessage={(text: string) => {
+          broadcastData('text-message', {
+            text: text.trim(),
+            from: currentUser?.id,
+            timestamp: Date.now()
+          })
+          addFloatingMessage(text.trim())
+          audioSystemRef.current?.playSound('send')
+        }}
+        floatingMessages={floatingMessages}
+      />
 
       {/* Main UI Container */}
       <div className="fixed bottom-4 right-4 pointer-events-auto">
-       {showMessageInput && (
-          <div className="absolute bottom-20 right-0 mb-2">
-            <div className="bg-white shadow-lg border-2 border-black p-3">
-              <input
-                id="cat-triangle-message-input"
-                type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && messageText.trim()) {
-                    e.preventDefault()
-                    handleSendMessage()
-                  } else if (e.key === 'Escape') {
-                    setShowMessageInput(false)
-                    setMessageText('')
-                  }
-                }}
-                placeholder="Type message..."
-                className="w-40 px-2 py-2 text-xs border-2 border-black focus:outline-none focus:ring-0 focus:border-black font-medium text-gray-800 bg-white placeholder-gray-500"
-                maxLength={50}
-              />
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-gray-700 font-bold">{messageText.length}/50</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!messageText.trim()}
-                    className="px-3 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 disabled:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    Send
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMessageInput(false)
-                      setMessageText('')
-                    }}
-                    className="px-2 py-1 text-xs font-bold bg-black text-white border-2 border-black hover:bg-gray-800 transition-colors"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Floating Messages */}
-        {floatingMessages.map((message) => (
-          <div
-            key={message.id}
-            className="absolute pointer-events-none text-xs font-black select-none max-w-xs"
-            style={{
-              left: `${message.x}px`,
-              top: `${message.y}px`,
-              animationDelay: `${message.delay}ms`,
-              animation: 'float-left-text 6s ease-out forwards'
-            }}
-          >
-            <div className="bg-white px-2 py-1 shadow-lg rounded text-gray-800">
-              {message.text}
-            </div>
-          </div>
-        ))}
-
         {/* Floating Emojis */}
         {floatingEmojis.map((emoji) => (
           <div
@@ -858,33 +493,6 @@ export default function CatTriangle({
           }
           100% {
             transform: translateX(-350px) translateY(-225px) scale(0.95) rotate(0deg);
-            opacity: 0;
-          }
-        }
-        
-        @keyframes float-left-text {
-          0% {
-            transform: translateX(0) translateY(0) scale(0.9);
-            opacity: 0;
-          }
-          12% {
-            transform: translateX(-15px) translateY(-10px) scale(1);
-            opacity: 1;
-          }
-          35% {
-            transform: translateX(-40px) translateY(-30px) scale(1);
-            opacity: 1;
-          }
-          65% {
-            transform: translateX(-75px) translateY(-55px) scale(1);
-            opacity: 0.9;
-          }
-          85% {
-            transform: translateX(-105px) translateY(-80px) scale(0.98);
-            opacity: 0.5;
-          }
-          100% {
-            transform: translateX(-140px) translateY(-105px) scale(0.95);
             opacity: 0;
           }
         }
