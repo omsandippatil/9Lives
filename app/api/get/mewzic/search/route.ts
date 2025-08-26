@@ -74,36 +74,32 @@ export async function GET(request: NextRequest) {
         plays
       `, { count: 'exact' })
 
-    // General search across multiple fields (name, singers, playlist)
+    // General search across multiple fields - Fixed the multiline string issue
     if (query) {
-      searchQuery = searchQuery.or(`
-        name.ilike.%${query}%,
-        singers.ilike.%${query}%,
-        playlist.ilike.%${query}%,
-        vibe.ilike.%${query}%,
-        genre.ilike.%${query}%,
-        language.ilike.%${query}%
-      `)
+      const searchTerm = query.trim()
+      searchQuery = searchQuery.or(
+        `name.ilike.%${searchTerm}%,singers.ilike.%${searchTerm}%,playlist.ilike.%${searchTerm}%,vibe.ilike.%${searchTerm}%,genre.ilike.%${searchTerm}%,language.ilike.%${searchTerm}%`
+      )
     }
 
     // Specific field searches
     if (name) {
-      searchQuery = searchQuery.ilike('name', `%${name}%`)
+      searchQuery = searchQuery.ilike('name', `%${name.trim()}%`)
     }
     if (vibe) {
-      searchQuery = searchQuery.ilike('vibe', `%${vibe}%`)
+      searchQuery = searchQuery.ilike('vibe', `%${vibe.trim()}%`)
     }
     if (genre) {
-      searchQuery = searchQuery.ilike('genre', `%${genre}%`)
+      searchQuery = searchQuery.ilike('genre', `%${genre.trim()}%`)
     }
     if (language) {
-      searchQuery = searchQuery.ilike('language', `%${language}%`)
+      searchQuery = searchQuery.ilike('language', `%${language.trim()}%`)
     }
     if (singers) {
-      searchQuery = searchQuery.ilike('singers', `%${singers}%`)
+      searchQuery = searchQuery.ilike('singers', `%${singers.trim()}%`)
     }
     if (playlist) {
-      searchQuery = searchQuery.ilike('playlist', `%${playlist}%`)
+      searchQuery = searchQuery.ilike('playlist', `%${playlist.trim()}%`)
     }
 
     // Apply sorting
@@ -125,7 +121,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Failed to search songs',
-          details: error.message
+          details: error.message,
+          code: error.code || 'SEARCH_ERROR'
         },
         { status: 400 }
       )
@@ -243,21 +240,21 @@ export async function POST(request: NextRequest) {
         plays
       `, { count: 'exact' })
 
-    // Apply general search
+    // Apply general search - Fixed multiline string issue
     if (query) {
-      searchQuery = searchQuery.or(`
-        name.ilike.%${query}%,
-        singers.ilike.%${query}%,
-        playlist.ilike.%${query}%,
-        vibe.ilike.%${query}%,
-        genre.ilike.%${query}%
-      `)
+      const searchTerm = query.trim()
+      searchQuery = searchQuery.or(
+        `name.ilike.%${searchTerm}%,singers.ilike.%${searchTerm}%,playlist.ilike.%${searchTerm}%,vibe.ilike.%${searchTerm}%,genre.ilike.%${searchTerm}%`
+      )
     }
 
     // Apply filters
     Object.entries(filters).forEach(([field, value]) => {
       if (typeof value === 'string' && value.trim()) {
-        searchQuery = searchQuery.ilike(field, `%${value}%`)
+        const validFields = ['name', 'vibe', 'genre', 'language', 'singers', 'playlist']
+        if (validFields.includes(field)) {
+          searchQuery = searchQuery.ilike(field, `%${value.trim()}%`)
+        }
       }
     })
 
@@ -283,7 +280,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Failed to perform advanced search',
-          details: error.message
+          details: error.message,
+          code: error.code || 'ADVANCED_SEARCH_ERROR'
         },
         { status: 400 }
       )

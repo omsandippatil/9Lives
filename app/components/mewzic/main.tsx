@@ -132,6 +132,18 @@ const Mewzic: React.FC = () => {
     if (!hasCachedData && !isDataLoaded) {
       fetchInitialData();
     }
+
+    // Clear search state on component mount to prevent search persistence
+    setSearchState({
+      query: '',
+      isSearching: false,
+      searchResults: [],
+      totalResults: 0,
+      hasMore: false,
+      currentOffset: 0
+    });
+    setSearchQuery('');
+    setShowSearch(false);
   }, []);
 
   // Cache song ID whenever it changes
@@ -517,7 +529,7 @@ const Mewzic: React.FC = () => {
 
   // Fullscreen overlay when visible
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
+    <div className="fixed inset-0 z-50">
       {/* Hidden player for background playback */}
       {hiddenPlayer}
       
@@ -526,21 +538,21 @@ const Mewzic: React.FC = () => {
       
       {/* Main Fullscreen Panel */}
       <div className="relative w-full h-full bg-white text-black font-mono flex flex-col animate-in fade-in zoom-in-95 duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-black bg-white flex-shrink-0">
+        {/* Header - Fixed */}
+        <div className="flex items-center justify-between p-4 border-b border-black bg-white flex-shrink-0 relative z-10">
           <div className="flex items-center">
-            <span className="text-2xl mr-3">🐱</span>
-            <h1 className="text-2xl font-bold text-black">Mewzic</h1>
+            <span className="text-xl mr-2">🐱</span>
+            <h1 className="text-xl text-black">Mewzic</h1>
             {(isLoading || searchState.isSearching) && (
-              <div className="ml-4 text-lg text-gray-600">
+              <div className="ml-3 text-sm text-gray-600">
                 {isLoading ? 'Loading...' : 'Searching...'}
               </div>
             )}
           </div>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             {showSearch && (
-              <div className="w-80 animate-in slide-in-from-right-3 duration-300">
+              <div className="w-64 animate-in slide-in-from-right-3 duration-300">
                 <SearchBar 
                   onSearch={handleSearch}
                   searchQuery={searchQuery}
@@ -558,21 +570,21 @@ const Mewzic: React.FC = () => {
                   setSearchQuery('');
                   handleSearch('');
                 }}
-                className="p-3 hover:bg-gray-100 border border-black text-black transition-colors rounded"
+                className="p-2 hover:bg-gray-100 border border-black text-black transition-colors rounded"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             ) : (
               <button
                 onClick={() => setShowSearch(true)}
-                className="p-3 hover:bg-gray-100 border border-black text-black transition-colors rounded"
+                className="p-2 hover:bg-gray-100 border border-black text-black transition-colors rounded"
               >
-                <Search className="h-5 w-5" />
+                <Search className="h-4 w-4" />
               </button>
             )}
             <button
               onClick={() => setIsVisible(false)}
-              className="p-3 hover:bg-gray-100 text-black transition-colors text-lg font-bold"
+              className="p-2 hover:bg-gray-100 text-black transition-colors font-bold"
               title="Close (Alt + P)"
             >
               ✕
@@ -580,8 +592,8 @@ const Mewzic: React.FC = () => {
           </div>
         </div>
 
-        {/* Sections - Fullscreen scrollable */}
-        <div className="flex-1 overflow-hidden">
+        {/* Sections - Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <MusicSections
             sections={sections}
             onSongSelect={handleSongSelect}
@@ -590,8 +602,8 @@ const Mewzic: React.FC = () => {
           />
         </div>
 
-        {/* Player - Fullscreen bottom */}
-        <div className="flex-shrink-0 border-t border-black bg-white">
+        {/* Player - Fixed bottom */}
+        <div className="flex-shrink-0 border-t border-black bg-white relative z-10">
           <MusicPlayer
             currentSongId={currentSongId}
             onPlayPause={handlePlayPause}
