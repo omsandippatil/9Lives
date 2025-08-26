@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 
 interface PlaylistItem {
   id: string;
@@ -392,15 +392,18 @@ class YouTubePlayerManager {
   }
 }
 
+// Force re-render reducer
+const forceRenderReducer = (state: number): number => state + 1;
+
 const YouTubePlaylistStreamer: React.FC<YouTubePlaylistStreamerProps> = ({ 
   playlistId
 }) => {
-  const [, forceUpdate] = useState({});
+  const [, forceUpdate] = useReducer(forceRenderReducer, 0);
   const managerRef = useRef<YouTubePlayerManager>();
 
   // Force re-render when manager state changes
   const triggerUpdate = useCallback(() => {
-    forceUpdate({});
+    forceUpdate();
   }, []);
 
   useEffect(() => {
