@@ -94,6 +94,7 @@ const Mewzic: React.FC = () => {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const twoFingerStartY = useRef<number[]>([]);
   const twoFingerEndY = useRef<number[]>([]);
+  const playPauseToggleRef = useRef<number>(0);
 
   // Load cached data and song ID on component mount
   useEffect(() => {
@@ -379,7 +380,7 @@ const Mewzic: React.FC = () => {
     }, 300); // 300ms debounce
   }, [options, performSearch]);
 
-  // Keyboard shortcuts - only Alt+P and Alt+V
+  // Keyboard shortcuts - Alt+P and Alt+V
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.key.toLowerCase() === 'p') {
@@ -482,9 +483,10 @@ const Mewzic: React.FC = () => {
 
   const handlePlayPause = () => {
     if (currentSongId !== null) {
-      // Player component will handle play/pause logic
+      // Increment toggle counter to trigger play/pause in player component
+      playPauseToggleRef.current += 1;
     } else {
-      // Play random song if no song is cached
+      // Play random song if no song is selected
       if (allSongs.length > 0) {
         const randomSong = allSongs[Math.floor(Math.random() * allSongs.length)];
         setCurrentSongId(randomSong.id);
@@ -510,29 +512,29 @@ const Mewzic: React.FC = () => {
     }
   };
 
-  // Always render the hidden player for background playback
-  const hiddenPlayer = (
-    <div className="hidden">
-      <MusicPlayer
-        currentSongId={currentSongId}
-        onPlayPause={handlePlayPause}
-        onNext={handleNext}
-        onPrev={handlePrev}
-      />
-    </div>
+  // Single player instance that's always rendered
+  const musicPlayer = (
+    <MusicPlayer
+      currentSongId={currentSongId}
+      onPlayPause={handlePlayPause}
+      onNext={handleNext}
+      onPrev={handlePrev}
+      playPauseToggle={playPauseToggleRef.current}
+    />
   );
 
-  // If not visible, only render hidden player (completely hidden UI)
+  // If not visible, render player in hidden container for background playback
   if (!isVisible) {
-    return hiddenPlayer;
+    return (
+      <div className="fixed top-0 left-0 w-0 h-0 overflow-hidden pointer-events-none">
+        {musicPlayer}
+      </div>
+    );
   }
 
   // Fullscreen overlay when visible
   return (
     <div className="fixed inset-0 z-50">
-      {/* Hidden player for background playback */}
-      {hiddenPlayer}
-      
       {/* Fullscreen backdrop */}
       <div className="absolute inset-0 bg-black bg-opacity-80" />
       
@@ -604,12 +606,7 @@ const Mewzic: React.FC = () => {
 
         {/* Player - Fixed bottom */}
         <div className="flex-shrink-0 border-t border-black bg-white relative z-10">
-          <MusicPlayer
-            currentSongId={currentSongId}
-            onPlayPause={handlePlayPause}
-            onNext={handleNext}
-            onPrev={handlePrev}
-          />
+          {musicPlayer}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Loader, AlertTriangle } from 'lucide-react';
 
 interface Song {
@@ -23,19 +23,88 @@ interface MusicPlayerProps {
   onPlayPause: () => void;
   onNext: () => void;
   onPrev: () => void;
+  playPauseToggle?: number;
+}
+
+// YouTube Player API interface
+interface YTPlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  getPlayerState: () => number;
+  addEventListener: (event: string, listener: (event: any) => void) => void;
+  removeEventListener: (event: string, listener: (event: any) => void) => void;
+  destroy: () => void;
+}
+
+declare global {
+  interface Window {
+    YT: {
+      Player: new (elementId: string, config: any) => YTPlayer;
+      PlayerState: {
+        ENDED: number;
+        PLAYING: number;
+        PAUSED: number;
+        BUFFERING: number;
+        CUED: number;
+      };
+      ready: (callback: () => void) => void;
+    };
+    onYouTubeIframeAPIReady: () => void;
+  }
 }
 
 const MusicPlayer: React.FC<MusicPlayerProps> = ({ 
   currentSongId, 
   onPlayPause, 
   onNext, 
-  onPrev 
+  onPrev,
+  playPauseToggle 
 }) => {
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [ytApiReady, setYtApiReady] = useState(false);
+
+  const playerRef = useRef<YTPlayer | null>(null);
+  const playerElementRef = useRef<string>(`yt-player-${Date.now()}`);
+  const previousPlayPauseToggle = useRef<number>(0);
+
+  // Load YouTube API
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      setYtApiReady(true);
+      return;
+    }
+
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+
+    window.onYouTubeIframeAPIReady = () => {
+      setYtApiReady(true);
+    };
+
+    return () => {
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (error) {
+          console.log('Error destroying YouTube player:', error);
+        }
+      }
+    };
+  }, []);
+
+  // Handle play/pause toggle from external control (Alt+V)
+  useEffect(() => {
+    if (playPauseToggle && playPauseToggle !== previousPlayPauseToggle.current) {
+      previousPlayPauseToggle.current = playPauseToggle;
+      handlePlayPause();
+    }
+  }, [playPauseToggle]);
 
   // Load song data
   useEffect(() => {
@@ -43,6 +112,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       setCurrentSong(null);
       setIsPlaying(false);
       setHasError(false);
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+          playerRef.current = null;
+        } catch (error) {
+          console.log('Error destroying player:', error);
+        }
+      }
       return;
     }
 
@@ -56,24 +133,18 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         
         const response = await fetch(`/api/get/mewzic/song?id=${currentSongId}`);
         
-        console.log('Response status:', response.status);
-        console.log('Response headers:', response.headers.get('content-type'));
-        
         if (!response.ok) {
           const text = await response.text();
-          console.log('Error response body:', text);
           throw new Error(`API Error: ${response.status} - ${text}`);
         }
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
           const text = await response.text();
-          console.log('Non-JSON response:', text);
           throw new Error('API returned non-JSON response');
         }
 
         const data = await response.json();
-        console.log('Parsed data:', data);
         
         if (data.error) {
           throw new Error(data.error);
@@ -84,7 +155,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         }
 
         setCurrentSong(data);
-        setIsPlaying(true); // Auto-play when song loads
         
       } catch (error) {
         console.error('Failed to load song:', error);
@@ -98,9 +168,100 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     fetchSong();
   }, [currentSongId]);
 
+  // Initialize YouTube player when song changes and API is ready
+  useEffect(() => {
+    if (!currentSong || !ytApiReady || hasError) return;
+
+    const initializePlayer = () => {
+      // Destroy existing player
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (error) {
+          console.log('Error destroying previous player:', error);
+        }
+      }
+
+      // Create new player
+      try {
+        playerRef.current = new window.YT.Player(playerElementRef.current, {
+          height: '0',
+          width: '0',
+          videoId: currentSong.youtube.videoId,
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+          },
+          events: {
+            onReady: (event: any) => {
+              console.log('YouTube player ready');
+              setIsPlaying(true);
+              event.target.playVideo();
+            },
+            onStateChange: (event: any) => {
+              const state = event.data;
+              console.log('YouTube player state changed:', state);
+              
+              if (state === window.YT.PlayerState.PLAYING) {
+                setIsPlaying(true);
+              } else if (state === window.YT.PlayerState.PAUSED) {
+                setIsPlaying(false);
+              } else if (state === window.YT.PlayerState.ENDED) {
+                setIsPlaying(false);
+                // Auto-play next song when current song ends
+                console.log('Song ended, playing next song');
+                onNext();
+              }
+            },
+            onError: (event: any) => {
+              console.error('YouTube player error:', event.data);
+              setHasError(true);
+              setErrorMessage('Failed to load video');
+              setIsPlaying(false);
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Error creating YouTube player:', error);
+        setHasError(true);
+        setErrorMessage('Failed to initialize player');
+      }
+    };
+
+    if (window.YT && window.YT.ready) {
+      window.YT.ready(initializePlayer);
+    } else {
+      initializePlayer();
+    }
+
+    return () => {
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (error) {
+          console.log('Error in cleanup:', error);
+        }
+      }
+    };
+  }, [currentSong, ytApiReady, hasError]);
+
   const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    onPlayPause();
+    if (!playerRef.current || hasError) return;
+
+    try {
+      if (isPlaying) {
+        playerRef.current.pauseVideo();
+      } else {
+        playerRef.current.playVideo();
+      }
+    } catch (error) {
+      console.error('Error controlling playback:', error);
+    }
   };
 
   const handleNext = () => {
@@ -111,13 +272,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const handlePrev = () => {
     setIsPlaying(false);
     onPrev();
-  };
-
-  // Format time display
-  const formatTime = (time: number): string => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   if (!currentSong) {
@@ -140,19 +294,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         </div>
       )}
 
-      {/* Hidden YouTube Player */}
-      {currentSong && isPlaying && !hasError && (
-        <div className="hidden">
-          <iframe
-            src={currentSong.youtube.embedUrl}
-            width="0"
-            height="0"
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-            title={currentSong.name}
-          />
-        </div>
-      )}
+      {/* Hidden YouTube Player Container */}
+      <div className="hidden">
+        <div id={playerElementRef.current}></div>
+      </div>
 
       {/* Main Player */}
       <div className="h-20 flex items-center px-4">
@@ -194,9 +339,9 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
             onClick={handlePlayPause} 
             className="p-2 border border-black hover:bg-gray-100 transition-colors disabled:opacity-50"
             title={isPlaying ? "Pause" : "Play"}
-            disabled={isLoading || hasError}
+            disabled={isLoading || hasError || !ytApiReady}
           >
-            {isLoading ? (
+            {isLoading || !ytApiReady ? (
               <Loader className="h-5 w-5 animate-spin" />
             ) : isPlaying ? (
               <Pause className="h-5 w-5" />

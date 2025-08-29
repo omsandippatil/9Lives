@@ -1,0 +1,23 @@
+name: Syntax APIs Every 1 Hour
+
+on:
+  schedule:
+    # Runs every 1 hour
+    - cron: "0 * * * *"
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping-syntax-apis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Python Syntax API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/syntax/python?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call Java Syntax API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/syntax/java?api_key=${{ secrets.API_KEY }}"
+
+      - name: Call SQL Syntax API
+        run: |
+          curl -X GET "https://9-lives.vercel.app/api/add/syntax/sql?api_key=${{ secrets.API_KEY }}"
