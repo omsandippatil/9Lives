@@ -817,47 +817,51 @@ export default function CatTriangle({
               <div className="flex justify-center space-x-2 mb-3">
                 <button
                   onClick={handleFocusLocal}
-                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                  className={`w-10 h-8 text-lg border transition-colors flex items-center justify-center ${
                     focusedUser === 'local' 
                       ? 'bg-white text-black border-white' 
                       : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
                   }`}
                   onMouseDown={(e) => e.stopPropagation()}
+                  title="Focus on me"
                 >
-                  FOCUS_ME
+                  😺
                 </button>
                 <button
                   onClick={handleFocusRemote}
-                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                  className={`w-10 h-8 text-lg border transition-colors flex items-center justify-center ${
                     focusedUser === 'remote' 
                       ? 'bg-white text-black border-white' 
                       : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
                   }`}
                   onMouseDown={(e) => e.stopPropagation()}
+                  title="Focus on them"
                 >
-                  FOCUS_THEM
+                  😻
                 </button>
                 <button
                   onClick={handleRemoteOnly}
-                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                  className={`w-10 h-8 text-lg border transition-colors flex items-center justify-center ${
                     focusedUser === 'remote-only' 
                       ? 'bg-white text-black border-white' 
                       : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
                   }`}
                   onMouseDown={(e) => e.stopPropagation()}
+                  title="Show them only"
                 >
-                  THEM_ONLY
+                  👁️
                 </button>
                 <button
                   onClick={() => setFocusedUser(null)}
-                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                  className={`w-10 h-8 text-lg border transition-colors flex items-center justify-center ${
                     focusedUser === null 
                       ? 'bg-white text-black border-white' 
                       : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
                   }`}
                   onMouseDown={(e) => e.stopPropagation()}
+                  title="Equal split"
                 >
-                  EQUAL
+                  ⚖️
                 </button>
               </div>
 
@@ -865,20 +869,22 @@ export default function CatTriangle({
               <div className="flex justify-center space-x-2">
                 <button
                   onClick={() => audioSystemRef.current?.toggleMute()}
-                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-lg transition-colors"
                   onMouseDown={(e) => e.stopPropagation()}
+                  title={audioSystemRef.current?.isMuted() ? 'Unmute microphone' : 'Mute microphone'}
                 >
-                  {audioSystemRef.current?.isMuted() ? 'MIC_OFF' : 'MIC_ON'}
+                  {audioSystemRef.current?.isMuted() ? '🔇' : '🎤'}
                 </button>
                 <button
                   onClick={() => {
                     audioSystemRef.current?.toggleVideo()
                     setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
                   }}
-                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-lg transition-colors"
                   onMouseDown={(e) => e.stopPropagation()}
+                  title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
                 >
-                  {isVideoEnabled ? 'CAM_ON' : 'CAM_OFF'}
+                  {isVideoEnabled ? '📹' : '📷'}
                 </button>
               </div>
             </div>
