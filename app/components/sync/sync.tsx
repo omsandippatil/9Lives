@@ -446,9 +446,10 @@ export default function CatTriangle({
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Audio System with event handlers */}
+      {/* Audio System with Railway TURN server */}
       <AudioSystem 
         ref={audioSystemRef}
+        serverUrl="https://poetic-respect-production-a65b.up.railway.app"
         onUserConnected={handleAudioUserConnected}
         onUserDisconnected={handleAudioUserDisconnected}
         onConnectionStatusChange={handleAudioConnectionStatusChange}
@@ -581,7 +582,7 @@ export default function CatTriangle({
           82% {
             transform: translateX(-220px) translateY(-145px) scale(1.1) rotate(-0.8deg);
             opacity: 0.6;
-          }
+          } 
           92% {
             transform: translateX(-270px) translateY(-175px) scale(1.05) rotate(0.3deg);
             opacity: 0.4;
