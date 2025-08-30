@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useCallback, useRef, useEffect, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
+import AgoraRTC, { IAgoraRTCClient, IAgoraRTCRemoteUser, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng'
 
 interface AudioSystemRef {
   playSound: (soundType: string) => void
@@ -9,10 +9,13 @@ interface AudioSystemRef {
   getCurrentRoom: () => string | null
   toggleMute: () => void
   isMuted: () => boolean
+  toggleVideo: () => void
+  isVideoEnabled: () => boolean
+  getRemoteUsers: () => IAgoraRTCRemoteUser[]
 }
 
 interface AudioSystemProps {
-  serverUrl?: string
+  appId?: string
   onUserConnected?: (user: { id: string; nickname: string; muted: boolean }) => void
   onUserDisconnected?: (userId: string, nickname: string) => void
   onConnectionStatusChange?: (status: 'disconnected' | 'connecting' | 'connected') => void
@@ -21,7 +24,7 @@ interface AudioSystemProps {
 
 const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) => {
   const {
-    serverUrl = 'https://9lives-services-production.up.railway.app',
+    appId = '9c8b7a6f5e4d3c2b1a908f7e6d5c4b3a', // Replace with your Agora App ID
     onUserConnected,
     onUserDisconnected,
     onConnectionStatusChange,
@@ -32,71 +35,82 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   const audioContextRef = useRef<AudioContext | null>(null)
   const isInitializedRef = useRef(false)
 
-  // WebRTC and Socket.io refs
-  const socketRef = useRef<Socket | null>(null)
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
-  const localStreamRef = useRef<MediaStream | null>(null)
+  // Agora refs
+  const clientRef = useRef<IAgoraRTCClient | null>(null)
+  const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null)
+  const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null)
 
   // State
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [currentRoom, setCurrentRoom] = useState<string | null>(null)
   const [isMutedState, setIsMutedState] = useState(false)
-  const [connectedUsers, setConnectedUsers] = useState<Map<string, { id: string; nickname: string; muted: boolean }>>(new Map())
-  const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false)
+  const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([])
 
-  // Railway TURN server credentials
-  const TURN_SECRET = '74c248155e3bec68512b98968fae1859dde9246b506b6e412d88f9e03fa58c16'
-  const TURN_USERNAME = 'audiouser'
+  // Initialize Agora client
+  const initializeAgora = useCallback(async () => {
+    if (clientRef.current) return
 
-  // Generate TURN credentials using Railway server secret
-  const generateTURNCredentials = useCallback(() => {
-    const timestamp = Math.floor(Date.now() / 1000) + 86400 // 24 hours TTL
-    const username = `${timestamp}:${TURN_USERNAME}`
-    
-    // Create HMAC-SHA1 signature (browser-compatible)
-    const encoder = new TextEncoder()
-    const keyData = encoder.encode(TURN_SECRET)
-    const messageData = encoder.encode(username)
-    
-    return crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-1' },
-      false,
-      ['sign']
-    ).then(key => {
-      return crypto.subtle.sign('HMAC', key, messageData)
-    }).then(signature => {
-      const credential = btoa(String.fromCharCode(...new Uint8Array(signature)))
-      return { username, credential, timestamp }
-    }).catch(() => {
-      // Fallback for older browsers
-      const credential = btoa(`${username}:${TURN_SECRET}`)
-      return { username, credential, timestamp }
-    })
-  }, [])
+    try {
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+      
+      client.on('user-published', async (user, mediaType) => {
+        console.log('User published:', user.uid, mediaType)
+        await client.subscribe(user, mediaType)
+        
+        setRemoteUsers(prev => {
+          const existing = prev.find(u => u.uid === user.uid)
+          if (existing) return prev
+          return [...prev, user]
+        })
+        
+        onUserConnected?.({
+          id: user.uid.toString(),
+          nickname: user.uid.toString(),
+          muted: !user.hasAudio
+        })
 
-  // Get ICE servers from Railway deployment
-  const getICEServers = useCallback(async () => {
-    const domain = serverUrl.replace(/^https?:\/\//, '')
-    const turnCreds = await generateTURNCredentials()
-    
-    return [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: `stun:${domain}:3478` },
-      {
-        urls: `turn:${domain}:3478`,
-        username: turnCreds.username,
-        credential: turnCreds.credential
-      },
-      {
-        urls: `turn:${domain}:3478?transport=tcp`,
-        username: turnCreds.username,
-        credential: turnCreds.credential
-      }
-    ]
-  }, [serverUrl, generateTURNCredentials])
+        if (mediaType === 'audio' && user.audioTrack) {
+          user.audioTrack.play()
+        }
+
+        if (mediaType === 'video' && user.videoTrack) {
+          const remoteVideoContainer = document.getElementById(`remote-video-${user.uid}`)
+          if (remoteVideoContainer) {
+            user.videoTrack.play(remoteVideoContainer)
+          }
+        }
+      })
+
+      client.on('user-unpublished', (user, mediaType) => {
+        console.log('User unpublished:', user.uid, mediaType)
+        
+        if (mediaType === 'video') {
+          const remoteVideoContainer = document.getElementById(`remote-video-${user.uid}`)
+          if (remoteVideoContainer) {
+            remoteVideoContainer.innerHTML = ''
+          }
+        }
+      })
+
+      client.on('user-left', (user) => {
+        console.log('User left:', user.uid)
+        setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
+        onUserDisconnected?.(user.uid.toString(), user.uid.toString())
+        
+        // Clean up video container
+        const remoteVideoContainer = document.getElementById(`remote-video-${user.uid}`)
+        if (remoteVideoContainer) {
+          remoteVideoContainer.remove()
+        }
+      })
+
+      clientRef.current = client
+    } catch (error) {
+      console.error('Failed to initialize Agora:', error)
+      throw error
+    }
+  }, [onUserConnected, onUserDisconnected])
 
   // Initialize audio context
   const initializeAudio = useCallback(() => {
@@ -110,388 +124,128 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     }
   }, [])
 
-  // Initialize Socket.io connection
-  const initializeSocket = useCallback(() => {
-    if (socketRef.current?.connected) return Promise.resolve()
-
-    return new Promise<void>((resolve, reject) => {
+  // Connect to room
+  const connectToRoom = useCallback(async (nickname?: string): Promise<boolean> => {
+    try {
       setConnectionStatus('connecting')
       onConnectionStatusChange?.('connecting')
 
-      const socket = io(serverUrl, {
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000
-      })
-
-      socket.on('connect', () => {
-        console.log('Connected to Railway TURN server:', socket.id)
-        setConnectionStatus('connected')
-        onConnectionStatusChange?.('connected')
-        socketRef.current = socket
-        resolve()
-      })
-
-      socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error)
-        setConnectionStatus('disconnected')
-        onConnectionStatusChange?.('disconnected')
-        reject(error)
-      })
-
-      socket.on('disconnect', (reason) => {
-        console.log('Disconnected from Railway server:', reason)
-        setConnectionStatus('disconnected')
-        onConnectionStatusChange?.('disconnected')
-        
-        // Clean up peer connections
-        peerConnectionsRef.current.forEach((pc, userId) => {
-          closePeerConnection(userId)
-        })
-        peerConnectionsRef.current.clear()
-        setConnectedUsers(new Map())
-      })
-
-      // Railway server events
-      socket.on('audio-room-joined', async (data) => {
-        console.log('Joined audio room:', data.roomId)
-        setCurrentRoom(data.roomId)
-        
-        // Update ICE servers with fresh credentials
-        if (data.iceServers) {
-          setIceServers(data.iceServers)
-        }
-        
-        // Connect to existing users
-        const existingUsers = new Map()
-        data.users?.forEach((user: any) => {
-          if (user.id !== socket.id) {
-            existingUsers.set(user.id, user)
-            createPeerConnection(user.id, true)
-          }
-        })
-        setConnectedUsers(existingUsers)
-      })
-
-      socket.on('room-full', () => {
-        console.warn('Audio room is full')
-        onRoomFull?.()
-      })
-
-      socket.on('user-joined', async (data) => {
-        console.log('User joined:', data.user.nickname)
-        const user = data.user
-        
-        setConnectedUsers(prev => new Map(prev.set(user.id, user)))
-        onUserConnected?.(user)
-        
-        // Create peer connection for new user
-        setTimeout(() => {
-          createPeerConnection(user.id, false)
-        }, 1000)
-      })
-
-      socket.on('user-left', (data) => {
-        console.log('User left:', data.userId)
-        
-        setConnectedUsers(prev => {
-          const newUsers = new Map(prev)
-          newUsers.delete(data.userId)
-          return newUsers
-        })
-        
-        closePeerConnection(data.userId)
-        onUserDisconnected?.(data.userId, data.userId)
-      })
-
-      // WebRTC signaling
-      socket.on('audio-offer', async ({ offer, sender }) => {
-        console.log('Received offer from:', sender)
-        await handleOffer(offer, sender)
-      })
-
-      socket.on('audio-answer', async ({ answer, sender }) => {
-        console.log('Received answer from:', sender)
-        await handleAnswer(answer, sender)
-      })
-
-      socket.on('ice-candidate', async ({ candidate, sender }) => {
-        console.log('Received ICE candidate from:', sender)
-        await handleICECandidate(candidate, sender)
-      })
-
-      socket.on('audio-state-changed', (data) => {
-        console.log('Audio state changed:', data.userId, 'muted:', data.muted)
-        setConnectedUsers(prev => {
-          const user = prev.get(data.userId)
-          if (user) {
-            const updated = new Map(prev)
-            updated.set(data.userId, { ...user, muted: data.muted })
-            return updated
-          }
-          return prev
-        })
-      })
-
-      socket.on('error', (error) => {
-        console.error('Socket error:', error)
-      })
-    })
-  }, [serverUrl, onConnectionStatusChange, onUserConnected, onUserDisconnected, onRoomFull])
-
-  // Get user media
-  const getUserMedia = useCallback(async () => {
-    if (localStreamRef.current) return localStreamRef.current
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
-          channelCount: 1
-        },
-        video: false
-      })
-      localStreamRef.current = stream
+      await initializeAgora()
       
-      // Apply mute state
-      stream.getAudioTracks().forEach(track => {
-        track.enabled = !isMutedState
-      })
-      
-      return stream
-    } catch (error) {
-      console.error('Failed to get user media:', error)
-      throw error
-    }
-  }, [isMutedState])
-
-  // Create peer connection
-  const createPeerConnection = useCallback(async (userId: string, isInitiator: boolean) => {
-    if (peerConnectionsRef.current.has(userId)) {
-      console.log('Peer connection already exists for:', userId)
-      return
-    }
-
-    console.log('Creating peer connection for:', userId, 'as initiator:', isInitiator)
-
-    const peerConnection = new RTCPeerConnection({
-      iceServers: iceServers,
-      iceCandidatePoolSize: 10,
-      iceTransportPolicy: 'all'
-    })
-
-    // Add local stream
-    try {
-      const stream = await getUserMedia()
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream)
-      })
-    } catch (error) {
-      console.warn('Failed to add local stream:', error)
-    }
-
-    // Handle remote stream
-    peerConnection.ontrack = (event) => {
-      console.log('Received remote stream from:', userId)
-      const [remoteStream] = event.streams
-      
-      let remoteAudio = document.getElementById(`remote-audio-${userId}`) as HTMLAudioElement
-      if (!remoteAudio) {
-        remoteAudio = document.createElement('audio')
-        remoteAudio.id = `remote-audio-${userId}`
-        remoteAudio.autoplay = true 
-        remoteAudio.volume = 1.0
-        document.body.appendChild(remoteAudio)
+      if (!clientRef.current) {
+        throw new Error('Agora client not initialized')
       }
+
+      // Generate room channel (you might want to make this configurable)
+      const channel = 'cat-triangle-room'
+      const uid = Math.floor(Math.random() * 1000000)
+
+      // Join the channel
+      await clientRef.current.join(appId, channel, null, uid)
       
-      remoteAudio.srcObject = remoteStream
-    }
+      // Create local audio track
+      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'music_standard'
+      })
+      localAudioTrackRef.current = audioTrack
 
-    // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        console.log('Sending ICE candidate to:', userId)
-        socketRef.current.emit('ice-candidate', {
-          target: userId,
-          candidate: event.candidate
-        })
-      }
-    }
+      // Publish audio track
+      await clientRef.current.publish([audioTrack])
 
-    // Connection state monitoring
-    peerConnection.onconnectionstatechange = () => {
-      console.log(`Peer connection state for ${userId}:`, peerConnection.connectionState)
-      
-      if (peerConnection.connectionState === 'failed') {
-        console.log('Peer connection failed, restarting ICE for:', userId)
-        peerConnection.restartIce()
-      }
-    }
+      setCurrentRoom(channel)
+      setConnectionStatus('connected')
+      onConnectionStatusChange?.('connected')
 
-    peerConnectionsRef.current.set(userId, peerConnection)
-
-    // Create offer if initiator
-    if (isInitiator) {
-      try {
-        const offer = await peerConnection.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: false
-        })
-        await peerConnection.setLocalDescription(offer)
-        
-        if (socketRef.current) {
-          socketRef.current.emit('audio-offer', {
-            target: userId,
-            offer: offer
-          })
-        }
-      } catch (error) {
-        console.error('Failed to create offer for:', userId, error)
-      }
-    }
-  }, [getUserMedia, iceServers])
-
-  // Handle WebRTC signaling
-  const handleOffer = useCallback(async (offer: RTCSessionDescriptionInit, senderId: string) => {
-    let peerConnection = peerConnectionsRef.current.get(senderId)
-    
-    if (!peerConnection) {
-      await createPeerConnection(senderId, false)
-      peerConnection = peerConnectionsRef.current.get(senderId)
-      if (!peerConnection) return
-    }
-
-    try {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await peerConnection.createAnswer()
-      await peerConnection.setLocalDescription(answer)
-      
-      if (socketRef.current) {
-        socketRef.current.emit('audio-answer', {
-          target: senderId,
-          answer: answer
-        })
-      }
+      console.log('Connected to Agora room:', channel)
+      return true
     } catch (error) {
-      console.error('Error handling offer from:', senderId, error)
-    }
-  }, [createPeerConnection])
-
-  const handleAnswer = useCallback(async (answer: RTCSessionDescriptionInit, senderId: string) => {
-    const peerConnection = peerConnectionsRef.current.get(senderId)
-    if (!peerConnection) return
-
-    try {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-    } catch (error) {
-      console.error('Error handling answer from:', senderId, error)
-    }
-  }, [])
-
-  const handleICECandidate = useCallback(async (candidate: RTCIceCandidateInit, senderId: string) => {
-    const peerConnection = peerConnectionsRef.current.get(senderId)
-    if (!peerConnection) return
-
-    try {
-      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-    } catch (error) {
-      console.error('Error adding ICE candidate from:', senderId, error)
-    }
-  }, [])
-
-  // Close peer connection
-  const closePeerConnection = useCallback((userId: string) => {
-    const peerConnection = peerConnectionsRef.current.get(userId)
-    if (peerConnection) {
-      console.log('Closing peer connection for:', userId)
-      peerConnection.close()
-      peerConnectionsRef.current.delete(userId)
-    }
-
-    // Remove remote audio element
-    const remoteAudio = document.getElementById(`remote-audio-${userId}`)
-    if (remoteAudio) {
-      remoteAudio.remove()
-    }
-  }, [])
-
-  // Connect to audio room
-  const connectToRoom = useCallback(async (nickname?: string): Promise<boolean> => {
-    try {
-      console.log('Connecting to Railway TURN audio server...')
-      
-      // Initialize socket connection first to get ICE servers
-      await initializeSocket()
-      
-      if (socketRef.current) {
-        socketRef.current.emit('join-audio-room', {
-          nickname: nickname || `User${Math.floor(Math.random() * 1000)}`,
-          muted: isMutedState
-        })
-        
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('Failed to connect to audio room:', error)
+      console.error('Failed to connect to room:', error)
       setConnectionStatus('disconnected')
       onConnectionStatusChange?.('disconnected')
       return false
     }
-  }, [initializeSocket, isMutedState, onConnectionStatusChange])
+  }, [appId, initializeAgora, onConnectionStatusChange])
 
   // Leave room
-  const leaveRoom = useCallback(() => {
-    console.log('Leaving audio room...')
-    
-    if (socketRef.current) {
-      socketRef.current.emit('leave-audio-room')
+  const leaveRoom = useCallback(async () => {
+    try {
+      if (localAudioTrackRef.current) {
+        localAudioTrackRef.current.close()
+        localAudioTrackRef.current = null
+      }
+
+      if (localVideoTrackRef.current) {
+        localVideoTrackRef.current.close()
+        localVideoTrackRef.current = null
+      }
+
+      if (clientRef.current) {
+        await clientRef.current.leave()
+      }
+
+      setCurrentRoom(null)
+      setRemoteUsers([])
+      setConnectionStatus('disconnected')
+      onConnectionStatusChange?.('disconnected')
+
+      // Clean up video containers
+      document.querySelectorAll('[id^="remote-video-"]').forEach(el => el.remove())
+      
+      console.log('Left Agora room')
+    } catch (error) {
+      console.error('Error leaving room:', error)
     }
-
-    // Close all peer connections
-    peerConnectionsRef.current.forEach((pc, userId) => {
-      closePeerConnection(userId)
-    })
-    peerConnectionsRef.current.clear()
-
-    // Stop local stream
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
-      localStreamRef.current = null
-    }
-
-    setCurrentRoom(null)
-    setConnectedUsers(new Map())
-    setConnectionStatus('disconnected')
-    onConnectionStatusChange?.('disconnected')
-  }, [closePeerConnection, onConnectionStatusChange])
+  }, [onConnectionStatusChange])
 
   // Toggle mute
-  const toggleMute = useCallback(() => {
+  const toggleMute = useCallback(async () => {
+    if (!localAudioTrackRef.current) return
+
     const newMutedState = !isMutedState
     setIsMutedState(newMutedState)
-    
-    // Update local stream tracks
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !newMutedState
-      })
+
+    if (newMutedState) {
+      await localAudioTrackRef.current.setMuted(true)
+    } else {
+      await localAudioTrackRef.current.setMuted(false)
     }
-    
-    // Notify Railway server
-    if (socketRef.current) {
-      socketRef.current.emit('mute-audio', newMutedState)
-    }
-    
+
     console.log('Audio', newMutedState ? 'muted' : 'unmuted')
   }, [isMutedState])
 
-  // Enhanced sound creation
+  // Toggle video
+  const toggleVideo = useCallback(async () => {
+    if (!clientRef.current) return
+
+    try {
+      if (!isVideoEnabled) {
+        // Enable video
+        if (!localVideoTrackRef.current) {
+          const videoTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: '240p_1'
+          })
+          localVideoTrackRef.current = videoTrack
+        }
+
+        await clientRef.current.publish([localVideoTrackRef.current])
+        setIsVideoEnabled(true)
+        console.log('Video enabled')
+      } else {
+        // Disable video
+        if (localVideoTrackRef.current) {
+          await clientRef.current.unpublish([localVideoTrackRef.current])
+          localVideoTrackRef.current.close()
+          localVideoTrackRef.current = null
+        }
+        setIsVideoEnabled(false)
+        console.log('Video disabled')
+      }
+    } catch (error) {
+      console.error('Error toggling video:', error)
+    }
+  }, [isVideoEnabled])
+
+  // Enhanced sound creation (same as before)
   const createEnhancedTone = useCallback((
     frequency: number, 
     duration: number, 
@@ -528,7 +282,6 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     oscillator.connect(gainNode)
     currentNode = gainNode
 
-    // Add filter if requested
     if (filter) {
       const filterNode = ctx.createBiquadFilter()
       filterNode.type = 'lowpass'
@@ -538,7 +291,6 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
       currentNode = filterNode
     }
 
-    // Add reverb if requested
     if (reverb) {
       const delayNode = ctx.createDelay(0.3)
       const feedbackGain = ctx.createGain()
@@ -560,7 +312,6 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     oscillator.frequency.setValueAtTime(frequency, ctx.currentTime)
     oscillator.type = type
     
-    // ADSR envelope
     const now = ctx.currentTime
     gainNode.gain.setValueAtTime(0, now)
     gainNode.gain.linearRampToValueAtTime(volume, now + attack)
@@ -572,7 +323,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     oscillator.stop(now + duration)
   }, [])
 
-  // Create chord
+  // Create chord (same as before)
   const createChord = useCallback((frequencies: number[], duration: number, options: any = {}) => {
     frequencies.forEach((freq, index) => {
       setTimeout(() => {
@@ -584,7 +335,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     })
   }, [createEnhancedTone])
 
-  // Create melody
+  // Create melody (same as before)
   const createMelody = useCallback((notes: { freq: number; duration: number; delay: number }[], options: any = {}) => {
     notes.forEach(({ freq, duration, delay }) => {
       setTimeout(() => {
@@ -593,7 +344,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     })
   }, [createEnhancedTone])
 
-  // Play sound effects
+  // Play sound effects (same as before)
   const playSound = useCallback((soundType: string) => {
     initializeAudio()
     
@@ -649,6 +400,22 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
         ], { volume: 0.09, reverb: true, filter: true, filterFreq: 2000 })
         break
 
+      case 'videoOn':
+        createMelody([
+          { freq: 440, duration: 0.1, delay: 0 },
+          { freq: 550, duration: 0.1, delay: 80 },
+          { freq: 660, duration: 0.2, delay: 160 }
+        ], { volume: 0.08, reverb: true, filter: true, filterFreq: 2500 })
+        break
+
+      case 'videoOff':
+        createMelody([
+          { freq: 660, duration: 0.1, delay: 0 },
+          { freq: 550, duration: 0.1, delay: 80 },
+          { freq: 440, duration: 0.2, delay: 160 }
+        ], { volume: 0.08, filter: true, filterFreq: 1500 })
+        break
+
       case 'error':
         createMelody([
           { freq: 349.23, duration: 0.1, delay: 0 },
@@ -669,9 +436,6 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   useEffect(() => {
     return () => {
       leaveRoom()
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-      }
       if (audioContextRef.current) {
         audioContextRef.current.close()
       }
@@ -686,8 +450,11 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     getConnectionStatus: () => connectionStatus,
     getCurrentRoom: () => currentRoom,
     toggleMute,
-    isMuted: () => isMutedState
-  }), [playSound, connectToRoom, leaveRoom, connectionStatus, currentRoom, toggleMute, isMutedState])
+    isMuted: () => isMutedState,
+    toggleVideo,
+    isVideoEnabled: () => isVideoEnabled,
+    getRemoteUsers: () => remoteUsers
+  }), [playSound, connectToRoom, leaveRoom, connectionStatus, currentRoom, toggleMute, isMutedState, toggleVideo, isVideoEnabled, remoteUsers])
 
   return null
 })

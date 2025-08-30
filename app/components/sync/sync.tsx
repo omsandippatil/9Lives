@@ -15,6 +15,7 @@ interface User {
 interface CatTriangleProps {
   supabaseUrl?: string
   supabaseAnonKey?: string
+  agoraAppId?: string
 }
 
 interface FloatingEmoji {
@@ -52,7 +53,8 @@ interface WhiteboardData {
 
 export default function CatTriangle({ 
   supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
-  supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
+  supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  agoraAppId = process.env.NEXT_PUBLIC_AGORA_APP_ID || '9c8b7a6f5e4d3c2b1a908f7e6d5c4b3a'
 }: CatTriangleProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [connectedUsers, setConnectedUsers] = useState<User[]>([])
@@ -76,9 +78,15 @@ export default function CatTriangle({
   const [audioConnectionStatus, setAudioConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
   const [currentAudioRoom, setCurrentAudioRoom] = useState<string | null>(null)
   
+  // Video call states
+  const [showVideoCall, setShowVideoCall] = useState(false)
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false)
+  const [videoCallSize, setVideoCallSize] = useState<'small' | 'large'>('small')
+  
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const audioSystemRef = useRef<any>(null)
+  const localVideoRef = useRef<HTMLDivElement>(null)
 
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
 
@@ -157,13 +165,13 @@ export default function CatTriangle({
     try {
       const success = await audioSystemRef.current.connectToRoom(nickname || currentUser.email.split('@')[0])
       if (success) {
-        console.log('Connected to audio room')
+        console.log('Connected to Agora room')
         audioSystemRef.current.playSound('connect')
         return true
       }
       return false
     } catch (error) {
-      console.error('Failed to connect to audio room:', error)
+      console.error('Failed to connect to Agora room:', error)
       return false
     }
   }, [currentUser])
@@ -173,22 +181,64 @@ export default function CatTriangle({
 
     audioSystemRef.current.leaveRoom()
     setCurrentAudioRoom(null)
-    console.log('Left audio room')
+    setIsVideoEnabled(false)
+    console.log('Left Agora room')
     audioSystemRef.current.playSound('disconnect')
   }, [])
+
+  // Video call functions
+  const toggleVideoCall = useCallback(() => {
+    if (!audioSystemRef.current) return
+
+    if (!showVideoCall) {
+      setShowVideoCall(true)
+      if (audioConnectionStatus === 'connected') {
+        audioSystemRef.current.toggleVideo()
+        audioSystemRef.current.playSound('videoOn')
+      }
+    } else {
+      setShowVideoCall(false)
+      if (isVideoEnabled) {
+        audioSystemRef.current.toggleVideo()
+        audioSystemRef.current.playSound('videoOff')
+      }
+    }
+  }, [showVideoCall, audioConnectionStatus, isVideoEnabled])
+
+  const toggleVideoSize = useCallback(() => {
+    setVideoCallSize(prev => prev === 'small' ? 'large' : 'small')
+  }, [])
+
+  // Handle local video track
+  useEffect(() => {
+    if (showVideoCall && audioSystemRef.current && localVideoRef.current) {
+      const handleVideoTrack = async () => {
+        if (audioConnectionStatus === 'connected') {
+          try {
+            await audioSystemRef.current.toggleVideo()
+            setIsVideoEnabled(audioSystemRef.current.isVideoEnabled())
+          } catch (error) {
+            console.error('Error handling video:', error)
+          }
+        }
+      }
+      
+      handleVideoTrack()
+    }
+  }, [showVideoCall, audioConnectionStatus])
 
   const cleanup = useCallback(async () => {
     setIsConnected(false)
     leaveAudioRoom()
+    setShowVideoCall(false)
   }, [leaveAudioRoom])
 
   // Auto-connect to audio room when component becomes visible
   useEffect(() => {
     if (isVisible && currentUser && audioConnectionStatus === 'disconnected') {
-      // Auto-connect to audio room when the overlay becomes visible
       setTimeout(() => {
         connectToAudioRoom()
-      }, 1000) // Small delay to ensure audio system is ready
+      }, 1000)
     }
   }, [isVisible, currentUser, audioConnectionStatus, connectToAudioRoom])
 
@@ -281,6 +331,7 @@ export default function CatTriangle({
           setIsVisible(false)
           setShowMessageInput(false)
           setShowWhiteboard(false)
+          setShowVideoCall(false)
           if (isConnected) cleanup()
         } else {
           setIsVisible(true)
@@ -291,13 +342,17 @@ export default function CatTriangle({
         event.preventDefault()
         setShowWhiteboard(prev => !prev)
       }
+
+      if (isVisible && event.altKey && event.key === 'c') {
+        event.preventDefault()
+        toggleVideoCall()
+      }
       
       if (isVisible && event.key === 'Tab' && !event.altKey && !event.ctrlKey) {
         event.preventDefault()
         setShowMessageInput(true)
       }
       
-      // Audio room controls
       if (isVisible && event.altKey && event.key === 'a') {
         event.preventDefault()
         if (audioConnectionStatus === 'connected') {
@@ -326,7 +381,7 @@ export default function CatTriangle({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji, audioConnectionStatus, connectToAudioRoom, leaveAudioRoom])
+  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji, audioConnectionStatus, connectToAudioRoom, leaveAudioRoom, toggleVideoCall])
 
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) return
@@ -401,21 +456,21 @@ export default function CatTriangle({
 
   const getCatEmoji = () => {
     if (temporaryEmoji) return temporaryEmoji
-    if (audioConnectionStatus === 'connected') return '😻' // Cat with heart eyes
-    if (isConnected && connectedUsers.length > 1) return '😻' // Cat with heart eyes
-    return '😿' // Crying cat
+    if (audioConnectionStatus === 'connected') return '😻'
+    if (isConnected && connectedUsers.length > 1) return '😻'
+    return '😿'
   }
 
   const handleAudioUserConnected = useCallback((user: { id: string; nickname: string; muted: boolean }) => {
     console.log('Audio user connected:', user.nickname)
     audioSystemRef.current?.playSound('userJoined')
-    addFloatingEmoji('🐱') // Cat emoji for user connections
+    addFloatingEmoji('🐱')
   }, [addFloatingEmoji])
 
   const handleAudioUserDisconnected = useCallback((userId: string, nickname: string) => {
     console.log('Audio user disconnected:', nickname)
     audioSystemRef.current?.playSound('userLeft')
-    addFloatingEmoji('🙀') // Surprised cat for disconnections
+    addFloatingEmoji('🙀')
   }, [addFloatingEmoji])
 
   const handleAudioConnectionStatusChange = useCallback((status: 'disconnected' | 'connecting' | 'connected') => {
@@ -446,15 +501,101 @@ export default function CatTriangle({
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Audio System with Railway TURN server */}
+      {/* Audio System with Agora.io */}
       <AudioSystem 
         ref={audioSystemRef}
-        serverUrl="https://9lives-services-production.up.railway.app"
+        appId={agoraAppId}
         onUserConnected={handleAudioUserConnected}
         onUserDisconnected={handleAudioUserDisconnected}
         onConnectionStatusChange={handleAudioConnectionStatusChange}
         onRoomFull={handleRoomFull}
       />
+
+      {/* Video Call Window */}
+      {showVideoCall && (
+        <div 
+          className={`fixed pointer-events-auto transition-all duration-300 ${
+            videoCallSize === 'small' 
+              ? 'top-4 left-4 w-64 h-36' 
+              : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-64'
+          } bg-gray-900 rounded-lg overflow-hidden shadow-2xl border-2 border-pink-300`}
+        >
+          <div className="flex justify-between items-center p-2 bg-pink-100">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs">🎥 Cat Call</span>
+              {audioConnectionStatus === 'connected' && (
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              )}
+            </div>
+            <div className="flex space-x-1">
+              <button
+                onClick={toggleVideoSize}
+                className="p-1 hover:bg-pink-200 rounded text-xs"
+              >
+                {videoCallSize === 'small' ? '⤢' : '⤡'}
+              </button>
+              <button
+                onClick={() => setShowVideoCall(false)}
+                className="p-1 hover:bg-pink-200 rounded text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          
+          <div className="relative flex-1 bg-gray-800 h-full">
+            {/* Local video */}
+            <div 
+              ref={localVideoRef}
+              id="local-video"
+              className="absolute top-2 right-2 w-16 h-12 bg-gray-700 rounded border border-pink-300 overflow-hidden z-10"
+            >
+              {!isVideoEnabled && (
+                <div className="w-full h-full flex items-center justify-center text-white text-xs">
+                  😺
+                </div>
+              )}
+            </div>
+
+            {/* Remote videos container */}
+            <div className="w-full h-full flex flex-wrap justify-center items-center p-2">
+              {audioSystemRef.current?.getRemoteUsers()?.map((user: any) => (
+                <div
+                  key={user.uid}
+                  id={`remote-video-${user.uid}`}
+                  className="flex-1 min-w-0 h-full bg-gray-700 rounded border border-pink-200 flex items-center justify-center"
+                >
+                  <span className="text-white text-sm">🐱 {user.uid}</span>
+                </div>
+              )) || (
+                <div className="text-gray-400 text-sm flex flex-col items-center">
+                  <span className="text-2xl mb-2">😽</span>
+                  <span>Waiting for cats...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Video controls */}
+            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
+              <button
+                onClick={() => audioSystemRef.current?.toggleMute()}
+                className="w-8 h-8 bg-pink-400 hover:bg-pink-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+              >
+                {audioSystemRef.current?.isMuted() ? '🔇' : '🔊'}
+              </button>
+              <button
+                onClick={() => {
+                  audioSystemRef.current?.toggleVideo()
+                  setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
+                }}
+                className="w-8 h-8 bg-pink-400 hover:bg-pink-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+              >
+                {isVideoEnabled ? '📷' : '📷‍💨'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Whiteboard */}
       {showWhiteboard && (
