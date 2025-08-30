@@ -480,28 +480,114 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     console.log('Audio', newMutedState ? 'muted' : 'unmuted')
   }, [isMutedState])
 
-  // Create tone for sound effects
-  const createTone = useCallback((frequency: number, duration: number, type: OscillatorType = 'sine') => {
+  // Enhanced sound creation with reverb and filtering
+  const createEnhancedTone = useCallback((
+    frequency: number, 
+    duration: number, 
+    type: OscillatorType = 'sine',
+    options: {
+      volume?: number
+      attack?: number
+      decay?: number
+      sustain?: number
+      release?: number
+      reverb?: boolean
+      filter?: boolean
+      filterFreq?: number
+    } = {}
+  ) => {
     if (!audioContextRef.current) return
 
-    const oscillator = audioContextRef.current.createOscillator()
-    const gainNode = audioContextRef.current.createGain()
-    
+    const ctx = audioContextRef.current
+    const {
+      volume = 0.15,
+      attack = 0.01,
+      decay = 0.1,
+      sustain = 0.7,
+      release = 0.3,
+      reverb = false,
+      filter = false,
+      filterFreq = 1000
+    } = options
+
+    // Create oscillator
+    const oscillator = ctx.createOscillator()
+    const gainNode = ctx.createGain()
+    let currentNode: AudioNode = oscillator
+
+    // Connect oscillator to gain
     oscillator.connect(gainNode)
-    gainNode.connect(audioContextRef.current.destination)
+    currentNode = gainNode
+
+    // Add low-pass filter for warmth
+    if (filter) {
+      const filterNode = ctx.createBiquadFilter()
+      filterNode.type = 'lowpass'
+      filterNode.frequency.setValueAtTime(filterFreq, ctx.currentTime)
+      filterNode.Q.setValueAtTime(1, ctx.currentTime)
+      currentNode.connect(filterNode)
+      currentNode = filterNode
+    }
+
+    // Add simple reverb using delay and feedback
+    if (reverb) {
+      const delayNode = ctx.createDelay(0.3)
+      const feedbackGain = ctx.createGain()
+      const reverbGain = ctx.createGain()
+      
+      delayNode.delayTime.setValueAtTime(0.1, ctx.currentTime)
+      feedbackGain.gain.setValueAtTime(0.3, ctx.currentTime)
+      reverbGain.gain.setValueAtTime(0.2, ctx.currentTime)
+      
+      // Connect reverb chain
+      currentNode.connect(reverbGain)
+      reverbGain.connect(delayNode)
+      delayNode.connect(feedbackGain)
+      feedbackGain.connect(delayNode)
+      delayNode.connect(ctx.destination)
+    }
+
+    // Connect final output
+    currentNode.connect(ctx.destination)
     
-    oscillator.frequency.setValueAtTime(frequency, audioContextRef.current.currentTime)
+    // Set oscillator properties
+    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime)
     oscillator.type = type
     
-    gainNode.gain.setValueAtTime(0, audioContextRef.current.currentTime)
-    gainNode.gain.linearRampToValueAtTime(0.1, audioContextRef.current.currentTime + 0.01)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + duration)
+    // Create ADSR envelope
+    const now = ctx.currentTime
+    gainNode.gain.setValueAtTime(0, now)
+    gainNode.gain.linearRampToValueAtTime(volume, now + attack)
+    gainNode.gain.linearRampToValueAtTime(volume * sustain, now + attack + decay)
+    gainNode.gain.setValueAtTime(volume * sustain, now + duration - release)
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration)
     
-    oscillator.start(audioContextRef.current.currentTime)
-    oscillator.stop(audioContextRef.current.currentTime + duration)
+    oscillator.start(now)
+    oscillator.stop(now + duration)
   }, [])
 
-  // Play sound effects
+  // Create chord progression
+  const createChord = useCallback((frequencies: number[], duration: number, options: any = {}) => {
+    frequencies.forEach((freq, index) => {
+      setTimeout(() => {
+        createEnhancedTone(freq, duration, 'sine', {
+          ...options,
+          volume: (options.volume || 0.1) / frequencies.length
+        })
+      }, index * 20) // Slight stagger for richness
+    })
+  }, [createEnhancedTone])
+
+  // Create melodic sequence
+  const createMelody = useCallback((notes: { freq: number; duration: number; delay: number }[], options: any = {}) => {
+    notes.forEach(({ freq, duration, delay }) => {
+      setTimeout(() => {
+        createEnhancedTone(freq, duration, 'sine', options)
+      }, delay)
+    })
+  }, [createEnhancedTone])
+
+  // Enhanced sound effects
   const playSound = useCallback((soundType: string) => {
     initializeAudio()
     
@@ -516,44 +602,394 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
 
     switch (soundType) {
       case 'connect':
-        createTone(440, 0.1)
-        setTimeout(() => createTone(554.37, 0.1), 100)
-        setTimeout(() => createTone(659.25, 0.2), 200)
+        // Sweet ascending connection chime (C major arpeggio)
+        createMelody([
+          { freq: 261.63, duration: 0.15, delay: 0 },    // C4
+          { freq: 329.63, duration: 0.15, delay: 100 },  // E4
+          { freq: 392.00, duration: 0.15, delay: 200 },  // G4
+          { freq: 523.25, duration: 0.3, delay: 300 }    // C5
+        ], { 
+          volume: 0.12, 
+          reverb: true, 
+          filter: true, 
+          filterFreq: 2000,
+          attack: 0.02,
+          release: 0.4
+        })
         break
         
       case 'disconnect':
-        createTone(659.25, 0.1)
-        setTimeout(() => createTone(554.37, 0.1), 100)
-        setTimeout(() => createTone(440, 0.2), 200)
+        // Gentle descending farewell (C major descending)
+        createMelody([
+          { freq: 523.25, duration: 0.15, delay: 0 },    // C5
+          { freq: 392.00, duration: 0.15, delay: 120 },  // G4
+          { freq: 329.63, duration: 0.15, delay: 240 },  // E4
+          { freq: 261.63, duration: 0.4, delay: 360 }    // C4
+        ], { 
+          volume: 0.1, 
+          reverb: true, 
+          filter: true, 
+          filterFreq: 1500,
+          attack: 0.03,
+          release: 0.5
+        })
         break
         
-      case 'message':
-        createTone(800, 0.1)
+      case 'connecting':
+        // Hopeful rising sequence
+        createMelody([
+          { freq: 293.66, duration: 0.12, delay: 0 },    // D4
+          { freq: 369.99, duration: 0.12, delay: 100 },  // F#4
+          { freq: 440.00, duration: 0.12, delay: 200 },  // A4
+          { freq: 587.33, duration: 0.25, delay: 300 }   // D5
+        ], { 
+          volume: 0.08, 
+          reverb: true,
+          attack: 0.01,
+          release: 0.3
+        })
         break
         
       case 'userJoined':
-        createTone(523.25, 0.15)
-        setTimeout(() => createTone(659.25, 0.15), 100)
+        // Warm welcome bell sound (perfect fifth + major third)
+        createChord([
+          261.63,  // C4
+          392.00,  // G4 (perfect fifth)
+          329.63   // E4 (major third)
+        ], 0.6, { 
+          volume: 0.1, 
+          reverb: true, 
+          filter: true, 
+          filterFreq: 3000,
+          attack: 0.02,
+          decay: 0.1,
+          sustain: 0.8,
+          release: 0.5
+        })
+        
+        // Add a gentle bell-like overtone
+        setTimeout(() => {
+          createEnhancedTone(523.25, 0.8, 'triangle', { 
+            volume: 0.04, 
+            reverb: true,
+            attack: 0.1,
+            release: 0.7
+          })
+        }, 50)
         break
         
       case 'userLeft':
-        createTone(659.25, 0.15)
-        setTimeout(() => createTone(523.25, 0.15), 100)
+        // Soft, melancholic goodbye (minor chord)
+        createChord([
+          220.00,  // A3
+          261.63,  // C4 (minor third)
+          329.63   // E4 (perfect fifth)
+        ], 0.8, { 
+          volume: 0.08, 
+          reverb: true, 
+          filter: true, 
+          filterFreq: 1200,
+          attack: 0.05,
+          decay: 0.2,
+          sustain: 0.6,
+          release: 0.6
+        })
+        break
+        
+      case 'message':
+        // Gentle notification bubble
+        createEnhancedTone(800, 0.12, 'sine', { 
+          volume: 0.06, 
+          filter: true, 
+          filterFreq: 2500,
+          attack: 0.005,
+          decay: 0.03,
+          sustain: 0.7,
+          release: 0.08
+        })
+        setTimeout(() => {
+          createEnhancedTone(1000, 0.08, 'triangle', { 
+            volume: 0.04,
+            attack: 0.01,
+            release: 0.05
+          })
+        }, 40)
         break
         
       case 'mute':
-        createTone(400, 0.1, 'square')
+        // Soft descending "shush" sound
+        createMelody([
+          { freq: 600, duration: 0.08, delay: 0 },
+          { freq: 500, duration: 0.08, delay: 60 },
+          { freq: 400, duration: 0.15, delay: 120 }
+        ], { 
+          volume: 0.07, 
+          filter: true, 
+          filterFreq: 800,
+          attack: 0.01,
+          release: 0.12
+        })
         break
         
       case 'unmute':
-        createTone(600, 0.1, 'square')
+        // Bright ascending "hello" sound
+        createMelody([
+          { freq: 400, duration: 0.08, delay: 0 },
+          { freq: 500, duration: 0.08, delay: 60 },
+          { freq: 600, duration: 0.15, delay: 120 }
+        ], { 
+          volume: 0.09, 
+          reverb: true,
+          filter: true, 
+          filterFreq: 2000,
+          attack: 0.01,
+          release: 0.15
+        })
         break
+
+      case 'roomFull':
+        // Apologetic "sorry" sound - gentle minor chord with resolution
+        createChord([
+          220.00,  // A3
+          261.63,  // C4
+          311.13   // Eb4 (minor)
+        ], 0.4, { 
+          volume: 0.08, 
+          filter: true, 
+          filterFreq: 1000,
+          attack: 0.02,
+          release: 0.3
+        })
+        setTimeout(() => {
+          createEnhancedTone(261.63, 0.5, 'sine', { 
+            volume: 0.06, 
+            reverb: true,
+            attack: 0.1,
+            release: 0.4
+          })
+        }, 400)
+        break
+
+      case 'error':
+        // Gentle error tone - not harsh but informative
+        createMelody([
+          { freq: 349.23, duration: 0.1, delay: 0 },    // F4
+          { freq: 311.13, duration: 0.1, delay: 80 },   // Eb4
+          { freq: 293.66, duration: 0.2, delay: 160 }   // D4
+        ], { 
+          volume: 0.08, 
+          filter: true, 
+          filterFreq: 1200,
+          attack: 0.02,
+          release: 0.15
+        })
+        break
+
+      case 'success':
+        // Triumphant but gentle success sound
+        createMelody([
+          { freq: 523.25, duration: 0.12, delay: 0 },    // C5
+          { freq: 659.25, duration: 0.12, delay: 100 },  // E5
+          { freq: 783.99, duration: 0.12, delay: 200 },  // G5
+          { freq: 1046.50, duration: 0.3, delay: 300 }   // C6
+        ], { 
+          volume: 0.1, 
+          reverb: true, 
+          filter: true, 
+          filterFreq: 4000,
+          attack: 0.01,
+          decay: 0.05,
+          sustain: 0.8,
+          release: 0.4
+        })
+        break
+
+      case 'reconnecting':
+        // Hopeful pulsing tone
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => {
+            createEnhancedTone(440, 0.15, 'triangle', { 
+              volume: 0.06, 
+              filter: true, 
+              filterFreq: 1800,
+              attack: 0.02,
+              release: 0.13
+            })
+          }, i * 200)
+        }
+        break
+
+      case 'peerConnected':
+        // Soft harmony when peer connects
+        createChord([
+          392.00,  // G4
+          493.88,  // B4
+          587.33   // D5
+        ], 0.5, { 
+          volume: 0.06, 
+          reverb: true,
+          attack: 0.05,
+          decay: 0.1,
+          sustain: 0.7,
+          release: 0.35
+        })
+        break
+
+      case 'typing':
+        // Subtle typing indicator
+        createEnhancedTone(1200, 0.05, 'square', { 
+          volume: 0.03, 
+          filter: true, 
+          filterFreq: 2000,
+          attack: 0.001,
+          release: 0.04
+        })
+        break
+
+      case 'voiceActivity':
+        // Gentle pulse for voice activity detection
+        createEnhancedTone(880, 0.08, 'triangle', { 
+          volume: 0.04, 
+          filter: true, 
+          filterFreq: 3000,
+          attack: 0.005,
+          release: 0.075
+        })
+        break
+
+      case 'lowBattery':
+        // Gentle warning - not alarming but noticeable
+        createMelody([
+          { freq: 440, duration: 0.1, delay: 0 },
+          { freq: 415.30, duration: 0.1, delay: 100 },
+          { freq: 392.00, duration: 0.2, delay: 200 }
+        ], { 
+          volume: 0.07, 
+          filter: true, 
+          filterFreq: 1500,
+          attack: 0.02,
+          release: 0.15
+        })
+        break
+
+      case 'networkIssue':
+        // Stuttering connection sound
+        for (let i = 0; i < 2; i++) {
+          setTimeout(() => {
+            createEnhancedTone(350, 0.08, 'sawtooth', { 
+              volume: 0.05, 
+              filter: true, 
+              filterFreq: 1000,
+              attack: 0.01,
+              release: 0.07
+            })
+          }, i * 150)
+        }
+        break
+
+      case 'qualityImproved':
+        // Brightening sound when audio quality improves
+        createMelody([
+          { freq: 523.25, duration: 0.1, delay: 0 },    // C5
+          { freq: 587.33, duration: 0.1, delay: 80 },   // D5
+          { freq: 659.25, duration: 0.1, delay: 160 },  // E5
+          { freq: 783.99, duration: 0.2, delay: 240 }   // G5
+        ], { 
+          volume: 0.08, 
+          reverb: true,
+          filter: true, 
+          filterFreq: 3500,
+          attack: 0.01,
+          release: 0.2
+        })
+        break
+
+      case 'softAlert':
+        // Very gentle attention sound
+        createChord([
+          440.00,  // A4
+          554.37,  // C#5
+          659.25   // E5
+        ], 0.4, { 
+          volume: 0.06, 
+          reverb: true,
+          attack: 0.08,
+          decay: 0.1,
+          sustain: 0.6,
+          release: 0.3
+        })
+        break
+
+      case 'heartbeat':
+        // Gentle rhythmic pulse
+        for (let i = 0; i < 2; i++) {
+          setTimeout(() => {
+            createEnhancedTone(100, 0.05, 'sine', { 
+              volume: 0.04,
+              attack: 0.001,
+              release: 0.049
+            })
+          }, i * 100)
+        }
+        break
+
+      case 'whisper':
+        // Very soft, breathy sound
+        createEnhancedTone(200, 0.3, 'sawtooth', { 
+          volume: 0.02, 
+          filter: true, 
+          filterFreq: 500,
+          attack: 0.1,
+          decay: 0.05,
+          sustain: 0.3,
+          release: 0.15
+        })
+        break
+
+      case 'celebration':
+        // Joyful ascending bells
+        const celebrationNotes = [
+          { freq: 523.25, duration: 0.15, delay: 0 },    // C5
+          { freq: 659.25, duration: 0.15, delay: 100 },  // E5
+          { freq: 783.99, duration: 0.15, delay: 200 },  // G5
+          { freq: 1046.50, duration: 0.2, delay: 300 },  // C6
+          { freq: 1318.51, duration: 0.25, delay: 450 }  // E6
+        ]
+        createMelody(celebrationNotes, { 
+          volume: 0.12, 
+          reverb: true,
+          filter: true, 
+          filterFreq: 5000,
+          attack: 0.005,
+          decay: 0.02,
+          sustain: 0.8,
+          release: 0.3
+        })
         
+        // Add harmony
+        setTimeout(() => {
+          createChord([392.00, 493.88, 659.25], 0.8, { 
+            volume: 0.04, 
+            reverb: true,
+            attack: 0.1,
+            release: 0.7
+          })
+        }, 200)
+        break
+
       default:
-        createTone(600, 0.1)
+        // Default pleasant tone
+        createEnhancedTone(600, 0.15, 'sine', { 
+          volume: 0.08, 
+          reverb: true,
+          filter: true, 
+          filterFreq: 2000,
+          attack: 0.02,
+          release: 0.13
+        })
         break
     }
-  }, [initializeAudio, createTone])
+  }, [initializeAudio, createMelody, createChord, createEnhancedTone])
 
   // Cleanup on unmount
   useEffect(() => {

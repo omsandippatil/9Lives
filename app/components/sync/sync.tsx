@@ -401,8 +401,8 @@ export default function CatTriangle({
 
   const getCatEmoji = () => {
     if (temporaryEmoji) return temporaryEmoji
-    if (audioConnectionStatus === 'connected') return '😸' // Happy cat with wide smile
-    if (isConnected && connectedUsers.length > 1) return '😺' // Happy cat
+    if (audioConnectionStatus === 'connected') return '😻' // Cat with heart eyes
+    if (isConnected && connectedUsers.length > 1) return '😻' // Cat with heart eyes
     return '😿' // Crying cat
   }
 
@@ -513,10 +513,10 @@ export default function CatTriangle({
         
         {/* Connected Users Tooltip */}
         {showUserTooltip && connectedUsers.length > 0 && (
-          <div className="absolute bottom-16 right-0 bg-black bg-opacity-75 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap pointer-events-none">
+          <div className="absolute bottom-16 right-0 bg-white text-black px-3 py-2 text-sm whitespace-nowrap pointer-events-none border border-gray-200">
             <div className="font-semibold mb-1">Connected Users ({connectedUsers.length}):</div>
             {connectedUsers.map((user, index) => (
-              <div key={user.id} className="text-xs opacity-90">
+              <div key={user.id} className="text-xs opacity-80">
                 🐱 {user.email.split('@')[0]}
                 {user.id === currentUser?.id && ' (you)'}
               </div>
@@ -535,7 +535,7 @@ export default function CatTriangle({
             shadow-lg group transform
             ${!currentUser ? 'animate-pulse' : ''}
             ${audioConnectionStatus === 'connected'
-              ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500 ring-2 ring-pink-300 rotate-180' 
+              ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500 rotate-180' 
               : isConnected && connectedUsers.length > 1
               ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
               : 'bg-white shadow-gray-200 hover:bg-gray-50'
