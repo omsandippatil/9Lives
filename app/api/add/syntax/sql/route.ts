@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // Initialize Groq client
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY!,
+  apiKey: process.env.SQL_LANG_THEORY_GROQ_API_KEY!,
 });
 
 interface SqlSyntax {
