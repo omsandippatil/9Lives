@@ -61,6 +61,7 @@ interface SearchState {
 const CACHE_DURATION = 5 * 60 * 1000;
 const STORAGE_KEY = 'mewzic-app-state';
 const SONG_ID_KEY = 'mewzic-current-song-id';
+const PLAYER_STATE_KEY = 'mewzic-player-state';
 const SEARCH_CACHE_KEY = 'mewzic-search-cache';
 const SEARCH_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes for search cache
 
@@ -80,6 +81,10 @@ const Mewzic: React.FC = () => {
   });
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Player state management
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [shouldPlay, setShouldPlay] = useState(false);
   
   // Search state
   const [searchState, setSearchState] = useState<SearchState>({
@@ -104,6 +109,14 @@ const Mewzic: React.FC = () => {
         const cachedSongId = localStorage.getItem(SONG_ID_KEY);
         if (cachedSongId) {
           setCurrentSongId(parseInt(cachedSongId, 10));
+        }
+
+        // Load player state
+        const cachedPlayerState = localStorage.getItem(PLAYER_STATE_KEY);
+        if (cachedPlayerState) {
+          const playerState = JSON.parse(cachedPlayerState);
+          setIsPlaying(playerState.isPlaying || false);
+          setShouldPlay(playerState.shouldPlay || false);
         }
 
         // Load app state
@@ -153,6 +166,19 @@ const Mewzic: React.FC = () => {
       localStorage.setItem(SONG_ID_KEY, currentSongId.toString());
     }
   }, [currentSongId]);
+
+  // Cache player state whenever it changes
+  useEffect(() => {
+    const playerState = {
+      isPlaying,
+      shouldPlay
+    };
+    try {
+      localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify(playerState));
+    } catch (error) {
+      console.error('Error caching player state:', error);
+    }
+  }, [isPlaying, shouldPlay]);
 
   // Cache app state whenever key data changes
   useEffect(() => {
@@ -479,17 +505,26 @@ const Mewzic: React.FC = () => {
 
   const handleSongSelect = (song: Song) => {
     setCurrentSongId(song.id);
+    // When a song is selected manually, set it to play
+    setShouldPlay(true);
+    setIsPlaying(true);
+    playPauseToggleRef.current += 1;
   };
 
   const handlePlayPause = () => {
     if (currentSongId !== null) {
       // If there's a current song, just toggle play/pause
+      const newPlayingState = !isPlaying;
+      setIsPlaying(newPlayingState);
+      setShouldPlay(newPlayingState);
       playPauseToggleRef.current += 1;
     } else if (allSongs.length > 0) {
-      // If no song is selected but we have songs, select a random one
-      // This only happens when Alt+V is pressed
+      // If no song is selected but we have songs, select a random one and play it
       const randomSong = allSongs[Math.floor(Math.random() * allSongs.length)];
       setCurrentSongId(randomSong.id);
+      setIsPlaying(true);
+      setShouldPlay(true);
+      playPauseToggleRef.current += 1;
     }
   };
 
@@ -500,6 +535,7 @@ const Mewzic: React.FC = () => {
     } else if (allSongs.length > 0) {
       setCurrentSongId(allSongs[0].id);
     }
+    // Don't change play state when navigating
   };
 
   const handlePrev = () => {
@@ -509,6 +545,13 @@ const Mewzic: React.FC = () => {
     } else if (allSongs.length > 0) {
       setCurrentSongId(allSongs[allSongs.length - 1].id);
     }
+    // Don't change play state when navigating
+  };
+
+  // Handle player state changes from the player component
+  const handlePlayerStateChange = (playing: boolean) => {
+    setIsPlaying(playing);
+    setShouldPlay(playing);
   };
 
   // Single player instance that's always rendered
@@ -519,6 +562,9 @@ const Mewzic: React.FC = () => {
       onNext={handleNext}
       onPrev={handlePrev}
       playPauseToggle={playPauseToggleRef.current}
+      shouldPlay={shouldPlay}
+      isPlaying={isPlaying}
+      onPlayerStateChange={handlePlayerStateChange}
     />
   );
 

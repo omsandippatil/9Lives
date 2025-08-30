@@ -62,6 +62,7 @@ export default function CatTriangle({
   const [temporaryEmoji, setTemporaryEmoji] = useState<string | null>(null)
   const [floatingMessages, setFloatingMessages] = useState<FloatingMessage[]>([])
   const [usedLanes, setUsedLanes] = useState<Set<number>>(new Set())
+  const [showUserTooltip, setShowUserTooltip] = useState(false)
   
   // Whiteboard states
   const [showWhiteboard, setShowWhiteboard] = useState(false)
@@ -400,21 +401,21 @@ export default function CatTriangle({
 
   const getCatEmoji = () => {
     if (temporaryEmoji) return temporaryEmoji
-    if (audioConnectionStatus === 'connected') return '😍'
-    if (isConnected && connectedUsers.length > 1) return '😻'
-    return '😿'
+    if (audioConnectionStatus === 'connected') return '😸' // Happy cat with wide smile
+    if (isConnected && connectedUsers.length > 1) return '😺' // Happy cat
+    return '😿' // Crying cat
   }
 
   const handleAudioUserConnected = useCallback((user: { id: string; nickname: string; muted: boolean }) => {
     console.log('Audio user connected:', user.nickname)
     audioSystemRef.current?.playSound('userJoined')
-    addFloatingEmoji('👋')
+    addFloatingEmoji('🐱') // Cat emoji for user connections
   }, [addFloatingEmoji])
 
   const handleAudioUserDisconnected = useCallback((userId: string, nickname: string) => {
     console.log('Audio user disconnected:', nickname)
     audioSystemRef.current?.playSound('userLeft')
-    addFloatingEmoji('👋')
+    addFloatingEmoji('🙀') // Surprised cat for disconnections
   }, [addFloatingEmoji])
 
   const handleAudioConnectionStatusChange = useCallback((status: 'disconnected' | 'connecting' | 'connected') => {
@@ -510,16 +511,31 @@ export default function CatTriangle({
           </div>
         ))}
         
+        {/* Connected Users Tooltip */}
+        {showUserTooltip && connectedUsers.length > 0 && (
+          <div className="absolute bottom-16 right-0 bg-black bg-opacity-75 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap pointer-events-none">
+            <div className="font-semibold mb-1">Connected Users ({connectedUsers.length}):</div>
+            {connectedUsers.map((user, index) => (
+              <div key={user.id} className="text-xs opacity-90">
+                🐱 {user.email.split('@')[0]}
+                {user.id === currentUser?.id && ' (you)'}
+              </div>
+            ))}
+          </div>
+        )}
+        
         {/* Cat Triangle Button */}
         <button
           onClick={handleCircleClick}
           disabled={!currentUser}
+          onMouseEnter={() => setShowUserTooltip(true)}
+          onMouseLeave={() => setShowUserTooltip(false)}
           className={`
             w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
             shadow-lg group transform
             ${!currentUser ? 'animate-pulse' : ''}
             ${audioConnectionStatus === 'connected'
-              ? 'bg-green-400 shadow-green-200 hover:bg-green-500 ring-2 ring-green-300 rotate-180' 
+              ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500 ring-2 ring-pink-300 rotate-180' 
               : isConnected && connectedUsers.length > 1
               ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
               : 'bg-white shadow-gray-200 hover:bg-gray-50'

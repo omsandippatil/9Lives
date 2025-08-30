@@ -24,6 +24,9 @@ interface MusicPlayerProps {
   onNext: () => void;
   onPrev: () => void;
   playPauseToggle?: number;
+  shouldPlay?: boolean;
+  isPlaying?: boolean;
+  onPlayerStateChange?: (playing: boolean) => void;
 }
 
 // YouTube Player API interface
@@ -58,10 +61,13 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   onPlayPause, 
   onNext, 
   onPrev,
-  playPauseToggle 
+  playPauseToggle,
+  shouldPlay = false,
+  isPlaying = false,
+  onPlayerStateChange
 }) => {
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [localIsPlaying, setLocalIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -70,6 +76,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const playerRef = useRef<YTPlayer | null>(null);
   const playerElementRef = useRef<string>(`yt-player-${Date.now()}`);
   const previousPlayPauseToggle = useRef<number>(0);
+  const playerReadyRef = useRef<boolean>(false);
+  const pendingPlayRef = useRef<boolean>(false);
 
   // Load YouTube API
   useEffect(() => {
@@ -106,12 +114,30 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     }
   }, [playPauseToggle]);
 
+  // Sync with parent's shouldPlay state
+  useEffect(() => {
+    if (shouldPlay !== localIsPlaying && playerRef.current && playerReadyRef.current) {
+      try {
+        if (shouldPlay) {
+          playerRef.current.playVideo();
+        } else {
+          playerRef.current.pauseVideo();
+        }
+      } catch (error) {
+        console.error('Error syncing player state:', error);
+      }
+    }
+  }, [shouldPlay, localIsPlaying]);
+
   // Load song data
   useEffect(() => {
     if (currentSongId === null) {
       setCurrentSong(null);
-      setIsPlaying(false);
+      setLocalIsPlaying(false);
       setHasError(false);
+      playerReadyRef.current = false;
+      pendingPlayRef.current = false;
+      
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -127,6 +153,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       setIsLoading(true);
       setHasError(false);
       setErrorMessage('');
+      playerReadyRef.current = false;
       
       try {
         console.log('Fetching song ID:', currentSongId);
@@ -182,6 +209,9 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         }
       }
 
+      // Store whether we should play after loading
+      pendingPlayRef.current = shouldPlay;
+
       // Create new player
       try {
         playerRef.current = new window.YT.Player(playerElementRef.current, {
@@ -189,7 +219,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
           width: '0',
           videoId: currentSong.youtube.videoId,
           playerVars: {
-            autoplay: 1,
+            autoplay: 0, // Don't autoplay - we'll control this manually
             controls: 0,
             disablekb: 1,
             fs: 0,
@@ -199,20 +229,27 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
           },
           events: {
             onReady: (event: any) => {
-              console.log('YouTube player ready');
-              setIsPlaying(true);
-              event.target.playVideo();
+              console.log('YouTube player ready for:', currentSong.name);
+              playerReadyRef.current = true;
+              
+              // Only play if shouldPlay is true
+              if (pendingPlayRef.current) {
+                event.target.playVideo();
+              }
             },
             onStateChange: (event: any) => {
               const state = event.data;
               console.log('YouTube player state changed:', state);
               
               if (state === window.YT.PlayerState.PLAYING) {
-                setIsPlaying(true);
+                setLocalIsPlaying(true);
+                onPlayerStateChange?.(true);
               } else if (state === window.YT.PlayerState.PAUSED) {
-                setIsPlaying(false);
+                setLocalIsPlaying(false);
+                onPlayerStateChange?.(false);
               } else if (state === window.YT.PlayerState.ENDED) {
-                setIsPlaying(false);
+                setLocalIsPlaying(false);
+                onPlayerStateChange?.(false);
                 // Auto-play next song when current song ends
                 console.log('Song ended, playing next song');
                 onNext();
@@ -222,7 +259,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               console.error('YouTube player error:', event.data);
               setHasError(true);
               setErrorMessage('Failed to load video');
-              setIsPlaying(false);
+              setLocalIsPlaying(false);
+              onPlayerStateChange?.(false);
             }
           }
         });
@@ -251,10 +289,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   }, [currentSong, ytApiReady, hasError]);
 
   const handlePlayPause = () => {
-    if (!playerRef.current || hasError) return;
+    if (!playerRef.current || hasError || !playerReadyRef.current) return;
 
     try {
-      if (isPlaying) {
+      if (localIsPlaying) {
         playerRef.current.pauseVideo();
       } else {
         playerRef.current.playVideo();
@@ -265,14 +303,17 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   };
 
   const handleNext = () => {
-    setIsPlaying(false);
+    // Don't change playing state here - let parent handle it
     onNext();
   };
 
   const handlePrev = () => {
-    setIsPlaying(false);
+    // Don't change playing state here - let parent handle it
     onPrev();
   };
+
+  // Use parent's isPlaying state if available, otherwise use local state
+  const displayIsPlaying = isPlaying !== undefined ? isPlaying : localIsPlaying;
 
   if (!currentSong) {
     return (
@@ -338,12 +379,12 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
           <button 
             onClick={handlePlayPause} 
             className="p-2 border border-black hover:bg-gray-100 transition-colors disabled:opacity-50"
-            title={isPlaying ? "Pause" : "Play"}
+            title={displayIsPlaying ? "Pause" : "Play"}
             disabled={isLoading || hasError || !ytApiReady}
           >
             {isLoading || !ytApiReady ? (
               <Loader className="h-5 w-5 animate-spin" />
-            ) : isPlaying ? (
+            ) : displayIsPlaying ? (
               <Pause className="h-5 w-5" />
             ) : (
               <Play className="h-5 w-5" />
