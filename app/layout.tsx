@@ -6,6 +6,7 @@ import "./globals.css";
 import CatTriangle from "./components/sync/sync";
 import FocusOverlay from './components/focus/focus';
 import Mewzic from './components/mewzic/main';
+import CatBox from './components/catbox/catbox';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,6 +40,7 @@ export default function RootLayout({
         {children}
         <FocusOverlay autoStart={true} />
         <Mewzic />
+        <CatBox />
         <Analytics />
         <SpeedInsights />
       </body>
