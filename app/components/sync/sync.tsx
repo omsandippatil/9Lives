@@ -51,6 +51,8 @@ interface WhiteboardData {
   timestamp: number
 }
 
+type FocusedUser = 'local' | 'remote' | 'remote-only' | null
+
 export default function CatTriangle({ 
   supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
   supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -86,7 +88,9 @@ export default function CatTriangle({
   const [videoCallPosition, setVideoCallPosition] = useState({ x: 16, y: 16 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [focusedUser, setFocusedUser] = useState<'local' | 'remote' | null>(null)
+  const [focusedUser, setFocusedUser] = useState<FocusedUser>(null)
+  const [showControls, setShowControls] = useState(true)
+  const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null)
   
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
@@ -232,6 +236,51 @@ export default function CatTriangle({
       setFocusedUser(userType)
     }
   }, [focusedUser])
+
+  // Handle focus buttons
+  const handleFocusLocal = useCallback(() => {
+    setFocusedUser('local')
+  }, [])
+
+  const handleFocusRemote = useCallback(() => {
+    setFocusedUser('remote')
+  }, [])
+
+  const handleRemoteOnly = useCallback(() => {
+    setFocusedUser('remote-only')
+  }, [])
+
+  // Auto-hide controls
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeout) {
+      clearTimeout(controlsTimeout)
+    }
+    setShowControls(true)
+    const timeout = setTimeout(() => {
+      setShowControls(false)
+    }, 3000)
+    setControlsTimeout(timeout)
+  }, [controlsTimeout])
+
+  const handleMouseMoveOnVideo = useCallback(() => {
+    resetControlsTimeout()
+  }, [resetControlsTimeout])
+
+  useEffect(() => {
+    if (showVideoCall) {
+      resetControlsTimeout()
+    } else {
+      if (controlsTimeout) {
+        clearTimeout(controlsTimeout)
+        setControlsTimeout(null)
+      }
+    }
+    return () => {
+      if (controlsTimeout) {
+        clearTimeout(controlsTimeout)
+      }
+    }
+  }, [showVideoCall, resetControlsTimeout, controlsTimeout])
   // Video call drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (videoCallSize === 'fullscreen') return
@@ -578,11 +627,12 @@ export default function CatTriangle({
         <div 
           ref={videoCallRef}
           onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMoveOnVideo}
           className={`fixed pointer-events-auto transition-all duration-300 border-2 border-black bg-white shadow-2xl ${
             videoCallSize === 'fullscreen' ? 'cursor-default' : 'cursor-move'
           } ${
             videoCallSize === 'small' 
-              ? 'w-64 h-36' 
+              ? 'w-80 h-52' 
               : videoCallSize === 'large'
               ? 'w-96 h-64'
               : 'w-screen h-screen'
@@ -594,6 +644,7 @@ export default function CatTriangle({
             zIndex: videoCallSize === 'fullscreen' ? 60 : 50
           }}
         >
+          {/* Header - always visible */}
           <div className="video-header flex justify-between items-center p-2 bg-black text-white border-b border-black">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-mono">CAT_CALL.exe</span>
@@ -619,152 +670,217 @@ export default function CatTriangle({
             </div>
           </div>
           
-          <div className="relative flex h-full bg-white">
-            {/* Two-user layout */}
-            <div className="flex w-full h-full">
-              {/* Determine layout based on focus */}
-              {focusedUser === 'local' ? (
-                // Local user focused - big left, remote small right
-                <>
-                  <div className="w-3/4 border-r border-gray-600 relative overflow-hidden">
-                    <div 
-                      ref={localVideoRef}
-                      id="local-video"
-                      className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
-                      onClick={() => handleVideoUserClick('local')}
-                    >
-                      {!isVideoEnabled ? (
-                        <div className="text-black text-lg font-mono flex flex-col items-center">
-                          <span className="text-4xl mb-2">😺</span>
-                          <span>YOU</span>
-                        </div>
-                      ) : null}
+          <div className="relative flex h-full bg-white overflow-hidden">
+            {/* Video layout based on focus */}
+            {focusedUser === 'remote-only' ? (
+              // Remote only - full screen
+              <div className="w-full relative overflow-hidden">
+                {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                  <div
+                    id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                    className="w-full h-full bg-gray-50 flex items-center justify-center"
+                  >
+                    <div className="text-black text-2xl font-mono flex flex-col items-center">
+                      <span className="text-6xl mb-4">🐱</span>
+                      <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
                     </div>
                   </div>
-                  <div className="w-1/4 relative overflow-hidden">
+                ) : (
+                  <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                    <div className="text-gray-600 text-2xl font-mono flex flex-col items-center">
+                      <span className="text-6xl mb-4">😽</span>
+                      <span>WAITING...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : focusedUser === 'local' ? (
+              // Local user focused - big left, remote tiny corner
+              <>
+                <div className="w-full relative overflow-hidden">
+                  <div 
+                    ref={localVideoRef}
+                    id="local-video"
+                    className="w-full h-full bg-gray-50 flex items-center justify-center"
+                  >
+                    {!isVideoEnabled ? (
+                      <div className="text-black text-2xl font-mono flex flex-col items-center">
+                        <span className="text-6xl mb-4">😺</span>
+                        <span>YOU</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  
+                  {/* Tiny remote user in corner */}
+                  <div className="absolute top-2 right-2 w-20 h-16 border border-gray-400 bg-gray-100 overflow-hidden">
                     {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
                       <div
-                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
-                        className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
-                        onClick={() => handleVideoUserClick('remote')}
+                        id={`remote-video-tiny-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                        className="w-full h-full flex items-center justify-center"
                       >
                         <div className="text-black text-xs font-mono flex flex-col items-center">
-                          <span className="text-lg mb-1">🐱</span>
-                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                          <span className="text-sm">🐱</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
-                        <div className="text-gray-600 text-xs font-mono flex flex-col items-center">
-                          <span className="text-lg mb-1">😽</span>
-                          <span>WAITING...</span>
-                        </div>
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-gray-600 text-xs font-mono">😽</div>
                       </div>
                     )}
                   </div>
-                </>
-              ) : focusedUser === 'remote' ? (
-                // Remote user focused - small left, big right
-                <>
-                  <div className="w-1/4 border-r border-gray-600 relative overflow-hidden">
+                </div>
+              </>
+            ) : focusedUser === 'remote' ? (
+              // Remote user focused - big right, local tiny corner
+              <>
+                <div className="w-full relative overflow-hidden">
+                  {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                    <div
+                      id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                      className="w-full h-full bg-gray-50 flex items-center justify-center"
+                    >
+                      <div className="text-black text-2xl font-mono flex flex-col items-center">
+                        <span className="text-6xl mb-4">🐱</span>
+                        <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                      <div className="text-gray-600 text-2xl font-mono flex flex-col items-center">
+                        <span className="text-6xl mb-4">😽</span>
+                        <span>WAITING...</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Tiny local user in corner */}
+                  <div className="absolute top-2 right-2 w-20 h-16 border border-gray-400 bg-gray-100 overflow-hidden">
                     <div 
                       ref={localVideoRef}
-                      id="local-video"
-                      className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
-                      onClick={() => handleVideoUserClick('local')}
+                      id="local-video-tiny"
+                      className="w-full h-full flex items-center justify-center"
                     >
                       {!isVideoEnabled ? (
                         <div className="text-black text-xs font-mono flex flex-col items-center">
-                          <span className="text-lg mb-1">😺</span>
-                          <span>YOU</span>
+                          <span className="text-sm">😺</span>
                         </div>
                       ) : null}
                     </div>
                   </div>
-                  <div className="w-3/4 relative overflow-hidden">
-                    {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
-                      <div
-                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
-                        className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
-                        onClick={() => handleVideoUserClick('remote')}
-                      >
-                        <div className="text-black text-lg font-mono flex flex-col items-center">
-                          <span className="text-4xl mb-2">🐱</span>
-                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
-                        </div>
+                </div>
+              </>
+            ) : (
+              // Equal split - default view
+              <>
+                <div className="flex-1 border-r border-gray-300 relative overflow-hidden">
+                  <div 
+                    ref={localVideoRef}
+                    id="local-video"
+                    className="w-full h-full bg-gray-50 flex items-center justify-center"
+                  >
+                    {!isVideoEnabled ? (
+                      <div className="text-black text-lg font-mono flex flex-col items-center">
+                        <span className="text-3xl mb-2">😺</span>
+                        <span>YOU</span>
                       </div>
-                    ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
-                        <div className="text-gray-600 text-lg font-mono flex flex-col items-center">
-                          <span className="text-4xl mb-2">😽</span>
-                          <span>WAITING...</span>
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
-                </>
-              ) : (
-                // Equal split - default view
-                <>
-                  <div className="flex-1 border-r border-gray-600 relative overflow-hidden">
-                    <div 
-                      ref={localVideoRef}
-                      id="local-video"
-                      className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
-                      onClick={() => handleVideoUserClick('local')}
+                </div>
+                <div className="flex-1 relative overflow-hidden">
+                  {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                    <div
+                      id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                      className="w-full h-full bg-gray-100 flex items-center justify-center"
                     >
-                      {!isVideoEnabled ? (
-                        <div className="text-black text-sm font-mono flex flex-col items-center">
-                          <span className="text-2xl mb-1">😺</span>
-                          <span>YOU</span>
-                        </div>
-                      ) : null}
+                      <div className="text-black text-lg font-mono flex flex-col items-center">
+                        <span className="text-3xl mb-2">🐱</span>
+                        <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 relative overflow-hidden">
-                    {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
-                      <div
-                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
-                        className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
-                        onClick={() => handleVideoUserClick('remote')}
-                      >
-                        <div className="text-black text-sm font-mono flex flex-col items-center">
-                          <span className="text-2xl mb-1">🐱</span>
-                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
-                        </div>
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <div className="text-gray-600 text-lg font-mono flex flex-col items-center">
+                        <span className="text-3xl mb-2">😽</span>
+                        <span>WAITING...</span>
                       </div>
-                    ) : (
-                      <div className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
-                        <div className="text-gray-600 text-sm font-mono flex flex-col items-center">
-                          <span className="text-2xl mb-1">😽</span>
-                          <span>WAITING...</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
-            {/* Video controls */}
-            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
-              <button
-                onClick={() => audioSystemRef.current?.toggleMute()}
-                className="w-8 h-8 bg-black hover:bg-gray-800 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                {audioSystemRef.current?.isMuted() ? '[M]' : '[U]'}
-              </button>
-              <button
-                onClick={() => {
-                  audioSystemRef.current?.toggleVideo()
-                  setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
-                }}
-                className="w-8 h-8 bg-black hover:bg-gray-800 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                {isVideoEnabled ? '[V]' : '[X]'}
-              </button>
+            {/* Controls - auto-hide after 3 seconds */}
+            <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 transition-opacity duration-300 ${
+              showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}>
+              {/* Focus buttons */}
+              <div className="flex justify-center space-x-2 mb-3">
+                <button
+                  onClick={handleFocusLocal}
+                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                    focusedUser === 'local' 
+                      ? 'bg-white text-black border-white' 
+                      : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
+                  }`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  FOCUS_ME
+                </button>
+                <button
+                  onClick={handleFocusRemote}
+                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                    focusedUser === 'remote' 
+                      ? 'bg-white text-black border-white' 
+                      : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
+                  }`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  FOCUS_THEM
+                </button>
+                <button
+                  onClick={handleRemoteOnly}
+                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                    focusedUser === 'remote-only' 
+                      ? 'bg-white text-black border-white' 
+                      : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
+                  }`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  THEM_ONLY
+                </button>
+                <button
+                  onClick={() => setFocusedUser(null)}
+                  className={`px-3 py-1 text-xs font-mono border transition-colors ${
+                    focusedUser === null 
+                      ? 'bg-white text-black border-white' 
+                      : 'bg-black/50 text-white border-gray-400 hover:bg-black/70'
+                  }`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  EQUAL
+                </button>
+              </div>
+
+              {/* Audio/Video controls */}
+              <div className="flex justify-center space-x-2">
+                <button
+                  onClick={() => audioSystemRef.current?.toggleMute()}
+                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {audioSystemRef.current?.isMuted() ? 'MIC_OFF' : 'MIC_ON'}
+                </button>
+                <button
+                  onClick={() => {
+                    audioSystemRef.current?.toggleVideo()
+                    setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
+                  }}
+                  className="w-10 h-10 bg-black/50 hover:bg-black/70 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {isVideoEnabled ? 'CAM_ON' : 'CAM_OFF'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -876,7 +992,7 @@ export default function CatTriangle({
           10% {
             transform: translateX(-20px) translateY(-15px) scale(1) rotate(2deg);
             opacity: 1;
-          } 
+          }
           25% {
             transform: translateX(-50px) translateY(-35px) scale(1.1) rotate(-1deg);
             opacity: 1;
