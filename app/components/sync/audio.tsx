@@ -1,3 +1,5 @@
+'use client'
+
 import React, { forwardRef, useImperativeHandle, useCallback, useRef, useEffect, useState } from 'react'
 
 // Dynamic import types for Agora
