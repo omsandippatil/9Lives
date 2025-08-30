@@ -83,11 +83,15 @@ export default function CatTriangle({
   const [isVideoEnabled, setIsVideoEnabled] = useState(false)
   const [videoCallSize, setVideoCallSize] = useState<'small' | 'large'>('small')
   const [isClientSide, setIsClientSide] = useState(false)
+  const [videoCallPosition, setVideoCallPosition] = useState({ x: 16, y: 16 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const audioSystemRef = useRef<any>(null)
   const localVideoRef = useRef<HTMLDivElement>(null)
+  const videoCallRef = useRef<HTMLDivElement>(null)
 
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
 
@@ -214,6 +218,41 @@ export default function CatTriangle({
   const toggleVideoSize = useCallback(() => {
     setVideoCallSize(prev => prev === 'small' ? 'large' : 'small')
   }, [])
+
+  // Video call drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.video-header')) {
+      setIsDragging(true)
+      setDragStart({
+        x: e.clientX - videoCallPosition.x,
+        y: e.clientY - videoCallPosition.y
+      })
+    }
+  }, [videoCallPosition])
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return
+
+    const newX = Math.max(0, Math.min(window.innerWidth - (videoCallSize === 'small' ? 256 : 384), e.clientX - dragStart.x))
+    const newY = Math.max(0, Math.min(window.innerHeight - (videoCallSize === 'small' ? 144 : 256), e.clientY - dragStart.y))
+    
+    setVideoCallPosition({ x: newX, y: newY })
+  }, [isDragging, dragStart, videoCallSize])
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
   // Handle local video track
   useEffect(() => {
@@ -520,83 +559,104 @@ export default function CatTriangle({
       {/* Video Call Window */}
       {showVideoCall && (
         <div 
-          className={`fixed pointer-events-auto transition-all duration-300 ${
+          ref={videoCallRef}
+          onMouseDown={handleMouseDown}
+          className={`fixed pointer-events-auto transition-all duration-300 border-2 border-black bg-white shadow-2xl cursor-move ${
             videoCallSize === 'small' 
-              ? 'top-4 left-4 w-64 h-36' 
-              : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-64'
-          } bg-gray-900 rounded-lg overflow-hidden shadow-2xl border-2 border-pink-300`}
+              ? 'w-64 h-36' 
+              : 'w-96 h-64'
+          }`}
+          style={{
+            left: `${videoCallPosition.x}px`,
+            top: `${videoCallPosition.y}px`,
+            fontFamily: 'monospace'
+          }}
         >
-          <div className="flex justify-between items-center p-2 bg-pink-100">
+          <div className="video-header flex justify-between items-center p-2 bg-black text-white border-b border-black">
             <div className="flex items-center space-x-2">
-              <span className="text-xs">🎥 Cat Call</span>
+              <span className="text-xs font-mono">CAT_CALL.exe</span>
               {audioConnectionStatus === 'connected' && (
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-white animate-pulse"></div>
               )}
             </div>
             <div className="flex space-x-1">
               <button
                 onClick={toggleVideoSize}
-                className="p-1 hover:bg-pink-200 rounded text-xs"
+                className="p-1 hover:bg-gray-800 text-xs font-mono"
+                onMouseDown={(e) => e.stopPropagation()}
               >
-                {videoCallSize === 'small' ? '⤢' : '⤡'}
+                {videoCallSize === 'small' ? '[+]' : '[-]'}
               </button>
               <button
                 onClick={() => setShowVideoCall(false)}
-                className="p-1 hover:bg-pink-200 rounded text-xs"
+                className="p-1 hover:bg-gray-800 text-xs font-mono"
+                onMouseDown={(e) => e.stopPropagation()}
               >
-                ✕
+                [X]
               </button>
             </div>
           </div>
           
-          <div className="relative flex-1 bg-gray-800 h-full">
-            {/* Local video */}
-            <div 
-              ref={localVideoRef}
-              id="local-video"
-              className="absolute top-2 right-2 w-16 h-12 bg-gray-700 rounded border border-pink-300 overflow-hidden z-10"
-            >
-              {!isVideoEnabled && (
-                <div className="w-full h-full flex items-center justify-center text-white text-xs">
-                  😺
-                </div>
-              )}
-            </div>
-
-            {/* Remote videos container */}
-            <div className="w-full h-full flex flex-wrap justify-center items-center p-2">
-              {audioSystemRef.current?.getRemoteUsers()?.map((user: any) => (
-                <div
-                  key={user.uid}
-                  id={`remote-video-${user.uid}`}
-                  className="flex-1 min-w-0 h-full bg-gray-700 rounded border border-pink-200 flex items-center justify-center"
+          <div className="relative flex h-full bg-black">
+            {/* Two-user layout */}
+            <div className="flex w-full h-full">
+              {/* Local video - left half */}
+              <div className="flex-1 border-r border-gray-600 relative overflow-hidden">
+                <div 
+                  ref={localVideoRef}
+                  id="local-video"
+                  className="w-full h-full bg-gray-900 flex items-center justify-center"
                 >
-                  <span className="text-white text-sm">🐱 {user.uid}</span>
+                  {!isVideoEnabled ? (
+                    <div className="text-white text-xs font-mono flex flex-col items-center">
+                      <span className="text-lg mb-1">😺</span>
+                      <span>YOU</span>
+                    </div>
+                  ) : null}
                 </div>
-              )) || (
-                <div className="text-gray-400 text-sm flex flex-col items-center">
-                  <span className="text-2xl mb-2">😽</span>
-                  <span>Waiting for cats...</span>
-                </div>
-              )}
+              </div>
+
+              {/* Remote video - right half */}
+              <div className="flex-1 relative overflow-hidden">
+                {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                  <div
+                    id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                    className="w-full h-full bg-gray-900 flex items-center justify-center"
+                  >
+                    <div className="text-white text-xs font-mono flex flex-col items-center">
+                      <span className="text-lg mb-1">🐱</span>
+                      <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full h-full bg-gray-900 flex items-center justify-center">
+                    <div className="text-gray-400 text-xs font-mono flex flex-col items-center">
+                      <span className="text-lg mb-1">😽</span>
+                      <span>WAITING...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Video controls */}
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
               <button
                 onClick={() => audioSystemRef.current?.toggleMute()}
-                className="w-8 h-8 bg-pink-400 hover:bg-pink-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                className="w-8 h-8 bg-gray-700 hover:bg-gray-600 border border-gray-500 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                onMouseDown={(e) => e.stopPropagation()}
               >
-                {audioSystemRef.current?.isMuted() ? '🔇' : '🔊'}
+                {audioSystemRef.current?.isMuted() ? '[M]' : '[U]'}
               </button>
               <button
                 onClick={() => {
                   audioSystemRef.current?.toggleVideo()
                   setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
                 }}
-                className="w-8 h-8 bg-pink-400 hover:bg-pink-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                className="w-8 h-8 bg-gray-700 hover:bg-gray-600 border border-gray-500 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                onMouseDown={(e) => e.stopPropagation()}
               >
-                {isVideoEnabled ? '📷' : '📷‍💨'}
+                {isVideoEnabled ? '[V]' : '[X]'}
               </button>
             </div>
           </div>
@@ -661,7 +721,7 @@ export default function CatTriangle({
         
         {/* Connected Users Tooltip */}
         {showUserTooltip && connectedUsers.length > 0 && (
-          <div className="absolute bottom-16 right-0 bg-white text-black px-3 py-2 text-sm whitespace-nowrap pointer-events-none border border-gray-200">
+          <div className="absolute bottom-16 right-0 bg-white text-black px-3 py-2 text-sm whitespace-nowrap pointer-events-none border border-gray-200" style={{ fontFamily: 'monospace' }}>
             <div className="font-semibold mb-1">Connected Users ({connectedUsers.length}):</div>
             {connectedUsers.map((user, index) => (
               <div key={user.id} className="text-xs opacity-80">
@@ -709,7 +769,7 @@ export default function CatTriangle({
           10% {
             transform: translateX(-20px) translateY(-15px) scale(1) rotate(2deg);
             opacity: 1;
-          }
+          } 
           25% {
             transform: translateX(-50px) translateY(-35px) scale(1.1) rotate(-1deg);
             opacity: 1;
