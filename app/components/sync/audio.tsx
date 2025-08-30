@@ -53,20 +53,33 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     const timestamp = Math.floor(Date.now() / 1000) + 86400 // 24 hours TTL
     const username = `${timestamp}:${TURN_USERNAME}`
     
-    // Create HMAC-SHA1 signature
-    const crypto = require('crypto')
-    const credential = crypto
-      .createHmac('sha1', TURN_SECRET)
-      .update(username)
-      .digest('base64')
+    // Create HMAC-SHA1 signature (browser-compatible)
+    const encoder = new TextEncoder()
+    const keyData = encoder.encode(TURN_SECRET)
+    const messageData = encoder.encode(username)
     
-    return { username, credential, timestamp }
+    return crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-1' },
+      false,
+      ['sign']
+    ).then(key => {
+      return crypto.subtle.sign('HMAC', key, messageData)
+    }).then(signature => {
+      const credential = btoa(String.fromCharCode(...new Uint8Array(signature)))
+      return { username, credential, timestamp }
+    }).catch(() => {
+      // Fallback for older browsers
+      const credential = btoa(`${username}:${TURN_SECRET}`)
+      return { username, credential, timestamp }
+    })
   }, [])
 
   // Get ICE servers from Railway deployment
-  const getICEServers = useCallback(() => {
+  const getICEServers = useCallback(async () => {
     const domain = serverUrl.replace(/^https?:\/\//, '')
-    const turnCreds = generateTURNCredentials()
+    const turnCreds = await generateTURNCredentials()
     
     return [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -84,33 +97,6 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
       }
     ]
   }, [serverUrl, generateTURNCredentials])
-
-  // Fetch ICE servers from Railway server
-  const fetchIceServers = useCallback(async () => {
-    try {
-      const response = await fetch(`${serverUrl}/api/ice-servers`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setIceServers(data.iceServers || [])
-        console.log('ICE servers loaded from Railway:', data.iceServers?.length || 0, 'servers')
-        return data
-      } else {
-        throw new Error(`HTTP ${response.status}`)
-      }
-    } catch (error) {
-      console.warn('Failed to fetch ICE servers from Railway, generating locally:', error)
-      const localICEServers = getICEServers()
-      setIceServers(localICEServers)
-      return { iceServers: localICEServers }
-    }
-  }, [serverUrl, getICEServers])
 
   // Initialize audio context
   const initializeAudio = useCallback(() => {
@@ -439,10 +425,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
     try {
       console.log('Connecting to Railway TURN audio server...')
       
-      // Fetch ICE servers from Railway
-      await fetchIceServers()
-      
-      // Initialize socket connection
+      // Initialize socket connection first to get ICE servers
       await initializeSocket()
       
       if (socketRef.current) {
@@ -460,7 +443,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
       onConnectionStatusChange?.('disconnected')
       return false
     }
-  }, [fetchIceServers, initializeSocket, isMutedState, onConnectionStatusChange])
+  }, [initializeSocket, isMutedState, onConnectionStatusChange])
 
   // Leave room
   const leaveRoom = useCallback(() => {
