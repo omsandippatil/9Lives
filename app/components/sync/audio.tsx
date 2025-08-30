@@ -1,5 +1,11 @@
 import React, { forwardRef, useImperativeHandle, useCallback, useRef, useEffect, useState } from 'react'
-import AgoraRTC, { IAgoraRTCClient, IAgoraRTCRemoteUser, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng'
+
+// Dynamic import types for Agora
+type IAgoraRTCClient = any
+type IAgoraRTCRemoteUser = any
+type ICameraVideoTrack = any
+type IMicrophoneAudioTrack = any
+type AgoraRTCType = any
 
 interface AudioSystemRef {
   playSound: (soundType: string) => void
@@ -39,6 +45,8 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   const clientRef = useRef<IAgoraRTCClient | null>(null)
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null)
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null)
+  const agoraRef = useRef<AgoraRTCType | null>(null)
+  const isClientSideRef = useRef(false)
 
   // State
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
@@ -47,14 +55,23 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   const [isVideoEnabled, setIsVideoEnabled] = useState(false)
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([])
 
+  // Check if we're on client side
+  useEffect(() => {
+    isClientSideRef.current = typeof window !== 'undefined'
+  }, [])
+
   // Initialize Agora client
   const initializeAgora = useCallback(async () => {
-    if (clientRef.current) return
+    if (clientRef.current || !isClientSideRef.current) return
 
     try {
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+      // Dynamic import of Agora SDK
+      const AgoraRTC = await import('agora-rtc-sdk-ng')
+      agoraRef.current = AgoraRTC.default
+
+      const client = agoraRef.current.createClient({ mode: 'rtc', codec: 'vp8' })
       
-      client.on('user-published', async (user, mediaType) => {
+      client.on('user-published', async (user: any, mediaType: 'audio' | 'video') => {
         console.log('User published:', user.uid, mediaType)
         await client.subscribe(user, mediaType)
         
@@ -82,7 +99,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
         }
       })
 
-      client.on('user-unpublished', (user, mediaType) => {
+      client.on('user-unpublished', (user: any, mediaType: 'audio' | 'video') => {
         console.log('User unpublished:', user.uid, mediaType)
         
         if (mediaType === 'video') {
@@ -93,7 +110,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
         }
       })
 
-      client.on('user-left', (user) => {
+      client.on('user-left', (user: any) => {
         console.log('User left:', user.uid)
         setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid))
         onUserDisconnected?.(user.uid.toString(), user.uid.toString())
@@ -126,13 +143,15 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
 
   // Connect to room
   const connectToRoom = useCallback(async (nickname?: string): Promise<boolean> => {
+    if (!isClientSideRef.current) return false
+
     try {
       setConnectionStatus('connecting')
       onConnectionStatusChange?.('connecting')
 
       await initializeAgora()
       
-      if (!clientRef.current) {
+      if (!clientRef.current || !agoraRef.current) {
         throw new Error('Agora client not initialized')
       }
 
@@ -144,7 +163,7 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
       await clientRef.current.join(appId, channel, null, uid)
       
       // Create local audio track
-      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+      const audioTrack = await agoraRef.current.createMicrophoneAudioTrack({
         encoderConfig: 'music_standard'
       })
       localAudioTrackRef.current = audioTrack
@@ -215,13 +234,13 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
 
   // Toggle video
   const toggleVideo = useCallback(async () => {
-    if (!clientRef.current) return
+    if (!clientRef.current || !agoraRef.current || !isClientSideRef.current) return
 
     try {
       if (!isVideoEnabled) {
         // Enable video
         if (!localVideoTrackRef.current) {
-          const videoTrack = await AgoraRTC.createCameraVideoTrack({
+          const videoTrack = await agoraRef.current.createCameraVideoTrack({
             encoderConfig: '240p_1'
           })
           localVideoTrackRef.current = videoTrack
