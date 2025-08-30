@@ -21,7 +21,7 @@ interface AudioSystemProps {
 
 const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) => {
   const {
-    serverUrl = 'https://poetic-respect-production-a65b.up.railway.app',
+    serverUrl = 'https://9lives-services-production.up.railway.app',
     onUserConnected,
     onUserDisconnected,
     onConnectionStatusChange,
