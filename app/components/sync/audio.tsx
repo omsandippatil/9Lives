@@ -18,7 +18,7 @@ interface AudioSystemProps {
 
 const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) => {
   const {
-    serverUrl = 'https://9-live-sync-production.up.railway.app/',
+    serverUrl = 'https://9-live-sync-production.up.railway.app',
     onUserConnected,
     onUserDisconnected,
     onConnectionStatusChange
@@ -53,7 +53,17 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   // Fetch ICE servers from your deployed server
   const fetchIceServers = useCallback(async () => {
     try {
-      const response = await fetch(`${serverUrl}/api/ice-servers`)
+      // Clean up URL to avoid double slashes
+      const cleanUrl = serverUrl.endsWith('/') ? serverUrl.slice(0, -1) : serverUrl
+      const apiUrl = `${cleanUrl}/api/ice-servers`
+      
+      console.log('Fetching ICE servers from:', apiUrl)
+      const response = await fetch(apiUrl)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
       const data = await response.json()
       iceServersRef.current = data.iceServers || []
       console.log('ICE servers loaded:', iceServersRef.current)
@@ -61,7 +71,9 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
       console.warn('Failed to fetch ICE servers, using defaults:', error)
       iceServersRef.current = [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.services.mozilla.com' }
       ]
     }
   }, [serverUrl])
@@ -265,7 +277,22 @@ const AudioSystem = forwardRef<AudioSystemRef, AudioSystemProps>((props, ref) =>
   // Connect to room
   const connectToRoom = useCallback(async (roomId: string): Promise<boolean> => {
     try {
-      await fetchIceServers()
+      // Use fallback STUN servers if API fails
+      if (iceServersRef.current.length === 0) {
+        console.log('Using fallback STUN servers')
+        iceServersRef.current = [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.services.mozilla.com' }
+        ]
+      }
+      
+      // Try to fetch ICE servers, but don't block if it fails
+      fetchIceServers().catch(error => {
+        console.warn('ICE servers fetch failed, using fallbacks:', error)
+      })
+      
       await initializeSocket()
       
       if (socketRef.current) {
