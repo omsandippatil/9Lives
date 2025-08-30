@@ -49,7 +49,22 @@ interface LeaderboardUser {
     java: number
     python: number
     sql: number
-    focus: number // focus time in seconds
+    focus: number
+  }
+  // Add separate user stats for hover display
+  user_stats: {
+    coding: number
+    technical: number
+    fundamental: number
+    aptitude: number
+    hr: number
+    tech_topics: number
+    ai: number
+    system_design: number
+    java: number
+    python: number
+    sql: number
+    total_questions: number
   }
 }
 
@@ -67,6 +82,7 @@ const Leaderboard = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catAnimation, setCatAnimation] = useState('🏆')
+  const [hoveredUser, setHoveredUser] = useState<string | null>(null)
 
   // Cat animation cycle
   useEffect(() => {
@@ -154,6 +170,13 @@ const Leaderboard = () => {
           streakValue = user.current_streak[1] || 0
         }
 
+        const totalUserQuestions = 
+          (user.coding_questions_attempted || 0) +
+          (user.technical_questions_attempted || 0) +
+          (user.fundamental_questions_attempted || 0) +
+          (user.aptitude_questions_attempted || 0) +
+          (user.hr_questions_attempted || 0)
+
         return {
           id: user.id,
           email: user.email,
@@ -161,12 +184,7 @@ const Leaderboard = () => {
           total_points: user.total_points || 0,
           current_streak: streakValue,
           tech_topics_covered: user.tech_topics_covered || 0,
-          total_questions_attempted: 
-            (user.coding_questions_attempted || 0) +
-            (user.technical_questions_attempted || 0) +
-            (user.fundamental_questions_attempted || 0) +
-            (user.aptitude_questions_attempted || 0) +
-            (user.hr_questions_attempted || 0),
+          total_questions_attempted: totalUserQuestions,
           categories: {
             coding: user.coding_questions_attempted || 0,
             technical: user.technical_questions_attempted || 0,
@@ -196,6 +214,21 @@ const Leaderboard = () => {
             python: todayActivity.python_lang_covered || 0,
             sql: todayActivity.sql_lang_covered || 0,
             focus: todayActivity.focus || 0,
+          },
+          // User stats for hover display
+          user_stats: {
+            coding: user.coding_questions_attempted || 0,
+            technical: user.technical_questions_attempted || 0,
+            fundamental: user.fundamental_questions_attempted || 0,
+            aptitude: user.aptitude_questions_attempted || 0,
+            hr: user.hr_questions_attempted || 0,
+            tech_topics: user.tech_topics_covered || 0,
+            ai: user.ai_ml_covered || 0,
+            system_design: user.system_design_covered || 0,
+            java: user.java_lang_covered || 0,
+            python: user.python_lang_covered || 0,
+            sql: user.sql_lang_covered || 0,
+            total_questions: totalUserQuestions,
           }
         }
       }) || []
@@ -290,6 +323,54 @@ const Leaderboard = () => {
     return `${hours}h ${minutes}m`
   }
 
+  const renderUserStats = (user: LeaderboardUser, isHovered: boolean) => {
+    const isToday = !isHovered
+
+    return (
+      <div className="text-xs text-gray-500 font-light flex flex-wrap gap-2">
+        {isHovered ? (
+          <>
+            <span>🎯 {user.user_stats.coding}c</span>
+            <span>⚙️ {user.user_stats.technical}t</span>
+            <span>📚 {user.user_stats.fundamental}f</span>
+            <span>🧠 {user.user_stats.aptitude}a</span>
+            <span>👥 {user.user_stats.hr}hr</span>
+            <span>📊 {user.user_stats.total_questions}q total</span>
+            <span>🏷️ {user.user_stats.tech_topics} topics</span>
+            {user.user_stats.java > 0 && <span>☕ {user.user_stats.java}j</span>}
+            {user.user_stats.python > 0 && <span>🐍 {user.user_stats.python}py</span>}
+            {user.user_stats.sql > 0 && <span>🗄️ {user.user_stats.sql}sql</span>}
+            {user.user_stats.ai > 0 && <span>🤖 {user.user_stats.ai}ai</span>}
+            {user.user_stats.system_design > 0 && <span>🏗️ {user.user_stats.system_design}sd</span>}
+            <span className="text-blue-600 font-medium">📈 All-time stats</span>
+          </>
+        ) : (
+          <>
+            <span>🎯 {user.today_activity.coding}c</span>
+            <span>⚙️ {user.today_activity.technical}t</span>
+            <span>📚 {user.today_activity.fundamental}f</span>
+            <span>🧠 {user.today_activity.aptitude}a</span>
+            <span>👥 {user.today_activity.hr}hr</span>
+            <span>📊 {getTodayActivityTotal(user)}q today</span>
+            <span>🏷️ {user.today_activity.tech_topics} topics</span>
+            {user.today_activity.java > 0 && <span>☕ {user.today_activity.java}j</span>}
+            {user.today_activity.python > 0 && <span>🐍 {user.today_activity.python}py</span>}
+            {user.today_activity.sql > 0 && <span>🗄️ {user.today_activity.sql}sql</span>}
+            {user.today_activity.ai > 0 && <span>🤖 {user.today_activity.ai}ai</span>}
+            {user.today_activity.system_design > 0 && <span>🏗️ {user.today_activity.system_design}sd</span>}
+            {user.today_activity.focus > 0 && (
+              <span className="text-green-600">⏱️ {formatFocusTime(user.today_activity.focus)} focus</span>
+            )}
+            <span className="text-purple-600 font-medium">📅 Today's activity</span>
+          </>
+        )}
+        {user.current_streak > 0 && (
+          <span className="text-orange-600">🔥 {user.current_streak}d streak</span>
+        )}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 text-black font-mono flex items-center justify-center px-6">
@@ -379,12 +460,14 @@ const Leaderboard = () => {
               {leaderboard.map((user, index) => (
                 <div
                   key={user.id}
-                  className={`group bg-white hover:bg-gray-50 border-2 transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] ${
+                  className={`group transition-all duration-500 ease-out hover:shadow-xl hover:scale-[1.02] border-2 ${
                     user.rank === 1 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-white' :
                     user.rank === 2 ? 'border-gray-300 bg-gradient-to-r from-gray-50 to-white' :
                     user.rank === 3 ? 'border-orange-300 bg-gradient-to-r from-orange-50 to-white' :
-                    'border-gray-200 hover:border-black'
+                    'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
                   }`}
+                  onMouseEnter={() => setHoveredUser(user.id)}
+                  onMouseLeave={() => setHoveredUser(null)}
                 >
                   <div className="p-6">
                     <div className="flex items-center justify-between">
@@ -403,26 +486,7 @@ const Leaderboard = () => {
                         
                         <div className="ml-4">
                           <div className="font-light text-lg mb-1">{formatEmail(user.email)}</div>
-                          <div className="text-xs text-gray-500 font-light flex flex-wrap gap-2">
-                            <span>🎯 {user.today_activity.coding}c</span>
-                            <span>⚙️ {user.today_activity.technical}t</span>
-                            <span>📚 {user.today_activity.fundamental}f</span>
-                            <span>🧠 {user.today_activity.aptitude}a</span>
-                            <span>👥 {user.today_activity.hr}hr</span>
-                            <span>📊 {getTodayActivityTotal(user)}q today</span>
-                            <span>🏷️ {user.today_activity.tech_topics} topics</span>
-                            {user.today_activity.java > 0 && <span>☕ {user.today_activity.java}j</span>}
-                            {user.today_activity.python > 0 && <span>🐍 {user.today_activity.python}py</span>}
-                            {user.today_activity.sql > 0 && <span>🗄️ {user.today_activity.sql}sql</span>}
-                            {user.today_activity.ai > 0 && <span>🤖 {user.today_activity.ai}ai</span>}
-                            {user.today_activity.system_design > 0 && <span>🏗️ {user.today_activity.system_design}sd</span>}
-                            {user.today_activity.focus > 0 && (
-                              <span className="text-green-600">⏱️ {formatFocusTime(user.today_activity.focus)} focus</span>
-                            )}
-                            {user.current_streak > 0 && (
-                              <span className="text-orange-600">🔥 {user.current_streak}d streak</span>
-                            )}
-                          </div>
+                          {renderUserStats(user, hoveredUser === user.id)}
                         </div>
                       </div>
                       
