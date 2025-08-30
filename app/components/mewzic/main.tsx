@@ -394,7 +394,7 @@ const Mewzic: React.FC = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isVisible, currentSongId]);
+  }, [isVisible, currentSongId, allSongs]);
 
   // Touch handling for mobile - only two finger gestures
   useEffect(() => {
@@ -483,14 +483,13 @@ const Mewzic: React.FC = () => {
 
   const handlePlayPause = () => {
     if (currentSongId !== null) {
-      // Increment toggle counter to trigger play/pause in player component
+      // If there's a current song, just toggle play/pause
       playPauseToggleRef.current += 1;
-    } else {
-      // Play random song if no song is selected
-      if (allSongs.length > 0) {
-        const randomSong = allSongs[Math.floor(Math.random() * allSongs.length)];
-        setCurrentSongId(randomSong.id);
-      }
+    } else if (allSongs.length > 0) {
+      // If no song is selected but we have songs, select a random one
+      // This only happens when Alt+V is pressed
+      const randomSong = allSongs[Math.floor(Math.random() * allSongs.length)];
+      setCurrentSongId(randomSong.id);
     }
   };
 
