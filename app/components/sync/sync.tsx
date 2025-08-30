@@ -71,6 +71,10 @@ export default function CatTriangle({
   const [showMessageInput, setShowMessageInput] = useState(false)
   const [messageText, setMessageText] = useState('')
   
+  // Audio states
+  const [audioConnectionStatus, setAudioConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [currentAudioRoom, setCurrentAudioRoom] = useState<string | null>(null)
+  
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const audioSystemRef = useRef<any>(null)
@@ -145,9 +149,48 @@ export default function CatTriangle({
     }
   }, [currentUser])
 
+  // Audio connection functions
+  const connectToAudioRoom = useCallback(async (roomId: string = 'main-room') => {
+    if (!audioSystemRef.current || !currentUser) return false
+
+    try {
+      const success = await audioSystemRef.current.connectToRoom(roomId)
+      if (success) {
+        setCurrentAudioRoom(roomId)
+        console.log(`Connected to audio room: ${roomId}`)
+        audioSystemRef.current.playSound('connect')
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to connect to audio room:', error)
+      return false
+    }
+  }, [currentUser])
+
+  const leaveAudioRoom = useCallback(() => {
+    if (!audioSystemRef.current) return
+
+    audioSystemRef.current.leaveRoom()
+    setCurrentAudioRoom(null)
+    console.log('Left audio room')
+    audioSystemRef.current.playSound('disconnect')
+  }, [])
+
   const cleanup = useCallback(async () => {
     setIsConnected(false)
-  }, [])
+    leaveAudioRoom()
+  }, [leaveAudioRoom])
+
+  // Auto-connect to audio room when component becomes visible
+  useEffect(() => {
+    if (isVisible && currentUser && !currentAudioRoom) {
+      // Auto-connect to audio room when the overlay becomes visible
+      setTimeout(() => {
+        connectToAudioRoom(`room-${currentUser.id.slice(0, 8)}`)
+      }, 1000) // Small delay to ensure audio system is ready
+    }
+  }, [isVisible, currentUser, currentAudioRoom, connectToAudioRoom])
 
   useEffect(() => {
     if (!supabaseUrl || !supabaseAnonKey) return
@@ -241,6 +284,7 @@ export default function CatTriangle({
           if (isConnected) cleanup()
         } else {
           setIsVisible(true)
+          // Audio room connection will be handled by the useEffect above
         }
       }
       
@@ -252,6 +296,16 @@ export default function CatTriangle({
       if (isVisible && event.key === 'Tab' && !event.altKey && !event.ctrlKey) {
         event.preventDefault()
         setShowMessageInput(true)
+      }
+      
+      // Audio room controls
+      if (isVisible && event.altKey && event.key === 'a') {
+        event.preventDefault()
+        if (currentAudioRoom) {
+          leaveAudioRoom()
+        } else {
+          connectToAudioRoom()
+        }
       }
       
       if (isVisible && event.altKey && !showMessageInput) {
@@ -273,7 +327,7 @@ export default function CatTriangle({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji])
+  }, [isVisible, isConnected, cleanup, createHeartShower, showMessageInput, showTemporaryEmoji, currentAudioRoom, connectToAudioRoom, leaveAudioRoom])
 
   useEffect(() => {
     if (!supabaseRef.current || !currentUser || !isVisible || channelRef.current) return
@@ -353,9 +407,29 @@ export default function CatTriangle({
 
   const getCatEmoji = () => {
     if (temporaryEmoji) return temporaryEmoji
+    if (currentAudioRoom && audioConnectionStatus === 'connected') return '🎤'
     if (isConnected && connectedUsers.length > 1) return '😻'
     return '😿'
   }
+
+  const handleAudioUserConnected = useCallback((userId: string) => {
+    console.log('Audio user connected:', userId)
+    audioSystemRef.current?.playSound('userJoined')
+    // You can add floating emoji or message here if desired
+    addFloatingEmoji('🎤')
+  }, [addFloatingEmoji])
+
+  const handleAudioUserDisconnected = useCallback((userId: string) => {
+    console.log('Audio user disconnected:', userId)
+    audioSystemRef.current?.playSound('userLeft')
+    // You can add floating emoji or message here if desired
+    addFloatingEmoji('🔇')
+  }, [addFloatingEmoji])
+
+  const handleAudioConnectionStatusChange = useCallback((status: 'disconnected' | 'connecting' | 'connected') => {
+    setAudioConnectionStatus(status)
+    console.log('Audio connection status changed:', status)
+  }, [])
 
   useEffect(() => {
     if (!isVisible && isConnected) {
@@ -375,8 +449,39 @@ export default function CatTriangle({
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Audio System */}
-      <AudioSystem ref={audioSystemRef} />
+      {/* Audio System with event handlers */}
+      <AudioSystem 
+        ref={audioSystemRef}
+        onUserConnected={handleAudioUserConnected}
+        onUserDisconnected={handleAudioUserDisconnected}
+        onConnectionStatusChange={handleAudioConnectionStatusChange}
+      />
+
+      {/* Audio Status Indicator */}
+      {currentAudioRoom && (
+        <div className="fixed top-4 right-4 pointer-events-auto">
+          <div className={`
+            px-3 py-1 rounded-full text-xs font-medium flex items-center gap-2
+            ${audioConnectionStatus === 'connected' 
+              ? 'bg-green-100 text-green-800 border border-green-200' 
+              : audioConnectionStatus === 'connecting'
+              ? 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+              : 'bg-red-100 text-red-800 border border-red-200'
+            }
+          `}>
+            <span className={`
+              w-2 h-2 rounded-full
+              ${audioConnectionStatus === 'connected' ? 'bg-green-500' : 
+                audioConnectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'}
+            `}></span>
+            <span>
+              {audioConnectionStatus === 'connected' ? '🎤 Audio Connected' : 
+               audioConnectionStatus === 'connecting' ? '🔄 Connecting...' : '❌ Audio Disconnected'}
+            </span>
+            <span className="text-xs opacity-70">Alt+A to toggle</span>
+          </div>
+        </div>
+      )}
 
       {/* Whiteboard */}
       {showWhiteboard && (
@@ -442,7 +547,9 @@ export default function CatTriangle({
             w-12 h-12 rounded-full flex items-center justify-center text-lg transition-all duration-300 relative
             shadow-lg group
             ${!currentUser ? 'animate-pulse' : ''}
-              ${isConnected && connectedUsers.length > 1
+            ${currentAudioRoom && audioConnectionStatus === 'connected'
+              ? 'bg-green-400 shadow-green-200 hover:bg-green-500 ring-2 ring-green-300' 
+              : isConnected && connectedUsers.length > 1
               ? 'bg-pink-400 shadow-pink-200 hover:bg-pink-500' 
               : 'bg-white shadow-gray-200 hover:bg-gray-50'
             }
@@ -450,7 +557,17 @@ export default function CatTriangle({
           `}
         >
           <span>{getCatEmoji()}</span>
+          {audioConnectionStatus === 'connecting' && (
+            <div className="absolute inset-0 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
+          )}
         </button>
+
+        {/* Quick Help */}
+        <div className="absolute bottom-full right-0 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+          <div className="bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+            Alt+O/D: Toggle • Alt+A: Audio • Alt+W: Whiteboard
+          </div>
+        </div>
       </div>
       
       <style jsx>{`
