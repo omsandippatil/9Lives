@@ -449,7 +449,7 @@ export default function CatTriangle({
       {/* Audio System with Railway TURN server */}
       <AudioSystem 
         ref={audioSystemRef}
-        serverUrl="https://poetic-respect-production-a65b.up.railway.app"
+        serverUrl="https://9lives-services-production.up.railway.app"
         onUserConnected={handleAudioUserConnected}
         onUserDisconnected={handleAudioUserDisconnected}
         onConnectionStatusChange={handleAudioConnectionStatusChange}
