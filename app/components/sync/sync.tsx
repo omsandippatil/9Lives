@@ -81,11 +81,12 @@ export default function CatTriangle({
   // Video call states
   const [showVideoCall, setShowVideoCall] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(false)
-  const [videoCallSize, setVideoCallSize] = useState<'small' | 'large'>('small')
+  const [videoCallSize, setVideoCallSize] = useState<'small' | 'large' | 'fullscreen'>('small')
   const [isClientSide, setIsClientSide] = useState(false)
   const [videoCallPosition, setVideoCallPosition] = useState({ x: 16, y: 16 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [focusedUser, setFocusedUser] = useState<'local' | 'remote' | null>(null)
   
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
@@ -216,11 +217,24 @@ export default function CatTriangle({
   }, [showVideoCall, audioConnectionStatus, isVideoEnabled])
 
   const toggleVideoSize = useCallback(() => {
-    setVideoCallSize(prev => prev === 'small' ? 'large' : 'small')
+    setVideoCallSize(prev => {
+      if (prev === 'small') return 'large'
+      if (prev === 'large') return 'fullscreen'
+      return 'small'
+    })
   }, [])
 
+  // Handle video user clicks
+  const handleVideoUserClick = useCallback((userType: 'local' | 'remote') => {
+    if (focusedUser === userType) {
+      setFocusedUser(null)
+    } else {
+      setFocusedUser(userType)
+    }
+  }, [focusedUser])
   // Video call drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (videoCallSize === 'fullscreen') return
     if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.video-header')) {
       setIsDragging(true)
       setDragStart({
@@ -228,13 +242,16 @@ export default function CatTriangle({
         y: e.clientY - videoCallPosition.y
       })
     }
-  }, [videoCallPosition])
+  }, [videoCallPosition, videoCallSize])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return
+    if (!isDragging || videoCallSize === 'fullscreen') return
 
-    const newX = Math.max(0, Math.min(window.innerWidth - (videoCallSize === 'small' ? 256 : 384), e.clientX - dragStart.x))
-    const newY = Math.max(0, Math.min(window.innerHeight - (videoCallSize === 'small' ? 144 : 256), e.clientY - dragStart.y))
+    const width = videoCallSize === 'small' ? 256 : 384
+    const height = videoCallSize === 'small' ? 144 : 256
+    
+    const newX = Math.max(0, Math.min(window.innerWidth - width, e.clientX - dragStart.x))
+    const newY = Math.max(0, Math.min(window.innerHeight - height, e.clientY - dragStart.y))
     
     setVideoCallPosition({ x: newX, y: newY })
   }, [isDragging, dragStart, videoCallSize])
@@ -561,15 +578,20 @@ export default function CatTriangle({
         <div 
           ref={videoCallRef}
           onMouseDown={handleMouseDown}
-          className={`fixed pointer-events-auto transition-all duration-300 border-2 border-black bg-white shadow-2xl cursor-move ${
+          className={`fixed pointer-events-auto transition-all duration-300 border-2 border-black bg-white shadow-2xl ${
+            videoCallSize === 'fullscreen' ? 'cursor-default' : 'cursor-move'
+          } ${
             videoCallSize === 'small' 
               ? 'w-64 h-36' 
-              : 'w-96 h-64'
+              : videoCallSize === 'large'
+              ? 'w-96 h-64'
+              : 'w-screen h-screen'
           }`}
           style={{
-            left: `${videoCallPosition.x}px`,
-            top: `${videoCallPosition.y}px`,
-            fontFamily: 'monospace'
+            left: videoCallSize === 'fullscreen' ? '0px' : `${videoCallPosition.x}px`,
+            top: videoCallSize === 'fullscreen' ? '0px' : `${videoCallPosition.y}px`,
+            fontFamily: 'monospace',
+            zIndex: videoCallSize === 'fullscreen' ? 60 : 50
           }}
         >
           <div className="video-header flex justify-between items-center p-2 bg-black text-white border-b border-black">
@@ -585,7 +607,7 @@ export default function CatTriangle({
                 className="p-1 hover:bg-gray-800 text-xs font-mono"
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {videoCallSize === 'small' ? '[+]' : '[-]'}
+                {videoCallSize === 'small' ? '[+]' : videoCallSize === 'large' ? '[++]' : '[-]'}
               </button>
               <button
                 onClick={() => setShowVideoCall(false)}
@@ -597,53 +619,138 @@ export default function CatTriangle({
             </div>
           </div>
           
-          <div className="relative flex h-full bg-black">
+          <div className="relative flex h-full bg-white">
             {/* Two-user layout */}
             <div className="flex w-full h-full">
-              {/* Local video - left half */}
-              <div className="flex-1 border-r border-gray-600 relative overflow-hidden">
-                <div 
-                  ref={localVideoRef}
-                  id="local-video"
-                  className="w-full h-full bg-gray-900 flex items-center justify-center"
-                >
-                  {!isVideoEnabled ? (
-                    <div className="text-white text-xs font-mono flex flex-col items-center">
-                      <span className="text-lg mb-1">😺</span>
-                      <span>YOU</span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Remote video - right half */}
-              <div className="flex-1 relative overflow-hidden">
-                {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
-                  <div
-                    id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
-                    className="w-full h-full bg-gray-900 flex items-center justify-center"
-                  >
-                    <div className="text-white text-xs font-mono flex flex-col items-center">
-                      <span className="text-lg mb-1">🐱</span>
-                      <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+              {/* Determine layout based on focus */}
+              {focusedUser === 'local' ? (
+                // Local user focused - big left, remote small right
+                <>
+                  <div className="w-3/4 border-r border-gray-600 relative overflow-hidden">
+                    <div 
+                      ref={localVideoRef}
+                      id="local-video"
+                      className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
+                      onClick={() => handleVideoUserClick('local')}
+                    >
+                      {!isVideoEnabled ? (
+                        <div className="text-black text-lg font-mono flex flex-col items-center">
+                          <span className="text-4xl mb-2">😺</span>
+                          <span>YOU</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                ) : (
-                  <div className="w-full h-full bg-gray-900 flex items-center justify-center">
-                    <div className="text-gray-400 text-xs font-mono flex flex-col items-center">
-                      <span className="text-lg mb-1">😽</span>
-                      <span>WAITING...</span>
+                  <div className="w-1/4 relative overflow-hidden">
+                    {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                      <div
+                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                        className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
+                        onClick={() => handleVideoUserClick('remote')}
+                      >
+                        <div className="text-black text-xs font-mono flex flex-col items-center">
+                          <span className="text-lg mb-1">🐱</span>
+                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
+                        <div className="text-gray-600 text-xs font-mono flex flex-col items-center">
+                          <span className="text-lg mb-1">😽</span>
+                          <span>WAITING...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : focusedUser === 'remote' ? (
+                // Remote user focused - small left, big right
+                <>
+                  <div className="w-1/4 border-r border-gray-600 relative overflow-hidden">
+                    <div 
+                      ref={localVideoRef}
+                      id="local-video"
+                      className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
+                      onClick={() => handleVideoUserClick('local')}
+                    >
+                      {!isVideoEnabled ? (
+                        <div className="text-black text-xs font-mono flex flex-col items-center">
+                          <span className="text-lg mb-1">😺</span>
+                          <span>YOU</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                )}
-              </div>
+                  <div className="w-3/4 relative overflow-hidden">
+                    {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                      <div
+                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                        className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
+                        onClick={() => handleVideoUserClick('remote')}
+                      >
+                        <div className="text-black text-lg font-mono flex flex-col items-center">
+                          <span className="text-4xl mb-2">🐱</span>
+                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
+                        <div className="text-gray-600 text-lg font-mono flex flex-col items-center">
+                          <span className="text-4xl mb-2">😽</span>
+                          <span>WAITING...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                // Equal split - default view
+                <>
+                  <div className="flex-1 border-r border-gray-600 relative overflow-hidden">
+                    <div 
+                      ref={localVideoRef}
+                      id="local-video"
+                      className="w-full h-full bg-gray-100 flex items-center justify-center cursor-pointer"
+                      onClick={() => handleVideoUserClick('local')}
+                    >
+                      {!isVideoEnabled ? (
+                        <div className="text-black text-sm font-mono flex flex-col items-center">
+                          <span className="text-2xl mb-1">😺</span>
+                          <span>YOU</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex-1 relative overflow-hidden">
+                    {audioSystemRef.current?.getRemoteUsers()?.length > 0 ? (
+                      <div
+                        id={`remote-video-${audioSystemRef.current?.getRemoteUsers()[0]?.uid}`}
+                        className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer"
+                        onClick={() => handleVideoUserClick('remote')}
+                      >
+                        <div className="text-black text-sm font-mono flex flex-col items-center">
+                          <span className="text-2xl mb-1">🐱</span>
+                          <span>CAT_{audioSystemRef.current?.getRemoteUsers()[0]?.uid}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full bg-gray-200 flex items-center justify-center cursor-pointer" onClick={() => handleVideoUserClick('remote')}>
+                        <div className="text-gray-600 text-sm font-mono flex flex-col items-center">
+                          <span className="text-2xl mb-1">😽</span>
+                          <span>WAITING...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Video controls */}
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2">
               <button
                 onClick={() => audioSystemRef.current?.toggleMute()}
-                className="w-8 h-8 bg-gray-700 hover:bg-gray-600 border border-gray-500 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                className="w-8 h-8 bg-black hover:bg-gray-800 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {audioSystemRef.current?.isMuted() ? '[M]' : '[U]'}
@@ -653,7 +760,7 @@ export default function CatTriangle({
                   audioSystemRef.current?.toggleVideo()
                   setIsVideoEnabled(audioSystemRef.current?.isVideoEnabled())
                 }}
-                className="w-8 h-8 bg-gray-700 hover:bg-gray-600 border border-gray-500 flex items-center justify-center text-white text-xs transition-colors font-mono"
+                className="w-8 h-8 bg-black hover:bg-gray-800 border border-gray-400 flex items-center justify-center text-white text-xs transition-colors font-mono"
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {isVideoEnabled ? '[V]' : '[X]'}
