@@ -140,13 +140,7 @@ export default function CatBox() {
   }, [])
 
   const getUserNickname = useCallback((userId: string) => {
-    // Get the user's email from their userId by finding it in messages or use display name
-    const user = currentUser
-    if (user && userId === user.id) {
-      return getUserDisplayName(user.email)
-    }
-    // For other users, we'll need to track their emails somehow or use a default
-    return `cat_${userId.substring(0, 6)}`
+    return ''
   }, [currentUser, getUserDisplayName])
 
   // Check authorization on mount and periodically
