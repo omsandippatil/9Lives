@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -10,6 +10,63 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [catMeow, setCatMeow] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Auto-login effect
+  useEffect(() => {
+    const urlEmail = searchParams.get('email')
+    const urlPassword = searchParams.get('password')
+    
+    if (urlEmail && urlPassword) {
+      setEmail(urlEmail)
+      setPassword(urlPassword)
+      
+      // Trigger auto-login after setting the values
+      const autoLogin = async () => {
+        setLoading(true)
+        setError('')
+
+        try {
+          const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: urlEmail,
+              password: urlPassword,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            setError(data.error || 'Login failed')
+            // Trigger sad cat animation
+            setCatMeow(true)
+            setTimeout(() => setCatMeow(false), 1000)
+          } else {
+            // Success! Trigger happy cat animation
+            setCatMeow(true)
+            setTimeout(() => {
+              // Redirect to home or dashboard after successful login
+              router.push('/')
+              router.refresh() // Refresh to trigger auth check
+            }, 800)
+          }
+        } catch (err) {
+          setError('Something went wrong. Try again!')
+          setCatMeow(true)
+          setTimeout(() => setCatMeow(false), 1000)
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      // Small delay to show the form populated before auto-login
+      setTimeout(autoLogin, 500)
+    }
+  }, [searchParams, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
