@@ -35,13 +35,14 @@ export default function CatBox() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const authCheckRef = useRef<boolean>(false)
 
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -145,51 +146,11 @@ export default function CatBox() {
     return ''
   }, [currentUser, getUserDisplayName])
 
-  // Sync messages from server
-  const syncMessages = useCallback(async (fromTime?: string) => {
-    if (!supabaseRef.current) return
-
-    try {
-      let query = supabaseRef.current
-        .from('catbox_messages')
-        .select('*')
-        .order('created_at', { ascending: true })
-
-      // If we have a last sync time, only get messages after that
-      if (fromTime) {
-        query = query.gt('created_at', fromTime)
-      } else {
-        // Initial load - get last 50 messages
-        query = query.limit(50)
-      }
-
-      const { data, error } = await query
-
-      if (!error && data) {
-        if (fromTime) {
-          // Append new messages
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id))
-            const newMessages = data.filter(m => !existingIds.has(m.id))
-            return [...prev, ...newMessages]
-          })
-        } else {
-          // Initial load
-          setMessages(data)
-        }
-
-        // Update last sync time
-        if (data.length > 0) {
-          setLastSyncTime(data[data.length - 1].created_at)
-        }
-      }
-    } catch (error) {
-      console.error('Error syncing messages:', error)
-    }
-  }, [])
-
-  // Check authorization on mount and periodically
+  // One-time auth check on mount, then rely on real-time events
   useEffect(() => {
+    if (authCheckRef.current) return
+    authCheckRef.current = true
+
     const checkAuth = () => {
       const authorized = checkUserAuthorization()
       setIsAuthorized(authorized)
@@ -210,8 +171,6 @@ export default function CatBox() {
     }
 
     checkAuth()
-    const interval = setInterval(checkAuth, 2000)
-    return () => clearInterval(interval)
   }, [checkUserAuthorization, getUserFromCookies, getCookie])
 
   // Password validation
@@ -358,77 +317,42 @@ export default function CatBox() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isVisible, isAuthorized, isAuthenticated, isPasswordPrompt, handleNumericInput, handlePasswordSubmit])
 
-  // Load initial messages and set up syncing
-  useEffect(() => {
-    if (!supabaseRef.current || !currentUser || !isAuthenticated) return
-
-    // Load initial messages
-    syncMessages()
-
-    // Set up periodic sync every 2 seconds
-    syncIntervalRef.current = setInterval(() => {
-      syncMessages(lastSyncTime || undefined)
-    }, 2000)
-
-    // Set up real-time subscription as backup
-    const channel = supabaseRef.current
-      .channel('catbox_messages')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'catbox_messages' }, 
-        (payload: any) => {
-          // Add message if it doesn't already exist (avoid duplicates)
-          setMessages(prev => {
-            const exists = prev.some(m => m.id === payload.new.id)
-            if (!exists) {
-              return [...prev, payload.new]
-            }
-            return prev
-          })
-          setLastSyncTime(payload.new.created_at)
-        }
-      )
-      .subscribe()
-
-    channelRef.current = channel
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current)
-        syncIntervalRef.current = null
-      }
-      if (channelRef.current) {
-        channelRef.current.unsubscribe()
-        channelRef.current = null
-      }
-    }
-  }, [currentUser, isAuthenticated, syncMessages, lastSyncTime])
-
-  // Load more messages when scrolling to top
-  const loadMoreMessages = useCallback(async () => {
-    if (!supabaseRef.current || !hasMoreMessages) return
+  // Load initial messages (last 20)
+  const loadMessages = useCallback(async (isInitial = true) => {
+    if (!supabaseRef.current) return
 
     try {
-      const oldestMessage = messages[0]
-      if (!oldestMessage) return
-
-      const { data, error } = await supabaseRef.current
+      const query = supabaseRef.current
         .from('catbox_messages')
         .select('*')
-        .lt('created_at', oldestMessage.created_at)
         .order('created_at', { ascending: false })
-        .limit(20)
 
-      if (!error && data) {
-        if (data.length < 20) {
-          setHasMoreMessages(false)
+      if (isInitial) {
+        const { data, error } = await query.limit(20)
+        if (!error && data) {
+          setMessages(data.reverse())
+          setHasMoreMessages(data.length === 20)
         }
-        setMessages(prev => [...data.reverse(), ...prev])
-      }
-    } catch (error) {
-      console.error('Error loading more messages:', error)
-    }
-  }, [messages, hasMoreMessages])
+      } else {
+        // Load more messages for scroll up
+        const oldestMessage = messages[0]
+        if (!oldestMessage) return
 
+        const { data, error } = await query
+          .lt('created_at', oldestMessage.created_at)
+          .limit(20)
+
+        if (!error && data) {
+          if (data.length < 20) {
+            setHasMoreMessages(false)
+          }
+          setMessages((prev: Message[]) => [...data.reverse(), ...prev])
+        }
+      }
+    } catch {}
+  }, [messages])
+
+  // Load more messages when scrolling to top
   const handleScroll = useCallback(async () => {
     if (!messagesContainerRef.current || loadingMore || !hasMoreMessages) return
 
@@ -438,7 +362,7 @@ export default function CatBox() {
       setLoadingMore(true)
       const prevScrollHeight = messagesContainerRef.current.scrollHeight
       
-      await loadMoreMessages()
+      await loadMessages(false)
       
       // Maintain scroll position after loading more messages
       setTimeout(() => {
@@ -449,8 +373,9 @@ export default function CatBox() {
         setLoadingMore(false)
       }, 100)
     }
-  }, [loadMoreMessages, loadingMore, hasMoreMessages])
+  }, [loadMessages, loadingMore, hasMoreMessages])
 
+  // Set up user session once when component becomes visible and authenticated
   useEffect(() => {
     if (isVisible && !currentUser && isAuthenticated && isAuthorized) {
       const user = getUserFromCookies()
@@ -469,8 +394,89 @@ export default function CatBox() {
     }
   }, [isVisible, currentUser, isAuthenticated, isAuthorized, getUserFromCookies, getCookie])
 
+  // Set up real-time subscription and load initial messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!supabaseRef.current || !currentUser || !isAuthenticated) {
+      setConnectionStatus('disconnected')
+      return
+    }
+
+    setConnectionStatus('connecting')
+
+    const channel = supabaseRef.current
+      .channel('catbox_messages', {
+        config: {
+          presence: {
+            key: currentUser.id
+          }
+        }
+      })
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'catbox_messages' 
+        }, 
+        (payload: any) => {
+          // Only add message if it's not already in our list (prevents duplicates)
+          setMessages((prev: Message[]) => {
+            const exists = prev.some(msg => msg.id === payload.new.id)
+            if (exists) return prev
+            return [...prev, payload.new]
+          })
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'catbox_messages' 
+        }, 
+        (payload: any) => {
+          setMessages((prev: Message[]) => 
+            prev.map(msg => msg.id === payload.new.id ? payload.new : msg)
+          )
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: 'DELETE', 
+          schema: 'public', 
+          table: 'catbox_messages' 
+        }, 
+        (payload: any) => {
+          setMessages((prev: Message[]) => 
+            prev.filter(msg => msg.id !== payload.old.id)
+          )
+        }
+      )
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected')
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('disconnected')
+        }
+      })
+
+    channelRef.current = channel
+    
+    // Load initial messages
+    loadMessages(true)
+
+    return () => {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe()
+        channelRef.current = null
+      }
+      setConnectionStatus('disconnected')
+    }
+  }, [currentUser, isAuthenticated, loadMessages])
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -516,22 +522,24 @@ export default function CatBox() {
     }
   }, [isDragging, dragOffset])
 
+  // Optimized message sending with optimistic updates
   const sendMessage = useCallback(async () => {
     if (!currentUser || !inputMessage.trim() || !supabaseRef.current || isLoading) return
 
     const messageText = inputMessage.trim()
-    const tempId = `temp-${Date.now()}`
-    const tempMessage: Message = {
-      id: tempId,
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
       user_id: currentUser.id,
       message: messageText,
       created_at: new Date().toISOString()
     }
 
-    // Add message optimistically to UI
-    setMessages(prev => [...prev, tempMessage])
+    // Clear input immediately
     setInputMessage('')
     setIsLoading(true)
+
+    // Optimistic update - add message immediately
+    setMessages(prev => [...prev, optimisticMessage])
 
     try {
       const { data, error } = await supabaseRef.current
@@ -541,33 +549,30 @@ export default function CatBox() {
           message: messageText
         }])
         .select()
+        .single()
 
       if (error) {
-        // Remove temp message and restore input on error
-        setMessages(prev => prev.filter(m => m.id !== tempId))
+        // Remove optimistic message and restore input on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
         setInputMessage(messageText)
-        console.error('Error sending message:', error)
-      } else if (data && data[0]) {
-        // Replace temp message with real message from server
-        setMessages(prev => prev.map(m => 
-          m.id === tempId ? data[0] : m
-        ))
-        setLastSyncTime(data[0].created_at)
-        
-        // Trigger immediate sync to get any other new messages
-        setTimeout(() => {
-          syncMessages(lastSyncTime || undefined)
-        }, 500)
+        console.error('Failed to send message:', error)
+      } else {
+        // Replace optimistic message with real one
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id === optimisticMessage.id ? data : msg
+          )
+        )
       }
-    } catch (error) {
-      // Remove temp message and restore input on error
-      setMessages(prev => prev.filter(m => m.id !== tempId))
+    } catch (err) {
+      // Remove optimistic message and restore input on error
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
       setInputMessage(messageText)
-      console.error('Error sending message:', error)
+      console.error('Failed to send message:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [currentUser, inputMessage, isLoading, syncMessages, lastSyncTime])
+  }, [currentUser, inputMessage, isLoading])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -715,6 +720,14 @@ export default function CatBox() {
           <span className="text-xs">😺</span>
           <span className="text-xs">CATBOX.exe</span>
           <span className="text-xs">({getUserDisplayName(currentUser.email)})</span>
+          <span className={`text-xs ${
+            connectionStatus === 'connected' ? 'text-green-400' : 
+            connectionStatus === 'connecting' ? 'text-yellow-400' : 
+            'text-red-400'
+          }`}>
+            {connectionStatus === 'connected' ? '●' : 
+             connectionStatus === 'connecting' ? '◐' : '○'}
+          </span>
         </div>
         <div className="flex space-x-1">
           <button
@@ -748,11 +761,11 @@ export default function CatBox() {
         ) : (
           messages.map((message) => {
             const isOwnMessage = message.user_id === currentUser.id
-            const isTempMessage = message.id.startsWith('temp-')
+            const isOptimistic = message.id.startsWith('temp-')
             return (
               <div
                 key={message.id}
-                className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} ${isOptimistic ? 'opacity-70' : ''}`}
               >
                 <div className="max-w-xs">
                   <div className={`text-xs mb-1 ${isOwnMessage ? 'text-right text-black' : 'text-left text-black'}`}>
@@ -764,12 +777,9 @@ export default function CatBox() {
                       isOwnMessage
                         ? 'bg-black text-white'
                         : 'bg-white text-black'
-                    } ${isTempMessage ? 'opacity-70' : ''}`}
+                    }`}
                   >
                     {message.message}
-                    {isTempMessage && (
-                      <span className="ml-1 text-xs">⏳</span>
-                    )}
                   </div>
                 </div>
               </div>
@@ -787,14 +797,14 @@ export default function CatBox() {
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="type message..."
-            disabled={isLoading}
+            disabled={isLoading || connectionStatus !== 'connected'}
             className="flex-1 px-2 py-1 text-sm border border-black bg-white text-black placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
             style={{ fontFamily: 'monospace' }}
             maxLength={200}
           />
           <button
             onClick={sendMessage}
-            disabled={!inputMessage.trim() || isLoading}
+            disabled={!inputMessage.trim() || isLoading || connectionStatus !== 'connected'}
             className="px-2 py-1 bg-black text-white text-sm border border-black hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? '...' : '>'}
