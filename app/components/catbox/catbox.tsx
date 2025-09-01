@@ -35,11 +35,13 @@ export default function CatBox() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const supabaseRef = useRef<any>(null)
   const channelRef = useRef<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -142,6 +144,49 @@ export default function CatBox() {
   const getUserNickname = useCallback((userId: string) => {
     return ''
   }, [currentUser, getUserDisplayName])
+
+  // Sync messages from server
+  const syncMessages = useCallback(async (fromTime?: string) => {
+    if (!supabaseRef.current) return
+
+    try {
+      let query = supabaseRef.current
+        .from('catbox_messages')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+      // If we have a last sync time, only get messages after that
+      if (fromTime) {
+        query = query.gt('created_at', fromTime)
+      } else {
+        // Initial load - get last 50 messages
+        query = query.limit(50)
+      }
+
+      const { data, error } = await query
+
+      if (!error && data) {
+        if (fromTime) {
+          // Append new messages
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id))
+            const newMessages = data.filter(m => !existingIds.has(m.id))
+            return [...prev, ...newMessages]
+          })
+        } else {
+          // Initial load
+          setMessages(data)
+        }
+
+        // Update last sync time
+        if (data.length > 0) {
+          setLastSyncTime(data[data.length - 1].created_at)
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing messages:', error)
+    }
+  }, [])
 
   // Check authorization on mount and periodically
   useEffect(() => {
@@ -313,42 +358,77 @@ export default function CatBox() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isVisible, isAuthorized, isAuthenticated, isPasswordPrompt, handleNumericInput, handlePasswordSubmit])
 
-  // Load initial messages (last 20)
-  const loadMessages = useCallback(async (isInitial = true) => {
-    if (!supabaseRef.current) return
+  // Load initial messages and set up syncing
+  useEffect(() => {
+    if (!supabaseRef.current || !currentUser || !isAuthenticated) return
 
-    try {
-      const query = supabaseRef.current
-        .from('catbox_messages')
-        .select('*')
-        .order('created_at', { ascending: false })
+    // Load initial messages
+    syncMessages()
 
-      if (isInitial) {
-        const { data, error } = await query.limit(20)
-        if (!error && data) {
-          setMessages(data.reverse())
-          setHasMoreMessages(data.length === 20)
+    // Set up periodic sync every 2 seconds
+    syncIntervalRef.current = setInterval(() => {
+      syncMessages(lastSyncTime || undefined)
+    }, 2000)
+
+    // Set up real-time subscription as backup
+    const channel = supabaseRef.current
+      .channel('catbox_messages')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'catbox_messages' }, 
+        (payload: any) => {
+          // Add message if it doesn't already exist (avoid duplicates)
+          setMessages(prev => {
+            const exists = prev.some(m => m.id === payload.new.id)
+            if (!exists) {
+              return [...prev, payload.new]
+            }
+            return prev
+          })
+          setLastSyncTime(payload.new.created_at)
         }
-      } else {
-        // Load more messages for scroll up
-        const oldestMessage = messages[0]
-        if (!oldestMessage) return
+      )
+      .subscribe()
 
-        const { data, error } = await query
-          .lt('created_at', oldestMessage.created_at)
-          .limit(20)
+    channelRef.current = channel
 
-        if (!error && data) {
-          if (data.length < 20) {
-            setHasMoreMessages(false)
-          }
-          setMessages((prev: Message[]) => [...data.reverse(), ...prev])
-        }
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current)
+        syncIntervalRef.current = null
       }
-    } catch {}
-  }, [messages])
+      if (channelRef.current) {
+        channelRef.current.unsubscribe()
+        channelRef.current = null
+      }
+    }
+  }, [currentUser, isAuthenticated, syncMessages, lastSyncTime])
 
   // Load more messages when scrolling to top
+  const loadMoreMessages = useCallback(async () => {
+    if (!supabaseRef.current || !hasMoreMessages) return
+
+    try {
+      const oldestMessage = messages[0]
+      if (!oldestMessage) return
+
+      const { data, error } = await supabaseRef.current
+        .from('catbox_messages')
+        .select('*')
+        .lt('created_at', oldestMessage.created_at)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!error && data) {
+        if (data.length < 20) {
+          setHasMoreMessages(false)
+        }
+        setMessages(prev => [...data.reverse(), ...prev])
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error)
+    }
+  }, [messages, hasMoreMessages])
+
   const handleScroll = useCallback(async () => {
     if (!messagesContainerRef.current || loadingMore || !hasMoreMessages) return
 
@@ -358,7 +438,7 @@ export default function CatBox() {
       setLoadingMore(true)
       const prevScrollHeight = messagesContainerRef.current.scrollHeight
       
-      await loadMessages(false)
+      await loadMoreMessages()
       
       // Maintain scroll position after loading more messages
       setTimeout(() => {
@@ -369,7 +449,7 @@ export default function CatBox() {
         setLoadingMore(false)
       }, 100)
     }
-  }, [loadMessages, loadingMore, hasMoreMessages])
+  }, [loadMoreMessages, loadingMore, hasMoreMessages])
 
   useEffect(() => {
     if (isVisible && !currentUser && isAuthenticated && isAuthorized) {
@@ -388,30 +468,6 @@ export default function CatBox() {
       }
     }
   }, [isVisible, currentUser, isAuthenticated, isAuthorized, getUserFromCookies, getCookie])
-
-  useEffect(() => {
-    if (!supabaseRef.current || !currentUser || !isAuthenticated) return
-
-    const channel = supabaseRef.current
-      .channel('catbox_messages')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'catbox_messages' }, 
-        (payload: any) => {
-          setMessages((prev: Message[]) => [...prev, payload.new])
-        }
-      )
-      .subscribe()
-
-    channelRef.current = channel
-    loadMessages(true) // Load initial 20 messages
-
-    return () => {
-      if (channelRef.current) {
-        channelRef.current.unsubscribe()
-        channelRef.current = null
-      }
-    }
-  }, [currentUser, isAuthenticated, loadMessages])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -464,26 +520,54 @@ export default function CatBox() {
     if (!currentUser || !inputMessage.trim() || !supabaseRef.current || isLoading) return
 
     const messageText = inputMessage.trim()
+    const tempId = `temp-${Date.now()}`
+    const tempMessage: Message = {
+      id: tempId,
+      user_id: currentUser.id,
+      message: messageText,
+      created_at: new Date().toISOString()
+    }
+
+    // Add message optimistically to UI
+    setMessages(prev => [...prev, tempMessage])
     setInputMessage('')
     setIsLoading(true)
 
     try {
-      const { error } = await supabaseRef.current
+      const { data, error } = await supabaseRef.current
         .from('catbox_messages')
         .insert([{
           user_id: currentUser.id,
           message: messageText
         }])
+        .select()
 
       if (error) {
-        setInputMessage(inputMessage)
+        // Remove temp message and restore input on error
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        setInputMessage(messageText)
+        console.error('Error sending message:', error)
+      } else if (data && data[0]) {
+        // Replace temp message with real message from server
+        setMessages(prev => prev.map(m => 
+          m.id === tempId ? data[0] : m
+        ))
+        setLastSyncTime(data[0].created_at)
+        
+        // Trigger immediate sync to get any other new messages
+        setTimeout(() => {
+          syncMessages(lastSyncTime || undefined)
+        }, 500)
       }
-    } catch {
-      setInputMessage(inputMessage)
+    } catch (error) {
+      // Remove temp message and restore input on error
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setInputMessage(messageText)
+      console.error('Error sending message:', error)
     } finally {
       setIsLoading(false)
     }
-  }, [currentUser, inputMessage, isLoading])
+  }, [currentUser, inputMessage, isLoading, syncMessages, lastSyncTime])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -664,6 +748,7 @@ export default function CatBox() {
         ) : (
           messages.map((message) => {
             const isOwnMessage = message.user_id === currentUser.id
+            const isTempMessage = message.id.startsWith('temp-')
             return (
               <div
                 key={message.id}
@@ -679,9 +764,12 @@ export default function CatBox() {
                       isOwnMessage
                         ? 'bg-black text-white'
                         : 'bg-white text-black'
-                    }`}
+                    } ${isTempMessage ? 'opacity-70' : ''}`}
                   >
                     {message.message}
+                    {isTempMessage && (
+                      <span className="ml-1 text-xs">⏳</span>
+                    )}
                   </div>
                 </div>
               </div>
