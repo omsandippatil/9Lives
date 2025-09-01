@@ -412,8 +412,12 @@ export default function CatBox() {
     }
   }, [messages])
 
-  // Dragging handlers
+  // Dragging handlers - only for title bar
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only allow dragging from the title bar
+    const target = e.target as HTMLElement
+    if (!target.closest('.drag-handle')) return
+    
     if (!containerRef.current) return
     
     const rect = containerRef.current.getBoundingClientRect()
@@ -442,17 +446,18 @@ export default function CatBox() {
     }
 
     const handleMouseUp = () => {
-      setIsDragging(false)
+      if (isDragging) {
+        setIsDragging(false)
+      }
     }
 
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
+    // Always add listeners, they'll only do work if isDragging is true
+    document.addEventListener('mousemove', handleMouseMove, { passive: false })
+    document.addEventListener('mouseup', handleMouseUp, { passive: false })
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isDragging, dragOffset])
 
@@ -528,7 +533,7 @@ export default function CatBox() {
       >
         <div className="flex flex-col h-full">
           <div 
-            className="flex justify-between items-center p-2 bg-black text-white border-b border-black cursor-move select-none"
+            className="drag-handle flex justify-between items-center p-2 bg-black text-white border-b border-black cursor-move select-none"
             onMouseDown={handleMouseDown}
           >
             <div className="flex items-center space-x-2">
@@ -603,7 +608,7 @@ export default function CatBox() {
       >
         <div className="flex flex-col h-full">
           <div 
-            className="flex justify-between items-center p-2 bg-black text-white border-b border-black cursor-move select-none"
+            className="drag-handle flex justify-between items-center p-2 bg-black text-white border-b border-black cursor-move select-none"
             onMouseDown={handleMouseDown}
           >
             <div className="flex items-center space-x-2">
@@ -719,15 +724,18 @@ export default function CatBox() {
             onKeyDown={handleInputKeyDown}
             placeholder="type message..."
             disabled={isLoading || connectionStatus !== 'connected'}
-            className="flex-1 px-2 py-1 text-sm border border-black bg-white text-black placeholder-gray-700 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
+            className="flex-1 px-2 py-1 text-sm border border-black bg-white text-black placeholder-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             style={{ fontFamily: 'monospace' }}
             maxLength={200}
             autoComplete="off"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           />
           <button
             onClick={sendMessage}
             disabled={!inputMessage.trim() || isLoading || connectionStatus !== 'connected'}
             className="px-2 py-1 bg-black text-white text-sm border border-black hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {isLoading ? '...' : '>'}
           </button>
